@@ -273,6 +273,26 @@ async def complete_task(task_id: str) -> dict:
 
 
 @mcp.tool()
+async def reopen_task(task_id: str) -> dict:
+    """Reopen a completed or cancelled task (set status back to todo).
+
+    Args:
+        task_id: Task ID
+    """
+    key_info = await authenticate()
+    task = await Task.get(task_id)
+    if not task or task.is_deleted:
+        raise ToolError("Task not found")
+    check_project_access(task.project_id, key_info["project_scopes"])
+
+    task.status = TaskStatus.todo
+    task.completed_at = None
+    await task.save_updated()
+    await publish_event(task.project_id, "task.updated", _task_dict(task))
+    return _task_dict(task)
+
+
+@mcp.tool()
 async def add_comment(task_id: str, content: str) -> dict:
     """Add a comment to a task.
 
@@ -294,6 +314,32 @@ async def add_comment(task_id: str, content: str) -> dict:
         "author_id": comment.author_id, "author_name": comment.author_name,
         "created_at": comment.created_at.isoformat(),
     }})
+    return _task_dict(task)
+
+
+@mcp.tool()
+async def delete_comment(task_id: str, comment_id: str) -> dict:
+    """Delete a comment from a task.
+
+    Args:
+        task_id: Task ID
+        comment_id: Comment ID to delete
+    """
+    key_info = await authenticate()
+    task = await Task.get(task_id)
+    if not task or task.is_deleted:
+        raise ToolError("Task not found")
+    check_project_access(task.project_id, key_info["project_scopes"])
+
+    comment = next((c for c in task.comments if c.id == comment_id), None)
+    if not comment:
+        raise ToolError("Comment not found")
+
+    task.comments = [c for c in task.comments if c.id != comment_id]
+    await task.save_updated()
+    await publish_event(task.project_id, "comment.deleted", {
+        "task_id": task_id, "comment_id": comment_id,
+    })
     return _task_dict(task)
 
 
