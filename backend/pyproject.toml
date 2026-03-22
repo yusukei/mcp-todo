@@ -1,0 +1,51 @@
+[project]
+name = "claude-todo-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "beanie>=1.27",
+    "motor>=3.6",
+    "redis[asyncio]>=5.2",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.7",
+    "python-jose[cryptography]>=3.3",
+    "passlib[bcrypt]>=1.7",
+    "bcrypt>=4.0,<5",
+    "httpx>=0.28",
+    "authlib>=1.4",
+    "python-multipart>=0.0.20",
+    "orjson>=3.10",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.28",
+    "fakeredis>=2.26",
+    "mongomock-motor>=0.0.34",
+    "pytest-cov>=6",
+    "pytest-env>=1.1",
+    "respx>=0.21",
+    "testcontainers[mongodb,redis]>=4.8",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+testpaths = ["tests"]
+env = [
+    "SECRET_KEY=test-secret-key-for-testing-purposes-only-32x",
+    "MCP_INTERNAL_SECRET=test-mcp-secret-for-testing",
+    "MONGO_DBNAME=claude_todo_test",
+    "FRONTEND_URL=http://localhost:3000",
+]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/main.py"]
+
+[tool.coverage.report]
+fail_under = 70

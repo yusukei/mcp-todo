@@ -1,0 +1,20 @@
+# 開発用オーバーライド: ホットリロード有効
+services:
+  backend:
+    volumes:
+      - ./backend/app:/app/app
+    command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  mcp:
+    volumes:
+      - ./mcp/app:/app/app
+    command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
+
+  frontend:
+    build: ~
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"

@@ -1,0 +1,102 @@
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: todo-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+      - mcp
+      - frontend
+    restart: unless-stopped
+    networks:
+      - todo-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: todo-backend
+    environment:
+      - MONGO_URI=${MONGO_URI:-mongodb://mongo:27017}
+      - MONGO_DBNAME=${MONGO_DBNAME:-claude_todo}
+      - REDIS_URI=${REDIS_URI:-redis://redis:6379/0}
+      - SECRET_KEY=${SECRET_KEY}
+      - MCP_INTERNAL_SECRET=${MCP_INTERNAL_SECRET}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - todo-net
+
+  mcp:
+    build:
+      context: ./mcp
+      dockerfile: Dockerfile
+    container_name: todo-mcp
+    environment:
+      - BACKEND_URL=${BACKEND_URL:-http://backend:8000}
+      - MCP_INTERNAL_SECRET=${MCP_INTERNAL_SECRET}
+      - REDIS_MCP_URI=${REDIS_MCP_URI:-redis://redis:6379/1}
+    depends_on:
+      backend:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - todo-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: todo-frontend
+    restart: unless-stopped
+    networks:
+      - todo-net
+
+  mongo:
+    image: mongo:7
+    container_name: todo-mongo
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - todo-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: todo-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - todo-net
+
+volumes:
+  mongo_data:
+  redis_data:
+
+networks:
+  todo-net:
+    name: todo-network
