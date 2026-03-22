@@ -1,6 +1,15 @@
+import asyncio
+
 from ..api_client import backend_request
 from ..auth import authenticate, check_project_access
 from ..server import mcp
+
+
+async def _fetch_tasks(pid: str, params: dict | None = None) -> list:
+    try:
+        return await backend_request("GET", f"/projects/{pid}/tasks", params=params or {})
+    except Exception:
+        return []
 
 
 @mcp.tool()
@@ -34,8 +43,10 @@ async def get_task(task_id: str) -> dict:
     Args:
         task_id: タスクID
     """
-    await authenticate()
-    return await backend_request("GET", f"/tasks/{task_id}")
+    key_info = await authenticate()
+    task = await backend_request("GET", f"/tasks/{task_id}")
+    check_project_access(task["project_id"], key_info["project_scopes"])
+    return task
 
 
 @mcp.tool()
@@ -106,7 +117,17 @@ async def update_task(
         assignee_id: 新しい担当者ID
         tags: 新しいタグリスト
     """
-    await authenticate()
+    key_info = await authenticate()
+    # Validate enums
+    VALID_STATUSES = {"todo", "in_progress", "in_review", "done", "cancelled"}
+    VALID_PRIORITIES = {"low", "medium", "high", "urgent"}
+    if status is not None and status not in VALID_STATUSES:
+        return {"error": f"Invalid status '{status}'. Valid: {', '.join(sorted(VALID_STATUSES))}"}
+    if priority is not None and priority not in VALID_PRIORITIES:
+        return {"error": f"Invalid priority '{priority}'. Valid: {', '.join(sorted(VALID_PRIORITIES))}"}
+    # Scope check: fetch task first
+    task = await backend_request("GET", f"/tasks/{task_id}")
+    check_project_access(task["project_id"], key_info["project_scopes"])
     body = {k: v for k, v in {
         "title": title, "description": description, "priority": priority,
         "status": status, "due_date": due_date, "assignee_id": assignee_id,
@@ -122,7 +143,9 @@ async def delete_task(task_id: str) -> dict:
     Args:
         task_id: タスクID
     """
-    await authenticate()
+    key_info = await authenticate()
+    task = await backend_request("GET", f"/tasks/{task_id}")
+    check_project_access(task["project_id"], key_info["project_scopes"])
     await backend_request("DELETE", f"/tasks/{task_id}")
     return {"success": True, "task_id": task_id}
 
@@ -134,7 +157,9 @@ async def complete_task(task_id: str) -> dict:
     Args:
         task_id: タスクID
     """
-    await authenticate()
+    key_info = await authenticate()
+    task = await backend_request("GET", f"/tasks/{task_id}")
+    check_project_access(task["project_id"], key_info["project_scopes"])
     return await backend_request("PATCH", f"/tasks/{task_id}", json={"status": "done"})
 
 
@@ -146,7 +171,9 @@ async def add_comment(task_id: str, content: str) -> dict:
         task_id: タスクID
         content: コメント本文
     """
-    await authenticate()
+    key_info = await authenticate()
+    task = await backend_request("GET", f"/tasks/{task_id}")
+    check_project_access(task["project_id"], key_info["project_scopes"])
     return await backend_request("POST", f"/tasks/{task_id}/comments",
                                   json={"content": content, "author_name": "Claude"})
 
@@ -177,11 +204,11 @@ async def search_tasks(
             projects = await backend_request("GET", "/projects")
             project_ids = [p["id"] for p in projects]
 
+    params = {"status": status} if status else {}
+    task_lists = await asyncio.gather(*[_fetch_tasks(pid, params) for pid in project_ids])
+    q = query.lower()
     results = []
-    for pid in project_ids:
-        params = {"status": status} if status else {}
-        tasks = await backend_request("GET", f"/projects/{pid}/tasks", params=params)
-        q = query.lower()
+    for tasks in task_lists:
         for t in tasks:
             if q in t["title"].lower() or q in t.get("description", "").lower():
                 results.append(t)
@@ -210,9 +237,9 @@ async def list_overdue_tasks(project_id: str | None = None) -> list[dict]:
         project_ids = [p["id"] for p in projects]
 
     now = datetime.now(UTC).isoformat()
+    task_lists = await asyncio.gather(*[_fetch_tasks(pid) for pid in project_ids])
     overdue = []
-    for pid in project_ids:
-        tasks = await backend_request("GET", f"/projects/{pid}/tasks")
+    for tasks in task_lists:
         for t in tasks:
             if (t.get("due_date") and t["due_date"] < now
                     and t["status"] not in ("done", "cancelled")):

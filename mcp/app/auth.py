@@ -34,7 +34,7 @@ async def authenticate() -> dict:
         raise McpAuthError("X-API-Key header required")
 
     try:
-        result = await backend_request("GET", "/auth/api-key", params={"key": api_key})
+        result = await backend_request("POST", "/auth/api-key", json={"key": api_key})
         return result
     except Exception as e:
         logger.warning("API key validation failed: %s", e)

@@ -11,9 +11,11 @@ import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .api_client import close_client
+from .config import settings
 from .server import MOUNT_PREFIX, MCP_PATH, mcp, register_tools
 
 logging.basicConfig(
@@ -22,6 +24,10 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 logger = logging.getLogger(__name__)
+
+if settings.MCP_INTERNAL_SECRET == "change-me":
+    print("FATAL: MCP_INTERNAL_SECRET is not set", file=sys.stderr)
+    sys.exit(1)
 
 
 class McpTrailingSlashMiddleware:
@@ -66,5 +72,18 @@ app.add_middleware(McpTrailingSlashMiddleware)
 
 
 @app.get("/health")
-async def health() -> dict:
-    return {"status": "ok"}
+async def health() -> JSONResponse:
+    import redis.asyncio as aioredis
+
+    checks: dict = {"status": "ok"}
+    try:
+        r = aioredis.from_url(settings.REDIS_MCP_URI)
+        await r.ping()
+        await r.aclose()
+        checks["redis"] = "ok"
+    except Exception:
+        checks["redis"] = "down"
+        checks["status"] = "unhealthy"
+
+    status_code = 503 if checks["status"] == "unhealthy" else 200
+    return JSONResponse(checks, status_code=status_code)
