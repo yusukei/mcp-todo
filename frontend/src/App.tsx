@@ -14,6 +14,7 @@ import ProjectPage from './pages/ProjectPage'
 
 const GoogleCallbackPage = React.lazy(() => import('./pages/GoogleCallbackPage'))
 const AdminPage = React.lazy(() => import('./pages/AdminPage'))
+const NotFoundPage = React.lazy(() => import('./pages/NotFoundPage'))
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -81,6 +82,11 @@ export default function App() {
                   }
                 />
               </Route>
+              <Route path="*" element={
+                <Suspense fallback={<LoadingFallback />}>
+                  <NotFoundPage />
+                </Suspense>
+              } />
             </Routes>
           </AppInit>
         </BrowserRouter>

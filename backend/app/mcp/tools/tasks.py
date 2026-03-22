@@ -113,7 +113,7 @@ async def create_task(
     Args:
         project_id: Project ID or project name
         title: Task title
-        description: Detailed task description
+        description: Detailed task description (supports Markdown)
         priority: Priority level (low / medium / high / urgent)
         status: Initial status (todo / in_progress / in_review / done / cancelled)
         due_date: Due date in ISO 8601 format (e.g. 2025-12-31T00:00:00)
@@ -162,7 +162,7 @@ async def update_task(
     Args:
         task_id: Task ID
         title: New title
-        description: New description
+        description: New description (supports Markdown)
         priority: New priority (low / medium / high / urgent)
         status: New status (todo / in_progress / in_review / done / cancelled)
         due_date: New due date (ISO 8601 format)
@@ -480,8 +480,8 @@ async def batch_create_tasks(project_id: str, tasks: list[dict]) -> dict:
     Args:
         project_id: Project ID or project name
         tasks: List of task dicts, each with keys: title (required),
-               description, priority, status, due_date, assignee_id,
-               parent_task_id, tags
+               description (supports Markdown), priority, status, due_date,
+               assignee_id, parent_task_id, tags
     """
     key_info = await authenticate()
     project_id = await _resolve_project_id(project_id)
@@ -556,8 +556,8 @@ async def batch_update_tasks(updates: list[dict]) -> dict:
 
     Args:
         updates: List of update dicts, each with keys: task_id (required),
-                 and optional: title, description, priority, status,
-                 due_date, assignee_id, tags
+                 and optional: title, description (supports Markdown),
+                 priority, status, due_date, assignee_id, tags
     """
     key_info = await authenticate()
     scopes = key_info["project_scopes"]

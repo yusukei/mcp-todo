@@ -1,9 +1,10 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ....core.deps import get_current_user
+from ....core.validators import valid_object_id
 from ....models import Project, Task, User
 from ....models.task import Comment, TaskPriority, TaskStatus
 from ....services.events import publish_event
@@ -13,8 +14,8 @@ router = APIRouter(prefix="/projects/{project_id}/tasks", tags=["tasks"])
 
 
 class CreateTaskRequest(BaseModel):
-    title: str
-    description: str = ""
+    title: str = Field(..., max_length=255)
+    description: str = Field("", max_length=10000)
     priority: TaskPriority = TaskPriority.medium
     status: TaskStatus = TaskStatus.todo
     due_date: datetime | None = None
@@ -24,8 +25,8 @@ class CreateTaskRequest(BaseModel):
 
 
 class UpdateTaskRequest(BaseModel):
-    title: str | None = None
-    description: str | None = None
+    title: str | None = Field(None, max_length=255)
+    description: str | None = Field(None, max_length=10000)
     priority: TaskPriority | None = None
     status: TaskStatus | None = None
     due_date: datetime | None = None
@@ -40,6 +41,7 @@ class AddCommentRequest(BaseModel):
 
 
 async def _check_project_access(project_id: str, user: User) -> Project:
+    valid_object_id(project_id)
     project = await Project.get(project_id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
@@ -110,6 +112,7 @@ async def create_task(
 
 @router.get("/{task_id}")
 async def get_task(project_id: str, task_id: str, user: User = Depends(get_current_user)) -> dict:
+    valid_object_id(task_id)
     await _check_project_access(project_id, user)
     task = await Task.get(task_id)
     if not task or task.project_id != project_id or task.is_deleted:
@@ -121,6 +124,7 @@ async def get_task(project_id: str, task_id: str, user: User = Depends(get_curre
 async def update_task(
     project_id: str, task_id: str, body: UpdateTaskRequest, user: User = Depends(get_current_user)
 ) -> dict:
+    valid_object_id(task_id)
     await _check_project_access(project_id, user)
     task = await Task.get(task_id)
     if not task or task.project_id != project_id or task.is_deleted:
@@ -166,6 +170,7 @@ async def update_task(
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_task(project_id: str, task_id: str, user: User = Depends(get_current_user)) -> None:
+    valid_object_id(task_id)
     await _check_project_access(project_id, user)
     task = await Task.get(task_id)
     if not task or task.project_id != project_id or task.is_deleted:
@@ -177,6 +182,7 @@ async def delete_task(project_id: str, task_id: str, user: User = Depends(get_cu
 
 @router.post("/{task_id}/complete")
 async def complete_task(project_id: str, task_id: str, user: User = Depends(get_current_user)) -> dict:
+    valid_object_id(task_id)
     await _check_project_access(project_id, user)
     task = await Task.get(task_id)
     if not task or task.project_id != project_id or task.is_deleted:
@@ -190,6 +196,7 @@ async def complete_task(project_id: str, task_id: str, user: User = Depends(get_
 
 @router.post("/{task_id}/reopen")
 async def reopen_task(project_id: str, task_id: str, user: User = Depends(get_current_user)) -> dict:
+    valid_object_id(task_id)
     await _check_project_access(project_id, user)
     task = await Task.get(task_id)
     if not task or task.project_id != project_id or task.is_deleted:
@@ -203,6 +210,7 @@ async def reopen_task(project_id: str, task_id: str, user: User = Depends(get_cu
 
 @router.post("/{task_id}/archive")
 async def archive_task(project_id: str, task_id: str, user: User = Depends(get_current_user)) -> dict:
+    valid_object_id(task_id)
     await _check_project_access(project_id, user)
     task = await Task.get(task_id)
     if not task or task.project_id != project_id or task.is_deleted:
@@ -215,6 +223,7 @@ async def archive_task(project_id: str, task_id: str, user: User = Depends(get_c
 
 @router.post("/{task_id}/unarchive")
 async def unarchive_task(project_id: str, task_id: str, user: User = Depends(get_current_user)) -> dict:
+    valid_object_id(task_id)
     await _check_project_access(project_id, user)
     task = await Task.get(task_id)
     if not task or task.project_id != project_id or task.is_deleted:
@@ -229,6 +238,7 @@ async def unarchive_task(project_id: str, task_id: str, user: User = Depends(get
 async def add_comment(
     project_id: str, task_id: str, body: AddCommentRequest, user: User = Depends(get_current_user)
 ) -> dict:
+    valid_object_id(task_id)
     await _check_project_access(project_id, user)
     task = await Task.get(task_id)
     if not task or task.project_id != project_id or task.is_deleted:
@@ -249,6 +259,7 @@ async def add_comment(
 async def delete_comment(
     project_id: str, task_id: str, comment_id: str, user: User = Depends(get_current_user)
 ) -> None:
+    valid_object_id(task_id)
     await _check_project_access(project_id, user)
     task = await Task.get(task_id)
     if not task or task.project_id != project_id or task.is_deleted:

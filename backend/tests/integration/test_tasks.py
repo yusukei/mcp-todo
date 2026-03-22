@@ -713,7 +713,7 @@ class TestComments:
         task = await make_task(str(test_project.id), admin_user)
 
         resp = await client.delete(
-            f"{_task_url(str(test_project.id), str(task.id))}/comments/nonexistent-id",
+            f"{_task_url(str(test_project.id), str(task.id))}/comments/000000000000000000000000",
             headers=admin_headers,
         )
         assert resp.status_code == 404

@@ -17,3 +17,7 @@ class McpApiKey(Document):
 
     class Settings:
         name = "mcp_api_keys"
+        indexes = [
+            [("is_active", 1), ("created_at", -1)],
+            [("created_by", 1), ("is_active", 1)],
+        ]

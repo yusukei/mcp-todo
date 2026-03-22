@@ -60,6 +60,7 @@ export default function Layout() {
           {user?.is_admin && (
             <Link
               to="/admin"
+              aria-label="管理画面"
               className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
             >
               <Settings className="w-4 h-4" />
@@ -68,6 +69,7 @@ export default function Layout() {
           )}
           <button
             onClick={handleLogout}
+            aria-label="ログアウト"
             className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
           >
             <LogOut className="w-4 h-4" />

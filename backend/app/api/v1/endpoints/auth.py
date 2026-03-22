@@ -1,9 +1,11 @@
+import logging
 import secrets
 
 from authlib.integrations.httpx_client import AsyncOAuth2Client
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
+from pymongo.errors import DuplicateKeyError
 
 from ....core.config import settings
 from ....core.deps import get_current_user
@@ -16,6 +18,8 @@ from ....core.security import (
 )
 from ....models import AllowedEmail, User
 from ....models.user import AuthType
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -140,8 +144,16 @@ async def google_callback(code: str, state: str) -> TokenResponse:
         client_secret=settings.GOOGLE_CLIENT_SECRET,
         redirect_uri=f"{settings.FRONTEND_URL}/auth/google/callback",
     ) as client:
-        token = await client.fetch_token(GOOGLE_TOKEN_URL, code=code)
-        resp = await client.get(GOOGLE_USERINFO_URL, token=token)
+        try:
+            token = await client.fetch_token(GOOGLE_TOKEN_URL, code=code)
+        except Exception:
+            logger.exception("Failed to fetch token from Google")
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Google authentication failed")
+        try:
+            resp = await client.get(GOOGLE_USERINFO_URL, token=token)
+        except Exception:
+            logger.exception("Failed to fetch user info from Google")
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to fetch user info from Google")
         info = resp.json()
 
     email: str = info.get("email", "")
@@ -161,7 +173,12 @@ async def google_callback(code: str, state: str) -> TokenResponse:
             google_id=info.get("sub"),
             picture_url=info.get("picture"),
         )
-        await user.insert()
+        try:
+            await user.insert()
+        except DuplicateKeyError:
+            user = await User.find_one(User.email == email)
+            if not user:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
     else:
         user.name = info.get("name", user.name)
         user.picture_url = info.get("picture", user.picture_url)

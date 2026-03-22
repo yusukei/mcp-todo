@@ -86,11 +86,16 @@ export default function TaskBoard({
     }),
   )
 
+  const priorityOrder: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
+
   const tasksByStatus = useMemo(() => {
     const map: Record<string, Task[]> = {}
     for (const col of BOARD_COLUMNS) map[col.key] = []
     for (const t of tasks) {
       if (map[t.status]) map[t.status].push(t)
+    }
+    for (const key of Object.keys(map)) {
+      map[key].sort((a, b) => (priorityOrder[a.priority] ?? 99) - (priorityOrder[b.priority] ?? 99))
     }
     return map
   }, [tasks])

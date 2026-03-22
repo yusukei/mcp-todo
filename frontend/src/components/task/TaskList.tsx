@@ -142,6 +142,15 @@ export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags,
                 isSubtask && 'pl-10',
               )}
             >
+              {task.tags && task.tags.length > 0 && (
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {task.tags.slice(0, 2).map((tag: string) => (
+                    <span key={tag} className="text-xs bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
               <label className="flex items-center flex-shrink-0 cursor-pointer" onClick={(e) => e.stopPropagation()}>
                 <input
                   type="checkbox"
@@ -182,11 +191,6 @@ export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags,
                 </label>
               </div>
               <div className="flex items-center gap-3 flex-shrink-0">
-                {task.tags?.slice(0, 2).map((tag: string) => (
-                  <span key={tag} className="text-xs bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full hidden sm:block">
-                    {tag}
-                  </span>
-                ))}
                 {task.due_date && (
                   <span className={clsx('flex items-center gap-1 text-xs', isOverdue ? 'text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-gray-500')}>
                     <Calendar className="w-3 h-3" />

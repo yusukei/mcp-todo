@@ -36,6 +36,18 @@ class ORJSONResponse(JSONResponse):
 async def lifespan(app: FastAPI):
     await connect()
 
+    # Auto-create admin user from env vars if set
+    if settings.INIT_ADMIN_EMAIL and settings.INIT_ADMIN_PASSWORD:
+        from .cli import create_admin_user
+        try:
+            await create_admin_user(
+                settings.INIT_ADMIN_EMAIL,
+                settings.INIT_ADMIN_PASSWORD,
+                "Admin",
+            )
+        except Exception as e:
+            logger.warning("Failed to auto-create admin user: %s", e)
+
     # ── MCP server integration ────────────────────────────────
     from .mcp.server import MCP_PATH, MOUNT_PREFIX, register_tools
     from .mcp.server import mcp as _mcp_server

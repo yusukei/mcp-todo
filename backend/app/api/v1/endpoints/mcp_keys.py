@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from ....core.deps import get_admin_user
+from ....core.validators import valid_object_id
 from ....core.security import hash_api_key
 from ....models import McpApiKey, User
 
@@ -51,6 +52,7 @@ async def create_key(body: CreateKeyRequest, admin: User = Depends(get_admin_use
 
 @router.delete("/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_key(key_id: str, _: User = Depends(get_admin_user)) -> None:
+    valid_object_id(key_id)
     key = await McpApiKey.get(key_id)
     if not key:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Key not found")

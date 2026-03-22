@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ....core.deps import get_admin_user, get_current_user
+from ....core.validators import valid_object_id
 from ....models import Project, User
 from ....models.project import ProjectMember, ProjectStatus
 from ....services.serializers import project_to_dict as _project_dict
@@ -10,15 +11,15 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 
 class CreateProjectRequest(BaseModel):
-    name: str
-    description: str = ""
-    color: str = "#6366f1"
+    name: str = Field(..., max_length=255)
+    description: str = Field("", max_length=5000)
+    color: str = Field("#6366f1", pattern=r"^#[0-9a-fA-F]{6}$")
 
 
 class UpdateProjectRequest(BaseModel):
-    name: str | None = None
-    description: str | None = None
-    color: str | None = None
+    name: str | None = Field(None, max_length=255)
+    description: str | None = Field(None, max_length=5000)
+    color: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
     status: ProjectStatus | None = None
 
 
@@ -53,6 +54,7 @@ async def create_project(body: CreateProjectRequest, admin: User = Depends(get_a
 
 @router.get("/{project_id}")
 async def get_project(project_id: str, user: User = Depends(get_current_user)) -> dict:
+    valid_object_id(project_id)
     project = await Project.get(project_id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
@@ -65,6 +67,7 @@ async def get_project(project_id: str, user: User = Depends(get_current_user)) -
 async def update_project(
     project_id: str, body: UpdateProjectRequest, _: User = Depends(get_admin_user)
 ) -> dict:
+    valid_object_id(project_id)
     project = await Project.get(project_id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
@@ -82,6 +85,7 @@ async def update_project(
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(project_id: str, _: User = Depends(get_admin_user)) -> None:
+    valid_object_id(project_id)
     from ....models import Task
 
     project = await Project.get(project_id)
@@ -96,6 +100,7 @@ async def delete_project(project_id: str, _: User = Depends(get_admin_user)) -> 
 
 @router.post("/{project_id}/members", status_code=status.HTTP_201_CREATED)
 async def add_member(project_id: str, body: AddMemberRequest, _: User = Depends(get_admin_user)) -> dict:
+    valid_object_id(project_id)
     project = await Project.get(project_id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
@@ -108,6 +113,8 @@ async def add_member(project_id: str, body: AddMemberRequest, _: User = Depends(
 
 @router.delete("/{project_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_member(project_id: str, user_id: str, _: User = Depends(get_admin_user)) -> None:
+    valid_object_id(project_id)
+    valid_object_id(user_id)
     project = await Project.get(project_id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
@@ -117,6 +124,7 @@ async def remove_member(project_id: str, user_id: str, _: User = Depends(get_adm
 
 @router.get("/{project_id}/summary")
 async def get_summary(project_id: str, user: User = Depends(get_current_user)) -> dict:
+    valid_object_id(project_id)
     from ....models import Task
     from ....models.task import TaskStatus
 
