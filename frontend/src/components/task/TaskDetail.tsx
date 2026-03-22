@@ -5,6 +5,7 @@ import { api } from '../../api/client'
 import clsx from 'clsx'
 import type { Comment } from '../../types'
 import { STATUS_OPTIONS } from '../../constants/task'
+import MarkdownRenderer from '../common/MarkdownRenderer'
 
 interface Props {
   taskId: string
@@ -128,7 +129,7 @@ export default function TaskDetail({ taskId, projectId, onClose }: Props) {
           {task.description && (
             <div>
               <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">説明</label>
-              <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{task.description}</p>
+              <MarkdownRenderer>{task.description}</MarkdownRenderer>
             </div>
           )}
 
