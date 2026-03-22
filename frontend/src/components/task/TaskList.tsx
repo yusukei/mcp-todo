@@ -35,15 +35,6 @@ const TaskRow = React.memo(function TaskRow({
         isSubtask && 'pl-10',
       )}
     >
-      {task.tags && task.tags.length > 0 && (
-        <div className="flex items-center gap-1 flex-shrink-0">
-          {task.tags.slice(0, 2).map((tag: string) => (
-            <span key={tag} className="text-xs bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full">
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
       <label className="flex items-center flex-shrink-0 cursor-pointer" onClick={(e) => e.stopPropagation()}>
         <input
           type="checkbox"
@@ -57,6 +48,15 @@ const TaskRow = React.memo(function TaskRow({
       )}
       <span className={clsx('w-2 h-2 rounded-full flex-shrink-0', PRIORITY_DOT_COLORS[task.priority])} />
       <span className="flex-1 text-sm text-gray-800 dark:text-gray-100 font-medium">{task.title}</span>
+      {task.tags && task.tags.length > 0 && (
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {task.tags.slice(0, 2).map((tag: string) => (
+            <span key={tag} className="text-xs bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full">
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="flex items-center gap-3 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
         <label className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400 cursor-pointer">
           <input
@@ -229,6 +229,17 @@ export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags,
                     className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                   >
                     実行許可 OFF
+                  </button>
+                  <button
+                    onClick={() => {
+                      for (const taskId of selectedIds) {
+                        onArchive(taskId, true)
+                      }
+                      setSelectedIds(new Set())
+                    }}
+                    className="text-xs px-2 py-1 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-900/60 transition-colors"
+                  >
+                    アーカイブ
                   </button>
                 </div>
               </div>

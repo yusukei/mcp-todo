@@ -25,7 +25,7 @@ async def list_tasks(
 
     Args:
         project_id: Project ID or project name
-        status: Filter: todo / in_progress / in_review / done / cancelled
+        status: Filter: todo / in_progress / done / cancelled
         priority: Filter: low / medium / high / urgent
         assignee_id: Filter by assignee user ID
         tag: Filter by tag name
@@ -79,7 +79,7 @@ async def create_task(
         title: Task title
         description: Detailed task description
         priority: Priority level (low / medium / high / urgent)
-        status: Initial status (todo / in_progress / in_review / done / cancelled)
+        status: Initial status (todo / in_progress / done / cancelled)
         due_date: Due date in ISO 8601 format (e.g. 2025-12-31T00:00:00)
         assignee_id: Assignee user ID
         parent_task_id: Parent task ID (for subtasks)
@@ -124,14 +124,14 @@ async def update_task(
         title: New title
         description: New description
         priority: New priority (low / medium / high / urgent)
-        status: New status (todo / in_progress / in_review / done / cancelled)
+        status: New status (todo / in_progress / done / cancelled)
         due_date: New due date (ISO 8601 format)
         assignee_id: New assignee user ID
         tags: New tag list
     """
     key_info = await authenticate()
     # Validate enums
-    VALID_STATUSES = {"todo", "in_progress", "in_review", "done", "cancelled"}
+    VALID_STATUSES = {"todo", "in_progress", "done", "cancelled"}
     VALID_PRIORITIES = {"low", "medium", "high", "urgent"}
     if status is not None and status not in VALID_STATUSES:
         raise ToolError(f"Invalid status '{status}'. Valid: {', '.join(sorted(VALID_STATUSES))}")

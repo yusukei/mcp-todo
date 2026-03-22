@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 UPDATABLE_FIELDS = {
     "title", "description", "status", "priority", "due_date",
     "assignee_id", "tags", "needs_detail", "approved", "sort_order", "archived",
+    "completion_report",
 }
 
 
@@ -43,7 +44,7 @@ async def list_tasks(
 
     Args:
         project_id: Project ID or project name
-        status: Filter: todo / in_progress / in_review / done / cancelled
+        status: Filter: todo / in_progress / done / cancelled
         priority: Filter: low / medium / high / urgent
         assignee_id: Filter by assignee user ID
         tag: Filter by tag name
@@ -121,7 +122,7 @@ async def create_task(
         title: Task title
         description: Detailed task description (supports Markdown)
         priority: Priority level (low / medium / high / urgent)
-        status: Initial status (todo / in_progress / in_review / done / cancelled)
+        status: Initial status (todo / in_progress / done / cancelled)
         due_date: Due date in ISO 8601 format (e.g. 2025-12-31T00:00:00)
         assignee_id: Assignee user ID
         parent_task_id: Parent task ID (for subtasks)
@@ -162,6 +163,7 @@ async def update_task(
     due_date: str | None = None,
     assignee_id: str | None = None,
     tags: list[str] | None = None,
+    completion_report: str | None = None,
 ) -> dict:
     """Update a task. Only provided fields are changed.
 
@@ -173,14 +175,15 @@ async def update_task(
         title: New title
         description: New description (supports Markdown)
         priority: New priority (low / medium / high / urgent)
-        status: New status (todo / in_progress / in_review / done / cancelled)
+        status: New status (todo / in_progress / done / cancelled)
         due_date: New due date (ISO 8601 format)
         assignee_id: New assignee user ID
         tags: New tag list
+        completion_report: Completion report text (supports Markdown)
     """
     key_info = await authenticate()
 
-    VALID_STATUSES = {"todo", "in_progress", "in_review", "done", "cancelled"}
+    VALID_STATUSES = {"todo", "in_progress", "done", "cancelled"}
     VALID_PRIORITIES = {"low", "medium", "high", "urgent"}
     if status is not None and status not in VALID_STATUSES:
         raise ToolError(f"Invalid status '{status}'. Valid: {', '.join(sorted(VALID_STATUSES))}")
@@ -207,6 +210,8 @@ async def update_task(
         updates["assignee_id"] = assignee_id
     if tags is not None:
         updates["tags"] = tags
+    if completion_report is not None:
+        updates["completion_report"] = completion_report
 
     disallowed = set(updates.keys()) - UPDATABLE_FIELDS
     if disallowed:
@@ -257,11 +262,12 @@ async def delete_task(task_id: str) -> dict:
 
 
 @mcp.tool()
-async def complete_task(task_id: str) -> dict:
+async def complete_task(task_id: str, completion_report: str | None = None) -> dict:
     """Mark a task as done.
 
     Args:
         task_id: Task ID
+        completion_report: Optional completion report text (supports Markdown)
     """
     key_info = await authenticate()
     task = await Task.get(task_id)
@@ -269,9 +275,15 @@ async def complete_task(task_id: str) -> dict:
         raise ToolError("Task not found")
     check_project_access(task.project_id, key_info["project_scopes"])
 
+    changed = False
     if task.status != TaskStatus.done:
         task.status = TaskStatus.done
         task.completed_at = datetime.now(UTC)
+        changed = True
+    if completion_report is not None:
+        task.completion_report = completion_report
+        changed = True
+    if changed:
         await task.save_updated()
         await publish_event(task.project_id, "task.updated", _task_dict(task))
     return _task_dict(task)
@@ -575,7 +587,7 @@ async def list_approved_tasks(
 
     Args:
         project_id: Project ID or project name (omit for all projects)
-        status: Filter by status (todo / in_progress / in_review / done / cancelled)
+        status: Filter by status (todo / in_progress / done / cancelled)
         limit: Maximum number of results (default 50)
     """
     key_info = await authenticate()
@@ -676,7 +688,7 @@ async def get_subtasks(
 
     Args:
         task_id: Parent task ID
-        status: Filter: todo / in_progress / in_review / done / cancelled
+        status: Filter: todo / in_progress / done / cancelled
         limit: Maximum number of subtasks to return (default 50)
         skip: Number of subtasks to skip for pagination (default 0)
     """

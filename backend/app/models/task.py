@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 class TaskStatus(str_enum):
     todo = "todo"
     in_progress = "in_progress"
-    in_review = "in_review"
     done = "done"
     cancelled = "cancelled"
 
@@ -50,6 +49,7 @@ class Task(Document):
     comments: list[Comment] = Field(default_factory=list)
     attachments: list[Attachment] = Field(default_factory=list)
     created_by: str
+    completion_report: str | None = None
     completed_at: datetime | None = None
     is_deleted: bool = False
     archived: bool = False

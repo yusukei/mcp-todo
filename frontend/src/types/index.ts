@@ -1,4 +1,4 @@
-export type TaskStatus = 'todo' | 'in_progress' | 'in_review' | 'done' | 'cancelled'
+export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'cancelled'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 
 export interface Attachment {
@@ -32,6 +32,7 @@ export interface Task {
   attachments: Attachment[]
   is_deleted: boolean
   archived: boolean
+  completion_report: string | null
   completed_at: string | null
   needs_detail: boolean
   approved: boolean

@@ -202,16 +202,3 @@ class TestListOverdueTasks:
 
         assert result["total"] == 2
 
-    async def test_includes_in_review_status(self, setup_data):
-        from app.mcp.tools.tasks import list_overdue_tasks
-
-        user, project = setup_data
-        pid = str(project.id)
-        yesterday = datetime.now(UTC) - timedelta(days=1)
-
-        await make_task(pid, user, title="In Review", due_date=yesterday, status=TaskStatus.in_review)
-
-        result = await list_overdue_tasks(project_id=pid)
-
-        assert result["total"] == 1
-        assert result["items"][0]["title"] == "In Review"

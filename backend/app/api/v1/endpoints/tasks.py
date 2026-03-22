@@ -40,6 +40,11 @@ class UpdateTaskRequest(BaseModel):
     tags: list[str] | None = None
     needs_detail: bool | None = None
     approved: bool | None = None
+    completion_report: str | None = Field(None, max_length=10000)
+
+
+class CompleteTaskRequest(BaseModel):
+    completion_report: str | None = Field(None, max_length=10000)
 
 
 class AddCommentRequest(BaseModel):
@@ -168,6 +173,8 @@ async def update_task(
         task.approved = updates["approved"]
         if updates["approved"]:
             task.needs_detail = False
+    if "completion_report" in updates:
+        task.completion_report = updates["completion_report"]
 
     await task.save_updated()
     await publish_event(project_id, "task.updated", _task_dict(task))
@@ -187,7 +194,9 @@ async def delete_task(project_id: str, task_id: str, user: User = Depends(get_cu
 
 
 @router.post("/{task_id}/complete")
-async def complete_task(project_id: str, task_id: str, user: User = Depends(get_current_user)) -> dict:
+async def complete_task(
+    project_id: str, task_id: str, body: CompleteTaskRequest | None = None, user: User = Depends(get_current_user)
+) -> dict:
     valid_object_id(task_id)
     await _check_project_access(project_id, user)
     task = await Task.get(task_id)
@@ -195,6 +204,8 @@ async def complete_task(project_id: str, task_id: str, user: User = Depends(get_
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     task.status = TaskStatus.done
     task.completed_at = datetime.now(UTC)
+    if body and body.completion_report is not None:
+        task.completion_report = body.completion_report
     await task.save_updated()
     await publish_event(project_id, "task.updated", _task_dict(task))
     return _task_dict(task)

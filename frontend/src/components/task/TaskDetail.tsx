@@ -24,14 +24,17 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask 
   const [editingTitle, setEditingTitle] = useState(false)
   const [editingDescription, setEditingDescription] = useState(false)
   const [editingTags, setEditingTags] = useState(false)
+  const [editingCompletionReport, setEditingCompletionReport] = useState(false)
   const [draftTitle, setDraftTitle] = useState('')
   const [draftDescription, setDraftDescription] = useState('')
   const [draftTags, setDraftTags] = useState('')
   const [draftDueDate, setDraftDueDate] = useState('')
+  const [draftCompletionReport, setDraftCompletionReport] = useState('')
 
   const titleInputRef = useRef<HTMLInputElement>(null)
   const descriptionRef = useRef<HTMLTextAreaElement>(null)
   const tagsInputRef = useRef<HTMLInputElement>(null)
+  const completionReportRef = useRef<HTMLTextAreaElement>(null)
 
   const { data: task } = useQuery({
     queryKey: ['task', taskId],
@@ -46,7 +49,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask 
   }, [task])
 
   const updateTask = useMutation({
-    mutationFn: (data: Partial<Pick<Task, 'title' | 'description' | 'priority' | 'status' | 'due_date' | 'tags'>>) =>
+    mutationFn: (data: Partial<Pick<Task, 'title' | 'description' | 'priority' | 'status' | 'due_date' | 'tags' | 'completion_report'>>) =>
       api.patch(`/projects/${projectId}/tasks/${taskId}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks', projectId] })
@@ -236,9 +239,9 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask 
   if (!task) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex" role="dialog" aria-modal="true" aria-label={task.title}>
-      <div className="flex-1 bg-black/30" onClick={onClose} />
-      <div className="w-full max-w-lg bg-white dark:bg-gray-800 shadow-xl dark:shadow-gray-900/50 flex flex-col h-full overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={task.title}>
+      <div className="fixed inset-0 bg-black/30" onClick={onClose} />
+      <div className="relative w-full max-w-3xl max-h-[90vh] bg-white dark:bg-gray-800 shadow-xl dark:shadow-gray-900/50 flex flex-col overflow-hidden rounded-xl">
         {/* Header */}
         <div className="flex items-start justify-between p-6 border-b border-gray-200 dark:border-gray-700">
           {editingTitle ? (
@@ -479,6 +482,82 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask 
               </p>
             )}
           </div>
+
+          {/* Completion Report */}
+          {task.status === 'done' && (
+            <div className="border border-emerald-200 dark:border-emerald-800 rounded-lg p-4 bg-emerald-50/50 dark:bg-emerald-900/20">
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-emerald-700 dark:text-emerald-400">完了レポート</label>
+                {!editingCompletionReport && (
+                  <button
+                    onClick={() => {
+                      setDraftCompletionReport(task.completion_report ?? '')
+                      setEditingCompletionReport(true)
+                      setTimeout(() => completionReportRef.current?.focus(), 0)
+                    }}
+                    className="text-emerald-500 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+                    title="完了レポートを編集"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              {editingCompletionReport ? (
+                <div className="space-y-2">
+                  <textarea
+                    ref={completionReportRef}
+                    value={draftCompletionReport}
+                    onChange={(e) => setDraftCompletionReport(e.target.value)}
+                    rows={6}
+                    className={`${inputClasses} resize-none`}
+                    placeholder="完了レポートを入力（Markdown対応）..."
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      onClick={() => setEditingCompletionReport(false)}
+                      className="px-3 py-1 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+                    >
+                      キャンセル
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newReport = draftCompletionReport.trim()
+                        if (newReport !== (task.completion_report ?? '')) {
+                          updateTask.mutate({ completion_report: newReport || null })
+                        }
+                        setEditingCompletionReport(false)
+                      }}
+                      className="px-3 py-1 text-sm text-white bg-emerald-600 rounded-lg hover:bg-emerald-700"
+                    >
+                      保存
+                    </button>
+                  </div>
+                </div>
+              ) : task.completion_report ? (
+                <div
+                  className="cursor-pointer"
+                  onClick={() => {
+                    setDraftCompletionReport(task.completion_report ?? '')
+                    setEditingCompletionReport(true)
+                    setTimeout(() => completionReportRef.current?.focus(), 0)
+                  }}
+                >
+                  <MarkdownRenderer>{task.completion_report}</MarkdownRenderer>
+                </div>
+              ) : (
+                <p
+                  className="text-sm text-emerald-400 dark:text-emerald-500 cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400"
+                  onClick={() => {
+                    setDraftCompletionReport('')
+                    setEditingCompletionReport(true)
+                    setTimeout(() => completionReportRef.current?.focus(), 0)
+                  }}
+                >
+                  クリックして完了レポートを追加...
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Attachments */}
           <div>

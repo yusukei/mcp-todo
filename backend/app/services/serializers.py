@@ -46,6 +46,7 @@ def task_to_dict(t: Task) -> dict:
             for a in t.attachments
         ],
         "created_by": t.created_by,
+        "completion_report": t.completion_report,
         "completed_at": t.completed_at.isoformat() if t.completed_at else None,
         "archived": t.archived,
         "needs_detail": t.needs_detail,
