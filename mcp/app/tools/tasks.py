@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 from fastmcp.exceptions import ToolError
@@ -10,14 +9,6 @@ from ..server import mcp
 logger = logging.getLogger(__name__)
 
 
-async def _fetch_tasks(pid: str, params: dict | None = None) -> list:
-    try:
-        return await backend_request("GET", f"/projects/{pid}/tasks", params=params or {})
-    except Exception:
-        logger.warning("Failed to fetch tasks for project %s", pid, exc_info=True)
-        return []
-
-
 @mcp.tool()
 async def list_tasks(
     project_id: str,
@@ -25,29 +16,34 @@ async def list_tasks(
     priority: str | None = None,
     assignee_id: str | None = None,
     tag: str | None = None,
-) -> list[dict]:
-    """プロジェクト内のタスク一覧を取得する。
+    limit: int = 50,
+    skip: int = 0,
+) -> dict:
+    """List tasks in a project with optional filters.
 
     Args:
-        project_id: プロジェクトID
-        status: フィルタ: todo / in_progress / in_review / done / cancelled
-        priority: フィルタ: low / medium / high / urgent
-        assignee_id: 担当者IDでフィルタ
-        tag: タグ名でフィルタ
+        project_id: Project ID
+        status: Filter: todo / in_progress / in_review / done / cancelled
+        priority: Filter: low / medium / high / urgent
+        assignee_id: Filter by assignee user ID
+        tag: Filter by tag name
+        limit: Maximum number of tasks to return (default 50)
+        skip: Number of tasks to skip for pagination (default 0)
     """
     key_info = await authenticate()
     check_project_access(project_id, key_info["project_scopes"])
     params = {k: v for k, v in {"task_status": status, "priority": priority,
-                                  "assignee_id": assignee_id, "tag": tag}.items() if v}
+                                  "assignee_id": assignee_id, "tag": tag,
+                                  "limit": limit, "skip": skip}.items() if v is not None}
     return await backend_request("GET", f"/projects/{project_id}/tasks", params=params)
 
 
 @mcp.tool()
 async def get_task(task_id: str) -> dict:
-    """タスクの詳細情報を取得する。
+    """Get detailed information about a task.
 
     Args:
-        task_id: タスクID
+        task_id: Task ID
     """
     key_info = await authenticate()
     task = await backend_request("GET", f"/tasks/{task_id}")
@@ -67,18 +63,18 @@ async def create_task(
     parent_task_id: str | None = None,
     tags: list[str] | None = None,
 ) -> dict:
-    """新しいタスクを作成する。
+    """Create a new task in a project.
 
     Args:
-        project_id: プロジェクトID
-        title: タスクタイトル
-        description: タスクの詳細説明
-        priority: 優先度 (low / medium / high / urgent)
-        status: 初期ステータス (todo / in_progress / in_review / done / cancelled)
-        due_date: 期限 (ISO 8601形式: 2025-12-31T00:00:00)
-        assignee_id: 担当者のユーザID
-        parent_task_id: 親タスクID（サブタスクの場合）
-        tags: タグ名のリスト
+        project_id: Project ID
+        title: Task title
+        description: Detailed task description
+        priority: Priority level (low / medium / high / urgent)
+        status: Initial status (todo / in_progress / in_review / done / cancelled)
+        due_date: Due date in ISO 8601 format (e.g. 2025-12-31T00:00:00)
+        assignee_id: Assignee user ID
+        parent_task_id: Parent task ID (for subtasks)
+        tags: List of tag names
     """
     key_info = await authenticate()
     check_project_access(project_id, key_info["project_scopes"])
@@ -111,17 +107,17 @@ async def update_task(
     assignee_id: str | None = None,
     tags: list[str] | None = None,
 ) -> dict:
-    """タスクを更新する。Noneのフィールドは変更しない。
+    """Update a task. Only provided fields are changed.
 
     Args:
-        task_id: タスクID
-        title: 新しいタイトル
-        description: 新しい説明
-        priority: 新しい優先度 (low / medium / high / urgent)
-        status: 新しいステータス (todo / in_progress / in_review / done / cancelled)
-        due_date: 新しい期限 (ISO 8601形式)
-        assignee_id: 新しい担当者ID
-        tags: 新しいタグリスト
+        task_id: Task ID
+        title: New title
+        description: New description
+        priority: New priority (low / medium / high / urgent)
+        status: New status (todo / in_progress / in_review / done / cancelled)
+        due_date: New due date (ISO 8601 format)
+        assignee_id: New assignee user ID
+        tags: New tag list
     """
     key_info = await authenticate()
     # Validate enums
@@ -144,10 +140,10 @@ async def update_task(
 
 @mcp.tool()
 async def delete_task(task_id: str) -> dict:
-    """タスクを削除する（論理削除）。
+    """Delete a task (soft delete).
 
     Args:
-        task_id: タスクID
+        task_id: Task ID
     """
     key_info = await authenticate()
     task = await backend_request("GET", f"/tasks/{task_id}")
@@ -158,10 +154,10 @@ async def delete_task(task_id: str) -> dict:
 
 @mcp.tool()
 async def complete_task(task_id: str) -> dict:
-    """タスクを完了状態にする。
+    """Mark a task as done.
 
     Args:
-        task_id: タスクID
+        task_id: Task ID
     """
     key_info = await authenticate()
     task = await backend_request("GET", f"/tasks/{task_id}")
@@ -171,11 +167,11 @@ async def complete_task(task_id: str) -> dict:
 
 @mcp.tool()
 async def add_comment(task_id: str, content: str) -> dict:
-    """タスクにコメントを追加する。
+    """Add a comment to a task.
 
     Args:
-        task_id: タスクID
-        content: コメント本文
+        task_id: Task ID
+        content: Comment body text
     """
     key_info = await authenticate()
     task = await backend_request("GET", f"/tasks/{task_id}")
@@ -189,45 +185,45 @@ async def search_tasks(
     query: str,
     project_id: str | None = None,
     status: str | None = None,
-) -> list[dict]:
-    """タスクをキーワード検索する。
+    limit: int = 50,
+    skip: int = 0,
+) -> dict:
+    """Search tasks by keyword across title and description.
 
     Args:
-        query: 検索キーワード
-        project_id: 特定プロジェクト内のみ検索（省略時は全プロジェクト）
-        status: ステータスでフィルタ
+        query: Search keyword
+        project_id: Limit search to a specific project (omit for all projects)
+        status: Filter by status
+        limit: Maximum number of results (default 50)
+        skip: Number of results to skip for pagination (default 0)
     """
     key_info = await authenticate()
     scopes = key_info["project_scopes"]
 
+    params: dict = {"q": query, "limit": limit, "skip": skip}
+    if status:
+        params["task_status"] = status
+
     if project_id:
         check_project_access(project_id, scopes)
-        project_ids = [project_id]
-    else:
-        if scopes:
-            project_ids = scopes
-        else:
-            projects = await backend_request("GET", "/projects")
-            project_ids = [p["id"] for p in projects]
+        params["project_ids"] = project_id
+    elif scopes:
+        params["project_ids"] = ",".join(scopes)
+    # If no project_id and no scopes, pass no project_ids (search all)
 
-    params = {"status": status} if status else {}
-    task_lists = await asyncio.gather(*[_fetch_tasks(pid, params) for pid in project_ids])
-    q = query.lower()
-    results = []
-    for tasks in task_lists:
-        for t in tasks:
-            if q in t["title"].lower() or q in t.get("description", "").lower():
-                results.append(t)
-
-    return results
+    return await backend_request("GET", "/tasks/search", params=params)
 
 
 @mcp.tool()
-async def list_overdue_tasks(project_id: str | None = None) -> list[dict]:
-    """期限切れのタスク一覧を取得する。
+async def list_overdue_tasks(
+    project_id: str | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    """List overdue tasks (past their due date and not completed).
 
     Args:
-        project_id: 特定プロジェクトのみ（省略時は全プロジェクト）
+        project_id: Limit to a specific project (omit for all projects)
+        limit: Maximum number of results (default 50)
     """
     from datetime import UTC, datetime
 
@@ -243,19 +239,63 @@ async def list_overdue_tasks(project_id: str | None = None) -> list[dict]:
         project_ids = [p["id"] for p in projects]
 
     now = datetime.now(UTC).isoformat()
-    task_lists = await asyncio.gather(*[_fetch_tasks(pid) for pid in project_ids])
     overdue = []
-    for tasks in task_lists:
+    for pid in project_ids:
+        try:
+            resp = await backend_request("GET", f"/projects/{pid}/tasks")
+            tasks = resp.get("items", []) if isinstance(resp, dict) else resp
+        except Exception:
+            logger.warning("Failed to fetch tasks for project %s", pid, exc_info=True)
+            continue
         for t in tasks:
             if (t.get("due_date") and t["due_date"] < now
                     and t["status"] not in ("done", "cancelled")):
                 overdue.append(t)
 
-    return sorted(overdue, key=lambda t: t["due_date"])
+    overdue.sort(key=lambda t: t["due_date"])
+    return overdue[:limit]
 
 
 @mcp.tool()
 async def list_users() -> list[dict]:
-    """ユーザ一覧を取得する（担当者選択用）。"""
+    """List all users (for assignee selection)."""
     await authenticate()
     return await backend_request("GET", "/users")
+
+
+@mcp.tool()
+async def batch_create_tasks(project_id: str, tasks: list[dict]) -> dict:
+    """Create multiple tasks at once in a project.
+
+    Args:
+        project_id: Project ID
+        tasks: List of task dicts, each with keys: title (required),
+               description, priority, status, due_date, assignee_id,
+               parent_task_id, tags
+    """
+    key_info = await authenticate()
+    check_project_access(project_id, key_info["project_scopes"])
+    return await backend_request("POST", f"/projects/{project_id}/tasks/batch", json=tasks)
+
+
+@mcp.tool()
+async def batch_update_tasks(updates: list[dict]) -> dict:
+    """Update multiple tasks at once.
+
+    Args:
+        updates: List of update dicts, each with keys: task_id (required),
+                 and optional: title, description, priority, status,
+                 due_date, assignee_id, tags
+    """
+    key_info = await authenticate()
+    scopes = key_info["project_scopes"]
+
+    # Validate that all referenced tasks are accessible
+    if scopes:
+        for item in updates:
+            task_id = item.get("task_id")
+            if task_id:
+                task = await backend_request("GET", f"/tasks/{task_id}")
+                check_project_access(task["project_id"], scopes)
+
+    return await backend_request("PATCH", "/tasks/batch", json=updates)
