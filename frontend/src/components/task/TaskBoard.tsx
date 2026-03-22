@@ -26,9 +26,9 @@ export default function TaskBoard({ tasks, projectId, onTaskClick, onUpdateFlags
         const colTasks = tasksByStatus[col.key] ?? []
         return (
           <div key={col.key} className="flex-shrink-0 w-72 flex flex-col">
-            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg mb-3 ${col.color}`}>
-              <span className="text-sm font-semibold text-gray-700">{col.label}</span>
-              <span className="text-xs text-gray-500 bg-white/60 px-1.5 py-0.5 rounded-full">
+            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg mb-3 ${col.color} ${col.colorDark}`}>
+              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{col.label}</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400 bg-white/60 dark:bg-black/20 px-1.5 py-0.5 rounded-full">
                 {colTasks.length}
               </span>
             </div>

@@ -9,11 +9,11 @@ export const STATUS_LABELS: Record<TaskStatus, string> = {
 }
 
 export const STATUS_COLORS: Record<TaskStatus, string> = {
-  todo: 'bg-gray-100 text-gray-600',
-  in_progress: 'bg-blue-100 text-blue-700',
-  in_review: 'bg-yellow-100 text-yellow-700',
-  done: 'bg-green-100 text-green-700',
-  cancelled: 'bg-red-100 text-red-600',
+  todo: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
+  in_progress: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
+  in_review: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400',
+  done: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
+  cancelled: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400',
 }
 
 export const STATUS_BG_COLORS: Record<TaskStatus, string> = {
@@ -25,10 +25,10 @@ export const STATUS_BG_COLORS: Record<TaskStatus, string> = {
 }
 
 export const PRIORITY_COLORS: Record<TaskPriority, string> = {
-  urgent: 'bg-red-100 text-red-700',
-  high: 'bg-orange-100 text-orange-700',
-  medium: 'bg-yellow-100 text-yellow-700',
-  low: 'bg-gray-100 text-gray-600',
+  urgent: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
+  high: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400',
+  medium: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400',
+  low: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
 }
 
 export const PRIORITY_DOT_COLORS: Record<TaskPriority, string> = {
@@ -60,11 +60,11 @@ export const PRIORITY_OPTIONS = [
   { value: 'urgent' as TaskPriority, label: '緊急' },
 ]
 
-export const BOARD_COLUMNS: { key: TaskStatus; label: string; color: string }[] = [
-  { key: 'todo', label: 'TODO', color: 'bg-gray-100' },
-  { key: 'in_progress', label: '進行中', color: 'bg-blue-100' },
-  { key: 'in_review', label: 'レビュー中', color: 'bg-yellow-100' },
-  { key: 'done', label: '完了', color: 'bg-green-100' },
+export const BOARD_COLUMNS: { key: TaskStatus; label: string; color: string; colorDark: string }[] = [
+  { key: 'todo', label: 'TODO', color: 'bg-gray-100', colorDark: 'dark:bg-gray-700' },
+  { key: 'in_progress', label: '進行中', color: 'bg-blue-100', colorDark: 'dark:bg-blue-900/40' },
+  { key: 'in_review', label: 'レビュー中', color: 'bg-yellow-100', colorDark: 'dark:bg-yellow-900/40' },
+  { key: 'done', label: '完了', color: 'bg-green-100', colorDark: 'dark:bg-green-900/40' },
 ]
 
 export const REVIEW_FLAG_LABELS = {
