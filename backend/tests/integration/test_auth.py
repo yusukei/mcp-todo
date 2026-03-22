@@ -148,6 +148,31 @@ class TestMe:
         assert data["is_admin"] is False
 
 
+class TestGoogleLogin:
+    """Google OAuth ログイン開始 (/auth/google)"""
+
+    async def test_google_login_stores_state_in_redis(self, client):
+        """リダイレクト時に state を Redis に保存する"""
+        from app.core.redis import get_redis
+
+        resp = await client.get("/api/v1/auth/google", follow_redirects=False)
+        assert resp.status_code == 307
+
+        location = resp.headers["location"]
+        assert "state=" in location
+
+        # URL から state パラメータを抽出
+        from urllib.parse import urlparse, parse_qs
+
+        parsed = urlparse(location)
+        state = parse_qs(parsed.query)["state"][0]
+
+        # Redis に state が保存されていることを確認
+        redis = get_redis()
+        stored = await redis.get(f"oauth:state:{state}")
+        assert stored == "1"
+
+
 class TestGoogleCallbackBoundary:
     """Google OAuth コールバックの境界条件 (外部 HTTP 通信なし)"""
 
@@ -158,6 +183,53 @@ class TestGoogleCallbackBoundary:
     async def test_callback_missing_state_param(self, client):
         resp = await client.get("/api/v1/auth/google/callback?code=abc")
         assert resp.status_code == 422
+
+    async def test_callback_invalid_state(self, client):
+        """Redis に存在しない state は 400"""
+        resp = await client.get(
+            "/api/v1/auth/google/callback?code=fake-code&state=nonexistent-state"
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Invalid state"
+
+    async def test_callback_state_consumed_after_use(self, client):
+        """state は使用後に Redis から削除される (リプレイ攻撃防止)"""
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from app.core.redis import get_redis
+
+        await AllowedEmail(email="consumed@example.com").insert()
+
+        redis = get_redis()
+        await redis.set("oauth:state:consume-test", "1", ex=600)
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "email": "consumed@example.com",
+            "name": "Consumed",
+            "sub": "google-sub-consume",
+        }
+        mock_oauth = AsyncMock()
+        mock_oauth.fetch_token = AsyncMock(return_value={"access_token": "fake"})
+        mock_oauth.get = AsyncMock(return_value=mock_resp)
+        mock_oauth.__aenter__ = AsyncMock(return_value=mock_oauth)
+        mock_oauth.__aexit__ = AsyncMock(return_value=False)
+
+        with patch(
+            "app.api.v1.endpoints.auth.AsyncOAuth2Client", return_value=mock_oauth
+        ):
+            resp = await client.get(
+                "/api/v1/auth/google/callback?code=fake-code&state=consume-test"
+            )
+        assert resp.status_code == 200
+
+        # state が Redis から削除されていることを確認
+        assert await redis.get("oauth:state:consume-test") is None
+
+        # 同じ state で再度リクエストすると 400
+        resp = await client.get(
+            "/api/v1/auth/google/callback?code=fake-code&state=consume-test"
+        )
+        assert resp.status_code == 400
 
     async def test_callback_email_not_in_allowed_list(self, client):
         """AllowedEmail に存在しないメールは 403"""

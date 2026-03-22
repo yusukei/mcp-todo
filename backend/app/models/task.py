@@ -43,6 +43,7 @@ class Task(Document):
     created_by: str
     completed_at: datetime | None = None
     is_deleted: bool = False
+    archived: bool = False
     needs_detail: bool = False
     approved: bool = False
     sort_order: int = 0

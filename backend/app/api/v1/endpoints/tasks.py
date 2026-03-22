@@ -57,6 +57,7 @@ def _task_dict(t: Task) -> dict:
         ],
         "created_by": t.created_by,
         "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+        "archived": t.archived,
         "needs_detail": t.needs_detail,
         "approved": t.approved,
         "sort_order": t.sort_order,
@@ -83,6 +84,7 @@ async def list_tasks(
     tag: str | None = None,
     needs_detail: bool | None = None,
     approved: bool | None = None,
+    archived: bool | None = None,
     user: User = Depends(get_current_user),
 ) -> list[dict]:
     await _check_project_access(project_id, user)
@@ -100,6 +102,8 @@ async def list_tasks(
         query = query.find(Task.needs_detail == needs_detail)
     if approved is not None:
         query = query.find(Task.approved == approved)
+    if archived is not None:
+        query = query.find(Task.archived == archived)
 
     tasks = await query.sort(+Task.sort_order, +Task.created_at).to_list()
     return [_task_dict(t) for t in tasks]
@@ -210,6 +214,30 @@ async def reopen_task(project_id: str, task_id: str, user: User = Depends(get_cu
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     task.status = TaskStatus.todo
     task.completed_at = None
+    await task.save_updated()
+    await publish_event(project_id, "task.updated", _task_dict(task))
+    return _task_dict(task)
+
+
+@router.post("/{task_id}/archive")
+async def archive_task(project_id: str, task_id: str, user: User = Depends(get_current_user)) -> dict:
+    await _check_project_access(project_id, user)
+    task = await Task.get(task_id)
+    if not task or task.project_id != project_id or task.is_deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    task.archived = True
+    await task.save_updated()
+    await publish_event(project_id, "task.updated", _task_dict(task))
+    return _task_dict(task)
+
+
+@router.post("/{task_id}/unarchive")
+async def unarchive_task(project_id: str, task_id: str, user: User = Depends(get_current_user)) -> dict:
+    await _check_project_access(project_id, user)
+    task = await Task.get(task_id)
+    if not task or task.project_id != project_id or task.is_deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    task.archived = False
     await task.save_updated()
     await publish_event(project_id, "task.updated", _task_dict(task))
     return _task_dict(task)

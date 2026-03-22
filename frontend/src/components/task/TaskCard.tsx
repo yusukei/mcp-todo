@@ -1,4 +1,4 @@
-import { Calendar, User } from 'lucide-react'
+import { Archive, ArchiveRestore, Calendar, User } from 'lucide-react'
 import clsx from 'clsx'
 import type { Task } from '../../types'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '../../constants/task'
@@ -7,15 +7,19 @@ interface Props {
   task: Task
   onClick: () => void
   onUpdateFlags: (taskId: string, flags: { needs_detail?: boolean; approved?: boolean }) => void
+  onArchive?: (taskId: string, archive: boolean) => void
 }
 
-export default function TaskCard({ task, onClick, onUpdateFlags }: Props) {
+export default function TaskCard({ task, onClick, onUpdateFlags, onArchive }: Props) {
   const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done'
 
   return (
     <div
       onClick={onClick}
-      className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 cursor-pointer hover:shadow-sm hover:border-indigo-300 dark:hover:border-indigo-600 transition-all"
+      className={clsx(
+        'bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 cursor-pointer hover:shadow-sm hover:border-indigo-300 dark:hover:border-indigo-600 transition-all',
+        task.archived && 'opacity-60',
+      )}
     >
       <p className="text-sm font-medium text-gray-800 dark:text-gray-100 mb-2 line-clamp-2">{task.title}</p>
 
@@ -69,6 +73,23 @@ export default function TaskCard({ task, onClick, onUpdateFlags }: Props) {
             <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
               <User className="w-3 h-3" />
             </span>
+          )}
+          {onArchive && (task.status === 'done' || task.status === 'cancelled') && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onArchive(task.id, !task.archived)
+              }}
+              className={clsx(
+                'p-1 rounded transition-colors',
+                task.archived
+                  ? 'text-indigo-500 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30'
+                  : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700',
+              )}
+              title={task.archived ? 'アーカイブ解除' : 'アーカイブ'}
+            >
+              {task.archived ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
+            </button>
           )}
         </div>
       </div>

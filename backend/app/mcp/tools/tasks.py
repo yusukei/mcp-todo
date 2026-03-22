@@ -33,6 +33,7 @@ def _task_dict(t: Task) -> dict:
         ],
         "created_by": t.created_by,
         "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+        "archived": t.archived,
         "needs_detail": t.needs_detail,
         "approved": t.approved,
         "sort_order": t.sort_order,
@@ -50,6 +51,7 @@ async def list_tasks(
     tag: str | None = None,
     needs_detail: bool | None = None,
     approved: bool | None = None,
+    archived: bool | None = None,
     due_before: str | None = None,
     due_after: str | None = None,
     limit: int = 50,
@@ -65,6 +67,7 @@ async def list_tasks(
         tag: Filter by tag name
         needs_detail: Filter by needs_detail flag (true/false)
         approved: Filter by approved flag (true/false)
+        archived: Filter by archived flag (true/false). Omit to return all tasks.
         due_before: Filter tasks with due_date before this date (ISO 8601 format)
         due_after: Filter tasks with due_date after this date (ISO 8601 format)
         limit: Maximum number of tasks to return (default 50)
@@ -87,6 +90,8 @@ async def list_tasks(
         query = query.find(Task.needs_detail == needs_detail)
     if approved is not None:
         query = query.find(Task.approved == approved)
+    if archived is not None:
+        query = query.find(Task.archived == archived)
     if due_before:
         query = query.find(Task.due_date <= datetime.fromisoformat(due_before))
     if due_after:
@@ -295,6 +300,44 @@ async def reopen_task(task_id: str) -> dict:
 
     task.status = TaskStatus.todo
     task.completed_at = None
+    await task.save_updated()
+    await publish_event(task.project_id, "task.updated", _task_dict(task))
+    return _task_dict(task)
+
+
+@mcp.tool()
+async def archive_task(task_id: str) -> dict:
+    """Archive a task to hide it from the default task list.
+
+    Args:
+        task_id: Task ID
+    """
+    key_info = await authenticate()
+    task = await Task.get(task_id)
+    if not task or task.is_deleted:
+        raise ToolError("Task not found")
+    check_project_access(task.project_id, key_info["project_scopes"])
+
+    task.archived = True
+    await task.save_updated()
+    await publish_event(task.project_id, "task.updated", _task_dict(task))
+    return _task_dict(task)
+
+
+@mcp.tool()
+async def unarchive_task(task_id: str) -> dict:
+    """Unarchive a task to show it in the default task list again.
+
+    Args:
+        task_id: Task ID
+    """
+    key_info = await authenticate()
+    task = await Task.get(task_id)
+    if not task or task.is_deleted:
+        raise ToolError("Task not found")
+    check_project_access(task.project_id, key_info["project_scopes"])
+
+    task.archived = False
     await task.save_updated()
     await publish_event(task.project_id, "task.updated", _task_dict(task))
     return _task_dict(task)

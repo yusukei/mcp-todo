@@ -22,6 +22,7 @@ export interface Task {
   tags: string[]
   comments: Comment[]
   is_deleted: boolean
+  archived: boolean
   completed_at: string | null
   needs_detail: boolean
   approved: boolean

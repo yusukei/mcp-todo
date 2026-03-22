@@ -8,9 +8,11 @@ interface Props {
   projectId: string
   onTaskClick: (id: string) => void
   onUpdateFlags: (taskId: string, flags: { needs_detail?: boolean; approved?: boolean }) => void
+  onArchive: (taskId: string, archive: boolean) => void
+  showArchived: boolean
 }
 
-export default function TaskBoard({ tasks, projectId, onTaskClick, onUpdateFlags }: Props) {
+export default function TaskBoard({ tasks, projectId, onTaskClick, onUpdateFlags, onArchive, showArchived }: Props) {
   const tasksByStatus = useMemo(() => {
     const map: Record<string, Task[]> = {}
     for (const col of BOARD_COLUMNS) map[col.key] = []
@@ -39,6 +41,7 @@ export default function TaskBoard({ tasks, projectId, onTaskClick, onUpdateFlags
                   task={task}
                   onClick={() => onTaskClick(task.id)}
                   onUpdateFlags={onUpdateFlags}
+                  onArchive={onArchive}
                 />
               ))}
             </div>

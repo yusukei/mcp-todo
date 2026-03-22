@@ -6,7 +6,7 @@ import TaskBoard from '../components/task/TaskBoard'
 import TaskList from '../components/task/TaskList'
 import TaskDetail from '../components/task/TaskDetail'
 import TaskCreateModal from '../components/task/TaskCreateModal'
-import { LayoutGrid, List, Plus } from 'lucide-react'
+import { LayoutGrid, List, Plus, Archive } from 'lucide-react'
 import { showErrorToast } from '../components/common/Toast'
 import type { Task } from '../types'
 
@@ -17,22 +17,23 @@ export default function ProjectPage() {
   const [view, setView] = useState<ViewMode>('board')
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showArchived, setShowArchived] = useState(false)
   const qc = useQueryClient()
 
   const updateFlagsMutation = useMutation({
     mutationFn: ({ taskId, flags }: { taskId: string; flags: Record<string, boolean> }) =>
       api.patch(`/projects/${projectId}/tasks/${taskId}`, flags),
     onMutate: async ({ taskId, flags }) => {
-      await qc.cancelQueries({ queryKey: ['tasks', projectId] })
-      const previousTasks = qc.getQueryData<Task[]>(['tasks', projectId])
-      qc.setQueryData<Task[]>(['tasks', projectId], (old) =>
+      await qc.cancelQueries({ queryKey: ['tasks', projectId, showArchived] })
+      const previousTasks = qc.getQueryData<Task[]>(['tasks', projectId, showArchived])
+      qc.setQueryData<Task[]>(['tasks', projectId, showArchived], (old) =>
         old?.map((t) => (t.id === taskId ? { ...t, ...flags } : t))
       )
       return { previousTasks }
     },
     onError: (_err, _vars, context) => {
       if (context?.previousTasks) {
-        qc.setQueryData(['tasks', projectId], context.previousTasks)
+        qc.setQueryData(['tasks', projectId, showArchived], context.previousTasks)
       }
       showErrorToast('フラグの更新に失敗しました')
     },
@@ -41,8 +42,23 @@ export default function ProjectPage() {
     },
   })
 
+  const archiveMutation = useMutation({
+    mutationFn: ({ taskId, archive }: { taskId: string; archive: boolean }) =>
+      api.post(`/projects/${projectId}/tasks/${taskId}/${archive ? 'archive' : 'unarchive'}`),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['tasks', projectId] })
+    },
+    onError: () => {
+      showErrorToast('アーカイブの更新に失敗しました')
+    },
+  })
+
   const handleUpdateFlags = (taskId: string, flags: { needs_detail?: boolean; approved?: boolean }) => {
     updateFlagsMutation.mutate({ taskId, flags })
+  }
+
+  const handleArchive = (taskId: string, archive: boolean) => {
+    archiveMutation.mutate({ taskId, archive })
   }
 
   const { data: project } = useQuery({
@@ -52,8 +68,10 @@ export default function ProjectPage() {
   })
 
   const { data: tasks = [] } = useQuery({
-    queryKey: ['tasks', projectId],
-    queryFn: () => api.get(`/projects/${projectId}/tasks`).then((r) => r.data),
+    queryKey: ['tasks', projectId, showArchived],
+    queryFn: () => api.get(`/projects/${projectId}/tasks`, {
+      params: showArchived ? undefined : { archived: false },
+    }).then((r) => r.data),
     enabled: !!projectId,
   })
 
@@ -76,6 +94,13 @@ export default function ProjectPage() {
             タスク追加
           </button>
           <button
+            onClick={() => setShowArchived(!showArchived)}
+            className={`p-2 rounded-lg transition-colors ${showArchived ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+            title={showArchived ? 'アーカイブ済みを非表示' : 'アーカイブ済みを表示'}
+          >
+            <Archive className="w-5 h-5" />
+          </button>
+          <button
             onClick={() => setView('board')}
             className={`p-2 rounded-lg transition-colors ${view === 'board' ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
             title="カンバン"
@@ -95,9 +120,9 @@ export default function ProjectPage() {
       {/* Content */}
       <div className="flex-1 overflow-hidden">
         {view === 'board' ? (
-          <TaskBoard tasks={tasks} projectId={projectId!} onTaskClick={setSelectedTaskId} onUpdateFlags={handleUpdateFlags} />
+          <TaskBoard tasks={tasks} projectId={projectId!} onTaskClick={setSelectedTaskId} onUpdateFlags={handleUpdateFlags} onArchive={handleArchive} showArchived={showArchived} />
         ) : (
-          <TaskList tasks={tasks} projectId={projectId!} onTaskClick={setSelectedTaskId} onUpdateFlags={handleUpdateFlags} />
+          <TaskList tasks={tasks} projectId={projectId!} onTaskClick={setSelectedTaskId} onUpdateFlags={handleUpdateFlags} onArchive={handleArchive} showArchived={showArchived} />
         )}
       </div>
 

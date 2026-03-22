@@ -437,6 +437,101 @@ class TestCompleteAndReopen:
         assert resp.json()["status"] == "todo"
 
 
+class TestArchive:
+    async def test_archive_task(
+        self, client, admin_user, test_project, admin_headers
+    ):
+        task = await make_task(str(test_project.id), admin_user)
+
+        resp = await client.post(
+            f"{_task_url(str(test_project.id), str(task.id))}/archive",
+            headers=admin_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["archived"] is True
+
+    async def test_unarchive_task(
+        self, client, admin_user, test_project, admin_headers
+    ):
+        task = await make_task(str(test_project.id), admin_user, archived=True)
+
+        resp = await client.post(
+            f"{_task_url(str(test_project.id), str(task.id))}/unarchive",
+            headers=admin_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["archived"] is False
+
+    async def test_archive_deleted_task_returns_404(
+        self, client, admin_user, test_project, admin_headers
+    ):
+        task = await make_task(str(test_project.id), admin_user, is_deleted=True)
+
+        resp = await client.post(
+            f"{_task_url(str(test_project.id), str(task.id))}/archive",
+            headers=admin_headers,
+        )
+        assert resp.status_code == 404
+
+    async def test_archive_nonexistent_task_returns_404(
+        self, client, test_project, admin_headers
+    ):
+        resp = await client.post(
+            f"{_task_url(str(test_project.id), '000000000000000000000000')}/archive",
+            headers=admin_headers,
+        )
+        assert resp.status_code == 404
+
+    async def test_filter_by_archived(
+        self, client, admin_user, test_project, admin_headers
+    ):
+        await make_task(str(test_project.id), admin_user, title="Active", archived=False)
+        await make_task(str(test_project.id), admin_user, title="Archived", archived=True)
+
+        # Filter archived=false
+        resp = await client.get(
+            _task_url(str(test_project.id)),
+            params={"archived": "false"},
+            headers=admin_headers,
+        )
+        tasks = resp.json()
+        assert len(tasks) == 1
+        assert tasks[0]["title"] == "Active"
+
+        # Filter archived=true
+        resp = await client.get(
+            _task_url(str(test_project.id)),
+            params={"archived": "true"},
+            headers=admin_headers,
+        )
+        tasks = resp.json()
+        assert len(tasks) == 1
+        assert tasks[0]["title"] == "Archived"
+
+        # No filter returns all
+        resp = await client.get(
+            _task_url(str(test_project.id)),
+            headers=admin_headers,
+        )
+        tasks = resp.json()
+        assert len(tasks) == 2
+
+    async def test_archived_field_in_task_response(
+        self, client, admin_user, test_project, admin_headers
+    ):
+        task = await make_task(str(test_project.id), admin_user)
+
+        resp = await client.get(
+            _task_url(str(test_project.id), str(task.id)),
+            headers=admin_headers,
+        )
+        assert resp.status_code == 200
+        assert "archived" in resp.json()
+        assert resp.json()["archived"] is False
+
+
 class TestComments:
     async def test_add_comment_to_task(
         self, client, admin_user, test_project, admin_headers

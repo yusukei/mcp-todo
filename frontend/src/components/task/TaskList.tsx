@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { Calendar } from 'lucide-react'
+import { Archive, ArchiveRestore, Calendar } from 'lucide-react'
 import type { Task } from '../../types'
 import { STATUS_LABELS, STATUS_COLORS, PRIORITY_DOT_COLORS } from '../../constants/task'
 
@@ -8,9 +8,11 @@ interface Props {
   projectId: string
   onTaskClick: (id: string) => void
   onUpdateFlags: (taskId: string, flags: { needs_detail?: boolean; approved?: boolean }) => void
+  onArchive: (taskId: string, archive: boolean) => void
+  showArchived: boolean
 }
 
-export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags }: Props) {
+export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags, onArchive, showArchived }: Props) {
   return (
     <div className="p-6 overflow-y-auto h-full">
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700">
@@ -23,7 +25,10 @@ export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags 
             <div
               key={task.id}
               onClick={() => onTaskClick(task.id)}
-              className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer"
+              className={clsx(
+                'flex items-center gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer',
+                task.archived && 'opacity-60',
+              )}
             >
               <span className={clsx('w-2 h-2 rounded-full flex-shrink-0', PRIORITY_DOT_COLORS[task.priority])} />
               <span className="flex-1 text-sm text-gray-800 dark:text-gray-100 font-medium">{task.title}</span>
@@ -68,6 +73,23 @@ export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags 
                 <span className={clsx('text-xs px-2 py-0.5 rounded-full', STATUS_COLORS[task.status])}>
                   {STATUS_LABELS[task.status]}
                 </span>
+                {(task.status === 'done' || task.status === 'cancelled') && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onArchive(task.id, !task.archived)
+                    }}
+                    className={clsx(
+                      'p-1 rounded transition-colors',
+                      task.archived
+                        ? 'text-indigo-500 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30'
+                        : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700',
+                    )}
+                    title={task.archived ? 'アーカイブ解除' : 'アーカイブ'}
+                  >
+                    {task.archived ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
+                  </button>
+                )}
               </div>
             </div>
           )
