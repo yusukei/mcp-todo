@@ -399,12 +399,14 @@ async def search_tasks(
 async def list_overdue_tasks(
     project_id: str | None = None,
     limit: int = 50,
-) -> list[dict]:
+    skip: int = 0,
+) -> dict:
     """List overdue tasks (past their due date and not completed).
 
     Args:
         project_id: Limit to a specific project by ID or name (omit for all projects)
         limit: Maximum number of results (default 50)
+        skip: Number of tasks to skip for pagination (default 0)
     """
     key_info = await authenticate()
     scopes = key_info["project_scopes"]
@@ -412,7 +414,7 @@ async def list_overdue_tasks(
 
     filters: dict = {
         "is_deleted": False,
-        "due_date": {"$lt": now},
+        "due_date": {"$ne": None, "$lt": now},
         "status": {"$nin": [TaskStatus.done, TaskStatus.cancelled]},
     }
 
@@ -423,8 +425,10 @@ async def list_overdue_tasks(
     elif scopes:
         filters["project_id"] = {"$in": scopes}
 
-    tasks = await Task.find(filters).sort(+Task.due_date).limit(limit).to_list()
-    return [_task_dict(t) for t in tasks]
+    db_query = Task.find(filters)
+    total = await db_query.count()
+    tasks = await db_query.sort(+Task.due_date).skip(skip).limit(limit).to_list()
+    return {"items": [_task_dict(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
 
 
 @mcp.tool()
