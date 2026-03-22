@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 __pycache__/
 *.py[cod]
 .venv/
@@ -7,3 +9,12 @@ node_modules/
 dist/
 .DS_Store
 *.log
+docker-compose.override.yml
+*.swp
+*.swo
+*.bak
+*~
+Thumbs.db
+coverage/
+htmlcov/
+.pytest_cache/
