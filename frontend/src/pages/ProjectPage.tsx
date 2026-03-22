@@ -41,15 +41,15 @@ export default function ProjectPage() {
     enabled: !!projectId,
   })
 
-  if (!project) return <div className="p-8 text-gray-500">読み込み中...</div>
+  if (!project) return <div className="p-8 text-gray-500 dark:text-gray-400">読み込み中...</div>
 
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-8 py-4 border-b border-gray-200 bg-white flex items-center justify-between">
+      <div className="px-8 py-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: project.color }} />
-          <h1 className="text-xl font-bold text-gray-800">{project.name}</h1>
+          <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">{project.name}</h1>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -61,14 +61,14 @@ export default function ProjectPage() {
           </button>
           <button
             onClick={() => setView('board')}
-            className={`p-2 rounded-lg transition-colors ${view === 'board' ? 'bg-indigo-100 text-indigo-600' : 'text-gray-400 hover:bg-gray-100'}`}
+            className={`p-2 rounded-lg transition-colors ${view === 'board' ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
             title="カンバン"
           >
             <LayoutGrid className="w-5 h-5" />
           </button>
           <button
             onClick={() => setView('list')}
-            className={`p-2 rounded-lg transition-colors ${view === 'list' ? 'bg-indigo-100 text-indigo-600' : 'text-gray-400 hover:bg-gray-100'}`}
+            className={`p-2 rounded-lg transition-colors ${view === 'list' ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
             title="リスト"
           >
             <List className="w-5 h-5" />

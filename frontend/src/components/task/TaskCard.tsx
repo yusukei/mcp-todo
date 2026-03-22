@@ -15,12 +15,12 @@ export default function TaskCard({ task, onClick, onUpdateFlags }: Props) {
   return (
     <div
       onClick={onClick}
-      className="bg-white rounded-lg border border-gray-200 p-3 cursor-pointer hover:shadow-sm hover:border-indigo-300 transition-all"
+      className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 cursor-pointer hover:shadow-sm hover:border-indigo-300 dark:hover:border-indigo-600 transition-all"
     >
-      <p className="text-sm font-medium text-gray-800 mb-2 line-clamp-2">{task.title}</p>
+      <p className="text-sm font-medium text-gray-800 dark:text-gray-100 mb-2 line-clamp-2">{task.title}</p>
 
       <div className="flex items-center gap-3 mb-2" onClick={(e) => e.stopPropagation()}>
-        <label className="flex items-center gap-1 text-xs text-amber-700 cursor-pointer">
+        <label className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400 cursor-pointer">
           <input
             type="checkbox"
             checked={task.needs_detail}
@@ -32,7 +32,7 @@ export default function TaskCard({ task, onClick, onUpdateFlags }: Props) {
           />
           詳細要求
         </label>
-        <label className="flex items-center gap-1 text-xs text-emerald-700 cursor-pointer">
+        <label className="flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400 cursor-pointer">
           <input
             type="checkbox"
             checked={task.approved}
@@ -48,7 +48,7 @@ export default function TaskCard({ task, onClick, onUpdateFlags }: Props) {
 
       <div className="flex flex-wrap gap-1 mb-2">
         {task.tags?.map((tag: string) => (
-          <span key={tag} className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">
+          <span key={tag} className="text-xs bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full">
             {tag}
           </span>
         ))}
@@ -60,13 +60,13 @@ export default function TaskCard({ task, onClick, onUpdateFlags }: Props) {
         </span>
         <div className="flex items-center gap-2">
           {task.due_date && (
-            <span className={clsx('flex items-center gap-1 text-xs', isOverdue ? 'text-red-500' : 'text-gray-400')}>
+            <span className={clsx('flex items-center gap-1 text-xs', isOverdue ? 'text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-gray-500')}>
               <Calendar className="w-3 h-3" />
               {new Date(task.due_date).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
             </span>
           )}
           {task.assignee_id && (
-            <span className="flex items-center gap-1 text-xs text-gray-400">
+            <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
               <User className="w-3 h-3" />
             </span>
           )}

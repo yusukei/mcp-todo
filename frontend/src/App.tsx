@@ -18,7 +18,7 @@ const queryClient = new QueryClient({
 })
 
 const LoadingFallback = () => (
-  <div className="flex items-center justify-center h-screen text-gray-500">読み込み中...</div>
+  <div className="flex items-center justify-center h-screen text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900">読み込み中...</div>
 )
 
 function AppInit({ children }: { children: React.ReactNode }) {
