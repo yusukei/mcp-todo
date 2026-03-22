@@ -54,6 +54,7 @@ class Task(Document):
         indexes = [
             [("project_id", 1), ("is_deleted", 1), ("status", 1)],
             [("assignee_id", 1), ("is_deleted", 1)],
+            [("is_deleted", 1), ("status", 1), ("due_date", 1)],
         ]
 
     async def save_updated(self) -> "Task":
