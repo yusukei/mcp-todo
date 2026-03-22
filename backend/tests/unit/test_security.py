@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from jose import jwt
+import jwt
 
 from app.core.security import (
     ALGORITHM,
@@ -80,9 +80,10 @@ class TestTokenCreation:
 
     def test_refresh_token_has_refresh_type(self):
         token = create_refresh_token("user-id-123")
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.REFRESH_SECRET_KEY, algorithms=[ALGORITHM])
         assert payload["type"] == "refresh"
         assert payload["sub"] == "user-id-123"
+        assert "jti" in payload
 
     def test_access_and_refresh_tokens_differ(self):
         subject = "user-id-abc"

@@ -95,7 +95,8 @@ async def delete_user(user_id: str, admin: User = Depends(get_admin_user)) -> No
     user = await User.get(user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    await user.delete()
+    user.is_active = False
+    await user.save_updated()
 
 
 # --- Allowed Emails ---

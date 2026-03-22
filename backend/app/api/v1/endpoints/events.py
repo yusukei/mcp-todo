@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -6,7 +7,8 @@ from fastapi.responses import StreamingResponse
 
 from ....core.redis import get_redis
 from ....core.security import decode_token
-from ....models import User
+from ....models import Project, User
+from ....models.project import ProjectStatus
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/events", tags=["events"])
@@ -14,7 +16,6 @@ router = APIRouter(prefix="/events", tags=["events"])
 
 @router.get("")
 async def sse_stream(token: str = Query(..., description="JWT access token")) -> StreamingResponse:
-    # EventSource APIはカスタムヘッダー不可のためURLトークン方式で認証
     payload = decode_token(token)
     if not payload or payload.get("type") != "access":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
@@ -22,6 +23,16 @@ async def sse_stream(token: str = Query(..., description="JWT access token")) ->
     user = await User.get(payload["sub"])
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
+
+    # Build set of project IDs user has access to
+    if user.is_admin:
+        user_project_ids: set[str] | None = None  # admin = all projects
+    else:
+        projects = await Project.find(
+            Project.status == ProjectStatus.active,
+            Project.members.user_id == str(user.id),
+        ).to_list()
+        user_project_ids = {str(p.id) for p in projects}
 
     async def generator():
         redis = get_redis()
@@ -32,6 +43,15 @@ async def sse_stream(token: str = Query(..., description="JWT access token")) ->
             while True:
                 message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=30)
                 if message and message["type"] == "message":
+                    # Project filtering
+                    if user_project_ids is not None:
+                        try:
+                            event_data = json.loads(message["data"])
+                            pid = event_data.get("project_id")
+                            if pid and pid not in user_project_ids:
+                                continue
+                        except (json.JSONDecodeError, TypeError):
+                            pass
                     yield f"data: {message['data']}\n\n"
                 else:
                     yield ": keepalive\n\n"

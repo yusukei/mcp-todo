@@ -187,11 +187,12 @@ class TestDeleteProject:
         )
         assert resp.status_code == 204
 
-        # 削除後は 404
+        # ソフトデリート後はアーカイブ状態
         resp2 = await client.get(
             f"/api/v1/projects/{test_project.id}", headers=admin_headers
         )
-        assert resp2.status_code == 404
+        assert resp2.status_code == 200
+        assert resp2.json()["status"] == "archived"
 
     async def test_regular_user_cannot_delete_project(
         self, client, test_project, user_headers

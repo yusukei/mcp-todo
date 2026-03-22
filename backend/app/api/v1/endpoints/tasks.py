@@ -226,8 +226,11 @@ async def delete_comment(
     if not task or task.project_id != project_id or task.is_deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
-    original_len = len(task.comments)
-    task.comments = [c for c in task.comments if c.id != comment_id]
-    if len(task.comments) == original_len:
+    comment = next((c for c in task.comments if c.id == comment_id), None)
+    if not comment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
+    if comment.author_id != str(user.id) and not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not comment author")
+
+    task.comments = [c for c in task.comments if c.id != comment_id]
     await task.save_updated()

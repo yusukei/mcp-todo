@@ -7,8 +7,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from .core.config import settings
-from .core.database import connect
-from .core.redis import close_redis
+from .core.database import close_db, connect, get_mongo_client
+from .core.redis import close_redis, get_redis
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,6 +18,10 @@ logging.basicConfig(
 
 if settings.SECRET_KEY == "change-me":
     print("FATAL: SECRET_KEY is not set", file=sys.stderr)
+    sys.exit(1)
+
+if settings.REFRESH_SECRET_KEY == "change-me-refresh":
+    print("FATAL: REFRESH_SECRET_KEY is not set", file=sys.stderr)
     sys.exit(1)
 
 if settings.MCP_INTERNAL_SECRET == "change-me":
@@ -35,6 +39,7 @@ async def lifespan(app: FastAPI):
     await connect()
     yield
     await close_redis()
+    await close_db()
 
 
 app = FastAPI(
@@ -48,8 +53,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.FRONTEND_URL],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 # Routers
 from .api.v1.endpoints import auth, events, internal, mcp_keys, projects, tasks, users
@@ -64,5 +69,25 @@ app.include_router(internal.router, prefix="/api/v1")
 
 
 @app.get("/health")
-async def health() -> dict:
-    return {"status": "ok"}
+async def health() -> JSONResponse:
+    checks: dict = {"status": "ok"}
+    # MongoDB ping
+    try:
+        client = get_mongo_client()
+        if client:
+            await client.admin.command("ping")
+        checks["mongo"] = "ok"
+    except Exception:
+        checks["mongo"] = "down"
+        checks["status"] = "unhealthy"
+    # Redis ping
+    try:
+        redis = get_redis()
+        await redis.ping()
+        checks["redis"] = "ok"
+    except Exception:
+        checks["redis"] = "down"
+        checks["status"] = "unhealthy"
+
+    status_code = 503 if checks["status"] == "unhealthy" else 200
+    return JSONResponse(checks, status_code=status_code)

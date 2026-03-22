@@ -20,6 +20,33 @@ from ....models.user import AuthType
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 _OAUTH_STATE_TTL = 600  # 10分
+_LOGIN_MAX_ATTEMPTS = 5
+_LOGIN_LOCKOUT_SECONDS = 900  # 15分
+
+
+async def _check_rate_limit(email: str) -> None:
+    redis = get_redis()
+    key = f"login_attempts:{email}"
+    attempts = await redis.get(key)
+    if attempts and int(attempts) >= _LOGIN_MAX_ATTEMPTS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Try again later.",
+        )
+
+
+async def _record_failed_login(email: str) -> None:
+    redis = get_redis()
+    key = f"login_attempts:{email}"
+    pipe = redis.pipeline()
+    pipe.incr(key)
+    pipe.expire(key, _LOGIN_LOCKOUT_SECONDS)
+    await pipe.execute()
+
+
+async def _clear_login_attempts(email: str) -> None:
+    redis = get_redis()
+    await redis.delete(f"login_attempts:{email}")
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -43,12 +70,15 @@ class RefreshRequest(BaseModel):
 
 @router.post("/login", response_model=TokenResponse)
 async def login(body: LoginRequest) -> TokenResponse:
+    await _check_rate_limit(body.username)
     user = await User.find_one(User.email == body.username, User.auth_type == AuthType.admin)
     if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
+        await _record_failed_login(body.username)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled")
 
+    await _clear_login_attempts(body.username)
     return TokenResponse(
         access_token=create_access_token(str(user.id)),
         refresh_token=create_refresh_token(str(user.id)),

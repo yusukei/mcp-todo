@@ -1,7 +1,8 @@
 import hashlib
+import uuid
 from datetime import UTC, datetime, timedelta
 
-from jose import JWTError, jwt
+import jwt
 from passlib.context import CryptContext
 
 from .config import settings
@@ -34,15 +35,18 @@ def create_access_token(subject: str) -> str:
 
 def create_refresh_token(subject: str) -> str:
     expire = datetime.now(UTC) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    jti = str(uuid.uuid4())
     return jwt.encode(
-        {"sub": subject, "exp": expire, "type": "refresh"},
-        settings.SECRET_KEY,
+        {"sub": subject, "exp": expire, "type": "refresh", "jti": jti},
+        settings.REFRESH_SECRET_KEY,
         algorithm=ALGORITHM,
     )
 
 
 def decode_token(token: str) -> dict | None:
-    try:
-        return jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
-    except JWTError:
-        return None
+    for key in (settings.SECRET_KEY, settings.REFRESH_SECRET_KEY):
+        try:
+            return jwt.decode(token, key, algorithms=[ALGORITHM])
+        except jwt.InvalidTokenError:
+            continue
+    return None

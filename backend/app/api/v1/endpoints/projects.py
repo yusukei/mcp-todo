@@ -95,10 +95,16 @@ async def update_project(
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(project_id: str, _: User = Depends(get_admin_user)) -> None:
+    from ....models import Task
+
     project = await Project.get(project_id)
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    await project.delete()
+    project.status = ProjectStatus.archived
+    await project.save_updated()
+    await Task.find(Task.project_id == project_id, Task.is_deleted == False).update(
+        {"$set": {"is_deleted": True}}
+    )
 
 
 @router.post("/{project_id}/members", status_code=status.HTTP_201_CREATED)
