@@ -1,14 +1,20 @@
 import asyncio
+import logging
+
+from fastmcp.exceptions import ToolError
 
 from ..api_client import backend_request
 from ..auth import authenticate, check_project_access
 from ..server import mcp
+
+logger = logging.getLogger(__name__)
 
 
 async def _fetch_tasks(pid: str, params: dict | None = None) -> list:
     try:
         return await backend_request("GET", f"/projects/{pid}/tasks", params=params or {})
     except Exception:
+        logger.warning("Failed to fetch tasks for project %s", pid, exc_info=True)
         return []
 
 
@@ -31,7 +37,7 @@ async def list_tasks(
     """
     key_info = await authenticate()
     check_project_access(project_id, key_info["project_scopes"])
-    params = {k: v for k, v in {"status": status, "priority": priority,
+    params = {k: v for k, v in {"task_status": status, "priority": priority,
                                   "assignee_id": assignee_id, "tag": tag}.items() if v}
     return await backend_request("GET", f"/projects/{project_id}/tasks", params=params)
 
@@ -122,9 +128,9 @@ async def update_task(
     VALID_STATUSES = {"todo", "in_progress", "in_review", "done", "cancelled"}
     VALID_PRIORITIES = {"low", "medium", "high", "urgent"}
     if status is not None and status not in VALID_STATUSES:
-        return {"error": f"Invalid status '{status}'. Valid: {', '.join(sorted(VALID_STATUSES))}"}
+        raise ToolError(f"Invalid status '{status}'. Valid: {', '.join(sorted(VALID_STATUSES))}")
     if priority is not None and priority not in VALID_PRIORITIES:
-        return {"error": f"Invalid priority '{priority}'. Valid: {', '.join(sorted(VALID_PRIORITIES))}"}
+        raise ToolError(f"Invalid priority '{priority}'. Valid: {', '.join(sorted(VALID_PRIORITIES))}")
     # Scope check: fetch task first
     task = await backend_request("GET", f"/tasks/{task_id}")
     check_project_access(task["project_id"], key_info["project_scopes"])

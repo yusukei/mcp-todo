@@ -43,10 +43,21 @@ def create_refresh_token(subject: str) -> str:
     )
 
 
-def decode_token(token: str) -> dict | None:
-    for key in (settings.SECRET_KEY, settings.REFRESH_SECRET_KEY):
-        try:
-            return jwt.decode(token, key, algorithms=[ALGORITHM])
-        except jwt.InvalidTokenError:
-            continue
-    return None
+def decode_access_token(token: str) -> dict | None:
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "access":
+            return None
+        return payload
+    except jwt.InvalidTokenError:
+        return None
+
+
+def decode_refresh_token(token: str) -> dict | None:
+    try:
+        payload = jwt.decode(token, settings.REFRESH_SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "refresh":
+            return None
+        return payload
+    except jwt.InvalidTokenError:
+        return None

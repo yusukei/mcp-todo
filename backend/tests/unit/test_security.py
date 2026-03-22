@@ -9,7 +9,8 @@ from app.core.security import (
     ALGORITHM,
     create_access_token,
     create_refresh_token,
-    decode_token,
+    decode_access_token,
+    decode_refresh_token,
     hash_api_key,
     hash_password,
     verify_password,
@@ -68,7 +69,7 @@ class TestHashApiKey:
 
 
 # ---------------------------------------------------------------------------
-# create_access_token / create_refresh_token / decode_token
+# create_access_token / create_refresh_token / decode_access_token / decode_refresh_token
 # ---------------------------------------------------------------------------
 
 class TestTokenCreation:
@@ -92,30 +93,29 @@ class TestTokenCreation:
         assert access != refresh
 
 
-class TestDecodeToken:
+class TestDecodeAccessToken:
     def test_decodes_valid_access_token(self):
         token = create_access_token("uid-1")
-        payload = decode_token(token)
+        payload = decode_access_token(token)
         assert payload is not None
         assert payload["sub"] == "uid-1"
         assert payload["type"] == "access"
 
-    def test_decodes_valid_refresh_token(self):
+    def test_returns_none_for_refresh_token(self):
+        """refresh トークンを decode_access_token でデコードできないことを確認"""
         token = create_refresh_token("uid-2")
-        payload = decode_token(token)
-        assert payload is not None
-        assert payload["type"] == "refresh"
+        assert decode_access_token(token) is None
 
     def test_returns_none_for_tampered_token(self):
         token = create_access_token("uid-3")
         tampered = token[:-5] + "xxxxx"
-        assert decode_token(tampered) is None
+        assert decode_access_token(tampered) is None
 
     def test_returns_none_for_empty_string(self):
-        assert decode_token("") is None
+        assert decode_access_token("") is None
 
     def test_returns_none_for_random_string(self):
-        assert decode_token("not.a.jwt") is None
+        assert decode_access_token("not.a.jwt") is None
 
     def test_returns_none_for_expired_token(self):
         expire = datetime.now(UTC) - timedelta(seconds=1)
@@ -124,13 +124,38 @@ class TestDecodeToken:
             settings.SECRET_KEY,
             algorithm=ALGORITHM,
         )
-        assert decode_token(token) is None
+        assert decode_access_token(token) is None
 
-    def test_type_mismatch_access_used_as_refresh(self):
-        """access トークンを refresh 用途に使えないことを確認 (type フィールド検証はアプリ層)"""
-        token = create_access_token("uid-x")
-        payload = decode_token(token)
-        # decode_token 自体はデコードするが type は "access"
+
+class TestDecodeRefreshToken:
+    def test_decodes_valid_refresh_token(self):
+        token = create_refresh_token("uid-2")
+        payload = decode_refresh_token(token)
         assert payload is not None
-        assert payload["type"] == "access"
-        # 呼び出し側 (auth.py の /refresh) が type != "refresh" を弾く設計
+        assert payload["sub"] == "uid-2"
+        assert payload["type"] == "refresh"
+
+    def test_returns_none_for_access_token(self):
+        """access トークンを decode_refresh_token でデコードできないことを確認"""
+        token = create_access_token("uid-x")
+        assert decode_refresh_token(token) is None
+
+    def test_returns_none_for_tampered_token(self):
+        token = create_refresh_token("uid-3")
+        tampered = token[:-5] + "xxxxx"
+        assert decode_refresh_token(tampered) is None
+
+    def test_returns_none_for_empty_string(self):
+        assert decode_refresh_token("") is None
+
+    def test_returns_none_for_random_string(self):
+        assert decode_refresh_token("not.a.jwt") is None
+
+    def test_returns_none_for_expired_token(self):
+        expire = datetime.now(UTC) - timedelta(seconds=1)
+        token = jwt.encode(
+            {"sub": "uid", "exp": expire, "type": "refresh"},
+            settings.REFRESH_SECRET_KEY,
+            algorithm=ALGORITHM,
+        )
+        assert decode_refresh_token(token) is None

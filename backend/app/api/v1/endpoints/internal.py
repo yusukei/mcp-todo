@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from ....core.deps import verify_mcp_secret
 from ....models import McpApiKey, Project, Task, User
-from ....models.task import TaskPriority, TaskStatus
+from ....models.task import Comment, TaskPriority, TaskStatus
 from ....core.security import hash_api_key
 from datetime import UTC, datetime
 
@@ -61,12 +61,32 @@ async def get_project(project_id: str) -> dict:
     return _project_dict(project)
 
 
+@router.get("/projects/{project_id}/summary")
+async def get_project_summary(project_id: str) -> dict:
+    project = await Project.get(project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    tasks = await Task.find(Task.project_id == project_id, Task.is_deleted == False).to_list()
+    counts = {s: 0 for s in TaskStatus}
+    for t in tasks:
+        counts[t.status] += 1
+
+    return {
+        "project_id": project_id,
+        "total": len(tasks),
+        "by_status": {k: v for k, v in counts.items()},
+        "completion_rate": round(counts[TaskStatus.done] / len(tasks) * 100, 1) if tasks else 0,
+    }
+
+
 @router.get("/projects/{project_id}/tasks")
 async def list_tasks(
     project_id: str,
     task_status: TaskStatus | None = None,
     priority: TaskPriority | None = None,
     assignee_id: str | None = None,
+    tag: str | None = None,
 ) -> list[dict]:
     from ....api.v1.endpoints.tasks import _task_dict
 
@@ -77,6 +97,8 @@ async def list_tasks(
         query = query.find(Task.priority == priority)
     if assignee_id:
         query = query.find(Task.assignee_id == assignee_id)
+    if tag:
+        query = query.find({"tags": tag})
     tasks = await query.sort(+Task.sort_order, +Task.created_at).to_list()
     return [_task_dict(t) for t in tasks]
 
@@ -89,6 +111,11 @@ async def get_task(task_id: str) -> dict:
     if not task or task.is_deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     return _task_dict(task)
+
+
+class InternalAddCommentRequest(BaseModel):
+    content: str
+    author_name: str = "Claude"
 
 
 class InternalCreateTaskRequest(BaseModel):
@@ -171,6 +198,26 @@ async def delete_task(task_id: str) -> None:
     task.is_deleted = True
     await task.save_updated()
     await publish_event(task.project_id, "task.deleted", {"id": task_id})
+
+
+@router.post("/tasks/{task_id}/comments", status_code=201)
+async def add_comment(task_id: str, body: InternalAddCommentRequest) -> dict:
+    from ....api.v1.endpoints.tasks import _task_dict
+    from ....services.events import publish_event
+
+    task = await Task.get(task_id)
+    if not task or task.is_deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+
+    comment = Comment(content=body.content, author_id="mcp", author_name=body.author_name)
+    task.comments.append(comment)
+    await task.save_updated()
+    await publish_event(task.project_id, "comment.added", {"task_id": task_id, "comment": {
+        "id": comment.id, "content": comment.content,
+        "author_id": comment.author_id, "author_name": comment.author_name,
+        "created_at": comment.created_at.isoformat(),
+    }})
+    return _task_dict(task)
 
 
 @router.get("/users")

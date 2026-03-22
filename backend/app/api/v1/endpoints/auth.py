@@ -11,7 +11,7 @@ from ....core.redis import get_redis
 from ....core.security import (
     create_access_token,
     create_refresh_token,
-    decode_token,
+    decode_refresh_token,
     verify_password,
 )
 from ....models import AllowedEmail, User
@@ -87,8 +87,8 @@ async def login(body: LoginRequest) -> TokenResponse:
 
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh(body: RefreshRequest) -> TokenResponse:
-    payload = decode_token(body.refresh_token)
-    if not payload or payload.get("type") != "refresh":
+    payload = decode_refresh_token(body.refresh_token)
+    if not payload:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
     user = await User.get(payload["sub"])

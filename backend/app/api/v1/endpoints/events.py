@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
 from ....core.redis import get_redis
-from ....core.security import decode_token
+from ....core.security import decode_access_token
 from ....models import Project, User
 from ....models.project import ProjectStatus
 
@@ -16,8 +16,8 @@ router = APIRouter(prefix="/events", tags=["events"])
 
 @router.get("")
 async def sse_stream(token: str = Query(..., description="JWT access token")) -> StreamingResponse:
-    payload = decode_token(token)
-    if not payload or payload.get("type") != "access":
+    payload = decode_access_token(token)
+    if not payload:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
     user = await User.get(payload["sub"])

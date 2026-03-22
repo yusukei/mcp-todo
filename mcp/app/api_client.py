@@ -8,6 +8,7 @@ import asyncio
 import logging
 
 import httpx
+from fastmcp.exceptions import ToolError
 
 from .config import settings
 
@@ -42,7 +43,7 @@ async def close_client() -> None:
         _client = None
 
 
-async def backend_request(method: str, path: str, **kwargs) -> dict | list:
+async def backend_request(method: str, path: str, **kwargs) -> dict | list | None:
     client = _get_client()
     last_error: Exception | None = None
     url = f"/api/v1/internal{path}"
@@ -51,10 +52,16 @@ async def backend_request(method: str, path: str, **kwargs) -> dict | list:
         try:
             resp = await client.request(method, url, **kwargs)
             resp.raise_for_status()
+            if resp.status_code == 204:
+                return None
             return resp.json()
         except httpx.HTTPStatusError as e:
             if e.response.status_code < 500:
-                raise  # 4xx はリトライしない
+                try:
+                    detail = e.response.json().get("detail", str(e))
+                except Exception:
+                    detail = str(e)
+                raise ToolError(detail) from e
             last_error = e
         except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout) as e:
             last_error = e
