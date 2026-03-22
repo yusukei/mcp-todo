@@ -15,7 +15,7 @@ interface Props {
  */
 export default function MarkdownRenderer({ children, className }: Props) {
   return (
-    <div className={className ?? 'prose prose-sm prose-gray max-w-none'}>
+    <div className={className ?? 'prose prose-sm prose-gray dark:prose-invert max-w-none'}>
       <Markdown
         components={{
           a: ({ href, children: linkChildren }) => (
@@ -23,7 +23,7 @@ export default function MarkdownRenderer({ children, className }: Props) {
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-indigo-600 hover:text-indigo-800 underline"
+              className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 underline"
             >
               {linkChildren}
             </a>

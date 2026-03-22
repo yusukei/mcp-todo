@@ -18,6 +18,7 @@ const baseTasks: Task[] = [
     tags: [],
     comments: [],
     is_deleted: false,
+    archived: false,
     completed_at: null,
     needs_detail: false,
     approved: false,
@@ -39,6 +40,7 @@ const baseTasks: Task[] = [
     tags: [],
     comments: [],
     is_deleted: false,
+    archived: false,
     completed_at: null,
     needs_detail: false,
     approved: false,
@@ -49,33 +51,37 @@ const baseTasks: Task[] = [
   },
 ]
 
+const defaultProps = {
+  projectId: 'project-1',
+  onTaskClick: vi.fn(),
+  onUpdateFlags: vi.fn(),
+  onArchive: vi.fn(),
+  showArchived: false,
+}
+
 describe('TaskList', () => {
   it('タスクのタイトルを描画する', () => {
-    render(<TaskList tasks={baseTasks} projectId="project-1" onTaskClick={() => {}} onUpdateFlags={() => {}} />)
+    render(<TaskList tasks={baseTasks} {...defaultProps} />)
     expect(screen.getByText('First Task')).toBeInTheDocument()
     expect(screen.getByText('Second Task')).toBeInTheDocument()
   })
 
   it('タスクがない場合に空状態メッセージを表示する', () => {
-    render(<TaskList tasks={[]} projectId="project-1" onTaskClick={() => {}} onUpdateFlags={() => {}} />)
+    render(<TaskList tasks={[]} {...defaultProps} />)
     expect(screen.getByText('タスクがありません')).toBeInTheDocument()
   })
 
   it('タスク行クリック時に onTaskClick が呼ばれる', async () => {
     const onTaskClick = vi.fn()
-    render(<TaskList tasks={baseTasks} projectId="project-1" onTaskClick={onTaskClick} onUpdateFlags={() => {}} />)
+    render(<TaskList tasks={baseTasks} {...defaultProps} onTaskClick={onTaskClick} />)
     await userEvent.click(screen.getByText('First Task'))
     expect(onTaskClick).toHaveBeenCalledWith('task-1')
   })
 
   it('ステータスバッジが正しいラベルを表示する', () => {
-    render(<TaskList tasks={baseTasks} projectId="project-1" onTaskClick={() => {}} onUpdateFlags={() => {}} />)
-    // フィルタボタンにも「TODO」があるため、バッジは span 要素で絞り込む
-    const todoBadges = screen.getAllByText('TODO')
-    expect(todoBadges.length).toBeGreaterThanOrEqual(2) // filter button + status badge
-    // 「進行中」もフィルタボタンとバッジの両方に存在する
-    const inProgressBadges = screen.getAllByText('進行中')
-    expect(inProgressBadges.length).toBeGreaterThanOrEqual(2)
+    render(<TaskList tasks={baseTasks} {...defaultProps} />)
+    expect(screen.getByText('TODO')).toBeInTheDocument()
+    expect(screen.getByText('進行中')).toBeInTheDocument()
   })
 
   it('期限切れタスクに赤色スタイルが適用される', () => {
@@ -87,12 +93,12 @@ describe('TaskList', () => {
       },
     ]
     const { container } = render(
-      <TaskList tasks={overdueTasks} projectId="project-1" onTaskClick={() => {}} onUpdateFlags={() => {}} />
+      <TaskList tasks={overdueTasks} {...defaultProps} />
     )
     expect(container.querySelector('.text-red-500')).toBeInTheDocument()
   })
 
-  it('done のタスクは期限切れ表示にならない', async () => {
+  it('done のタスクは期限切れ表示にならない', () => {
     const doneTasks: Task[] = [
       {
         ...baseTasks[0],
@@ -101,10 +107,89 @@ describe('TaskList', () => {
       },
     ]
     const { container } = render(
-      <TaskList tasks={doneTasks} projectId="project-1" onTaskClick={() => {}} onUpdateFlags={() => {}} />
+      <TaskList tasks={doneTasks} {...defaultProps} />
     )
-    // デフォルトフィルタは「未完了」なのでdoneは非表示。「すべて」に切り替え
-    await userEvent.click(screen.getByText('すべて'))
     expect(container.querySelector('.text-red-500')).not.toBeInTheDocument()
+  })
+
+  describe('一括操作', () => {
+    it('タスクがある場合に一括操作ヘッダーが表示される', () => {
+      render(<TaskList tasks={baseTasks} {...defaultProps} />)
+      expect(screen.getByText('一括操作')).toBeInTheDocument()
+    })
+
+    it('タスクがない場合に一括操作ヘッダーが表示されない', () => {
+      render(<TaskList tasks={[]} {...defaultProps} />)
+      expect(screen.queryByText('一括操作')).not.toBeInTheDocument()
+    })
+
+    it('全選択チェックボックスで全タスクが選択される', async () => {
+      render(<TaskList tasks={baseTasks} {...defaultProps} />)
+      const checkboxes = screen.getAllByRole('checkbox')
+      // First checkbox is select-all, followed by per-task selection checkboxes and flag checkboxes
+      const selectAllCheckbox = checkboxes[0]
+      await userEvent.click(selectAllCheckbox)
+      expect(screen.getByText('2件選択')).toBeInTheDocument()
+    })
+
+    it('全選択後に再度クリックで選択解除される', async () => {
+      render(<TaskList tasks={baseTasks} {...defaultProps} />)
+      const checkboxes = screen.getAllByRole('checkbox')
+      const selectAllCheckbox = checkboxes[0]
+      await userEvent.click(selectAllCheckbox)
+      expect(screen.getByText('2件選択')).toBeInTheDocument()
+      await userEvent.click(selectAllCheckbox)
+      expect(screen.getByText('一括操作')).toBeInTheDocument()
+    })
+
+    it('選択時に一括操作ボタンが表示される', async () => {
+      render(<TaskList tasks={baseTasks} {...defaultProps} />)
+      const checkboxes = screen.getAllByRole('checkbox')
+      await userEvent.click(checkboxes[0]) // select all
+      expect(screen.getByText('詳細要求 ON')).toBeInTheDocument()
+      expect(screen.getByText('詳細要求 OFF')).toBeInTheDocument()
+      expect(screen.getByText('実行許可 ON')).toBeInTheDocument()
+      expect(screen.getByText('実行許可 OFF')).toBeInTheDocument()
+    })
+
+    it('詳細要求 ON ボタンで全選択タスクの onUpdateFlags が呼ばれる', async () => {
+      const onUpdateFlags = vi.fn()
+      render(<TaskList tasks={baseTasks} {...defaultProps} onUpdateFlags={onUpdateFlags} />)
+      const checkboxes = screen.getAllByRole('checkbox')
+      await userEvent.click(checkboxes[0]) // select all
+      await userEvent.click(screen.getByText('詳細要求 ON'))
+      expect(onUpdateFlags).toHaveBeenCalledTimes(2)
+      expect(onUpdateFlags).toHaveBeenCalledWith('task-1', { needs_detail: true, approved: false })
+      expect(onUpdateFlags).toHaveBeenCalledWith('task-2', { needs_detail: true, approved: false })
+    })
+
+    it('実行許可 ON ボタンで全選択タスクの onUpdateFlags が呼ばれる', async () => {
+      const onUpdateFlags = vi.fn()
+      render(<TaskList tasks={baseTasks} {...defaultProps} onUpdateFlags={onUpdateFlags} />)
+      const checkboxes = screen.getAllByRole('checkbox')
+      await userEvent.click(checkboxes[0]) // select all
+      await userEvent.click(screen.getByText('実行許可 ON'))
+      expect(onUpdateFlags).toHaveBeenCalledTimes(2)
+      expect(onUpdateFlags).toHaveBeenCalledWith('task-1', { approved: true, needs_detail: false })
+      expect(onUpdateFlags).toHaveBeenCalledWith('task-2', { approved: true, needs_detail: false })
+    })
+
+    it('一括操作後に選択がクリアされる', async () => {
+      const onUpdateFlags = vi.fn()
+      render(<TaskList tasks={baseTasks} {...defaultProps} onUpdateFlags={onUpdateFlags} />)
+      const checkboxes = screen.getAllByRole('checkbox')
+      await userEvent.click(checkboxes[0]) // select all
+      expect(screen.getByText('2件選択')).toBeInTheDocument()
+      await userEvent.click(screen.getByText('詳細要求 OFF'))
+      expect(screen.getByText('一括操作')).toBeInTheDocument()
+    })
+
+    it('個別タスクの選択チェックボックスが機能する', async () => {
+      render(<TaskList tasks={baseTasks} {...defaultProps} />)
+      const checkboxes = screen.getAllByRole('checkbox')
+      // checkboxes[0] = select-all, checkboxes[1] = task-1 selection, checkboxes[2] = task-1 needs_detail, etc.
+      await userEvent.click(checkboxes[1]) // select task-1 only
+      expect(screen.getByText('1件選択')).toBeInTheDocument()
+    })
   })
 })

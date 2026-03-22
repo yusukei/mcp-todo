@@ -1,9 +1,12 @@
 import { useEffect, useState, useCallback, useSyncExternalStore } from 'react'
-import { X, AlertCircle } from 'lucide-react'
+import { X, AlertCircle, CheckCircle } from 'lucide-react'
+
+type ToastType = 'error' | 'success'
 
 interface ToastMessage {
   id: number
   text: string
+  type: ToastType
 }
 
 let nextId = 0
@@ -15,7 +18,12 @@ function emitChange() {
 }
 
 export function showErrorToast(text: string) {
-  toasts = [...toasts, { id: nextId++, text }]
+  toasts = [...toasts, { id: nextId++, text, type: 'error' }]
+  emitChange()
+}
+
+export function showSuccessToast(text: string) {
+  toasts = [...toasts, { id: nextId++, text, type: 'success' }]
   emitChange()
 }
 
@@ -52,13 +60,16 @@ function ToastItem({ toast }: { toast: ToastMessage }) {
     setTimeout(() => removeToast(toast.id), 200)
   }, [toast.id])
 
+  const bgColor = toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-600'
+  const Icon = toast.type === 'success' ? CheckCircle : AlertCircle
+
   return (
     <div
-      className={`flex items-center gap-2 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg text-sm max-w-sm transition-all duration-200 ${
+      className={`flex items-center gap-2 ${bgColor} text-white px-4 py-3 rounded-lg shadow-lg text-sm max-w-sm transition-all duration-200 ${
         visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
       }`}
     >
-      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+      <Icon className="w-4 h-4 flex-shrink-0" />
       <span className="flex-1">{toast.text}</span>
       <button onClick={handleDismiss} className="flex-shrink-0 hover:opacity-80">
         <X className="w-4 h-4" />

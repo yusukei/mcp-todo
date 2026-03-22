@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import clsx from 'clsx'
 import { Archive, ArchiveRestore, Calendar } from 'lucide-react'
 import type { Task } from '../../types'
@@ -13,9 +14,90 @@ interface Props {
 }
 
 export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags, onArchive, showArchived }: Props) {
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  const allSelected = tasks.length > 0 && selectedIds.size === tasks.length
+  const someSelected = selectedIds.size > 0 && selectedIds.size < tasks.length
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(tasks.map((t) => t.id)))
+    }
+  }
+
+  const toggleSelect = (taskId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(taskId)) {
+        next.delete(taskId)
+      } else {
+        next.add(taskId)
+      }
+      return next
+    })
+  }
+
+  const bulkUpdateFlags = (flags: { needs_detail?: boolean; approved?: boolean }) => {
+    for (const taskId of selectedIds) {
+      onUpdateFlags(taskId, flags)
+    }
+    setSelectedIds(new Set())
+  }
+
   return (
     <div className="p-6 overflow-y-auto h-full">
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700">
+        {/* Header with select-all and bulk actions */}
+        {tasks.length > 0 && (
+          <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 dark:bg-gray-800/80">
+            <label className="flex items-center cursor-pointer" onClick={(e) => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                checked={allSelected}
+                ref={(el) => { if (el) el.indeterminate = someSelected }}
+                onChange={toggleSelectAll}
+                className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+              />
+            </label>
+            {selectedIds.size > 0 ? (
+              <div className="flex items-center gap-2 flex-1">
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {selectedIds.size}件選択
+                </span>
+                <div className="flex items-center gap-1.5 ml-2">
+                  <button
+                    onClick={() => bulkUpdateFlags({ needs_detail: true, approved: false })}
+                    className="text-xs px-2 py-1 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/60 transition-colors"
+                  >
+                    詳細要求 ON
+                  </button>
+                  <button
+                    onClick={() => bulkUpdateFlags({ needs_detail: false })}
+                    className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                  >
+                    詳細要求 OFF
+                  </button>
+                  <button
+                    onClick={() => bulkUpdateFlags({ approved: true, needs_detail: false })}
+                    className="text-xs px-2 py-1 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 transition-colors"
+                  >
+                    実行許可 ON
+                  </button>
+                  <button
+                    onClick={() => bulkUpdateFlags({ approved: false })}
+                    className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                  >
+                    実行許可 OFF
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <span className="text-xs text-gray-400 dark:text-gray-500">一括操作</span>
+            )}
+          </div>
+        )}
         {tasks.length === 0 && (
           <div className="py-16 text-center text-gray-400 dark:text-gray-500">タスクがありません</div>
         )}
@@ -28,8 +110,17 @@ export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags,
               className={clsx(
                 'flex items-center gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer',
                 task.archived && 'opacity-60',
+                selectedIds.has(task.id) && 'bg-indigo-50/50 dark:bg-indigo-900/20',
               )}
             >
+              <label className="flex items-center flex-shrink-0 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(task.id)}
+                  onChange={() => toggleSelect(task.id)}
+                  className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+                />
+              </label>
               <span className={clsx('w-2 h-2 rounded-full flex-shrink-0', PRIORITY_DOT_COLORS[task.priority])} />
               <span className="flex-1 text-sm text-gray-800 dark:text-gray-100 font-medium">{task.title}</span>
               <div className="flex items-center gap-3 flex-shrink-0" onClick={(e) => e.stopPropagation()}>

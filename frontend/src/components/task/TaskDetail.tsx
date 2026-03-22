@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { X, Send } from 'lucide-react'
+import { X, Send, Pencil, Check, XCircle } from 'lucide-react'
 import { api } from '../../api/client'
 import clsx from 'clsx'
-import type { Comment, Task } from '../../types'
-import { STATUS_OPTIONS } from '../../constants/task'
+import type { Comment, Task, TaskPriority, TaskStatus } from '../../types'
+import { STATUS_OPTIONS, PRIORITY_OPTIONS } from '../../constants/task'
 import MarkdownRenderer from '../common/MarkdownRenderer'
-import { showErrorToast } from '../common/Toast'
+import { showErrorToast, showSuccessToast } from '../common/Toast'
 
 interface Props {
   taskId: string
@@ -18,17 +18,41 @@ export default function TaskDetail({ taskId, projectId, onClose }: Props) {
   const qc = useQueryClient()
   const [comment, setComment] = useState('')
 
+  // Editing state
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [editingDescription, setEditingDescription] = useState(false)
+  const [editingTags, setEditingTags] = useState(false)
+  const [draftTitle, setDraftTitle] = useState('')
+  const [draftDescription, setDraftDescription] = useState('')
+  const [draftTags, setDraftTags] = useState('')
+  const [draftDueDate, setDraftDueDate] = useState('')
+
+  const titleInputRef = useRef<HTMLInputElement>(null)
+  const descriptionRef = useRef<HTMLTextAreaElement>(null)
+  const tagsInputRef = useRef<HTMLInputElement>(null)
+
   const { data: task } = useQuery({
     queryKey: ['task', taskId],
     queryFn: () => api.get(`/projects/${projectId}/tasks/${taskId}`).then((r) => r.data),
   })
 
-  const updateStatus = useMutation({
-    mutationFn: (status: string) =>
-      api.patch(`/projects/${projectId}/tasks/${taskId}`, { status }),
+  // Initialize draftDueDate when task loads
+  useEffect(() => {
+    if (task) {
+      setDraftDueDate(task.due_date ? task.due_date.slice(0, 10) : '')
+    }
+  }, [task])
+
+  const updateTask = useMutation({
+    mutationFn: (data: Partial<Pick<Task, 'title' | 'description' | 'priority' | 'status' | 'due_date' | 'tags'>>) =>
+      api.patch(`/projects/${projectId}/tasks/${taskId}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks', projectId] })
       qc.invalidateQueries({ queryKey: ['task', taskId] })
+      showSuccessToast('タスクを更新しました')
+    },
+    onError: () => {
+      showErrorToast('タスクの更新に失敗しました')
     },
   })
 
@@ -80,6 +104,90 @@ export default function TaskDetail({ taskId, projectId, onClose }: Props) {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [onClose])
 
+  // Title editing handlers
+  const startEditTitle = () => {
+    if (!task) return
+    setDraftTitle(task.title)
+    setEditingTitle(true)
+    setTimeout(() => titleInputRef.current?.focus(), 0)
+  }
+
+  const saveTitle = () => {
+    if (!draftTitle.trim() || !task) return
+    if (draftTitle.trim() !== task.title) {
+      updateTask.mutate({ title: draftTitle.trim() })
+    }
+    setEditingTitle(false)
+  }
+
+  const cancelEditTitle = () => {
+    setEditingTitle(false)
+  }
+
+  // Description editing handlers
+  const startEditDescription = () => {
+    if (!task) return
+    setDraftDescription(task.description ?? '')
+    setEditingDescription(true)
+    setTimeout(() => descriptionRef.current?.focus(), 0)
+  }
+
+  const saveDescription = () => {
+    if (!task) return
+    const newDesc = draftDescription.trim()
+    if (newDesc !== (task.description ?? '')) {
+      updateTask.mutate({ description: newDesc })
+    }
+    setEditingDescription(false)
+  }
+
+  const cancelEditDescription = () => {
+    setEditingDescription(false)
+  }
+
+  // Tags editing handlers
+  const startEditTags = () => {
+    if (!task) return
+    setDraftTags(task.tags?.join(', ') ?? '')
+    setEditingTags(true)
+    setTimeout(() => tagsInputRef.current?.focus(), 0)
+  }
+
+  const saveTags = () => {
+    if (!task) return
+    const newTags = draftTags ? draftTags.split(',').map((t) => t.trim()).filter(Boolean) : []
+    const oldTags = task.tags ?? []
+    if (JSON.stringify(newTags) !== JSON.stringify(oldTags)) {
+      updateTask.mutate({ tags: newTags })
+    }
+    setEditingTags(false)
+  }
+
+  const cancelEditTags = () => {
+    setEditingTags(false)
+  }
+
+  // Priority handler
+  const handlePriorityChange = (priority: TaskPriority) => {
+    if (!task || task.priority === priority) return
+    updateTask.mutate({ priority })
+  }
+
+  // Status handler
+  const handleStatusChange = (status: TaskStatus) => {
+    if (!task || task.status === status) return
+    updateTask.mutate({ status })
+  }
+
+  // Due date handler
+  const handleDueDateChange = (value: string) => {
+    setDraftDueDate(value)
+    updateTask.mutate({ due_date: value ? new Date(value).toISOString() : null } as Record<string, string | null>)
+  }
+
+  const inputClasses = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500'
+  const selectClasses = inputClasses
+
   if (!task) return null
 
   return (
@@ -88,8 +196,35 @@ export default function TaskDetail({ taskId, projectId, onClose }: Props) {
       <div className="w-full max-w-lg bg-white dark:bg-gray-800 shadow-xl dark:shadow-gray-900/50 flex flex-col h-full overflow-hidden">
         {/* Header */}
         <div className="flex items-start justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 flex-1 pr-4">{task.title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
+          {editingTitle ? (
+            <div className="flex-1 pr-4 flex items-center gap-2">
+              <input
+                ref={titleInputRef}
+                type="text"
+                value={draftTitle}
+                onChange={(e) => setDraftTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveTitle()
+                  if (e.key === 'Escape') cancelEditTitle()
+                }}
+                className={`${inputClasses} font-semibold`}
+              />
+              <button onClick={saveTitle} className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300" title="保存">
+                <Check className="w-5 h-5" />
+              </button>
+              <button onClick={cancelEditTitle} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" title="キャンセル">
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex-1 pr-4 flex items-start gap-2 group cursor-pointer" onClick={startEditTitle}>
+              <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 flex-1">{task.title}</h2>
+              <button className="text-gray-300 dark:text-gray-600 group-hover:text-gray-500 dark:group-hover:text-gray-400 mt-0.5 flex-shrink-0" title="タイトルを編集">
+                <Pencil className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 flex-shrink-0">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -103,7 +238,7 @@ export default function TaskDetail({ taskId, projectId, onClose }: Props) {
               {STATUS_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
-                  onClick={() => updateStatus.mutate(opt.value)}
+                  onClick={() => handleStatusChange(opt.value)}
                   className={clsx(
                     'px-3 py-1 text-sm rounded-full border transition-colors',
                     task.status === opt.value
@@ -115,6 +250,31 @@ export default function TaskDetail({ taskId, projectId, onClose }: Props) {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Priority */}
+          <div>
+            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">優先度</label>
+            <select
+              value={task.priority}
+              onChange={(e) => handlePriorityChange(e.target.value as TaskPriority)}
+              className={selectClasses}
+            >
+              {PRIORITY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Due date */}
+          <div>
+            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">期限</label>
+            <input
+              type="date"
+              value={draftDueDate}
+              onChange={(e) => handleDueDateChange(e.target.value)}
+              className={inputClasses}
+            />
           </div>
 
           {/* Review Flags */}
@@ -149,39 +309,118 @@ export default function TaskDetail({ taskId, projectId, onClose }: Props) {
           </div>
 
           {/* Description */}
-          {task.description && (
-            <div>
-              <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">説明</label>
-              <MarkdownRenderer>{task.description}</MarkdownRenderer>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">説明</label>
+              {!editingDescription && (
+                <button
+                  onClick={startEditDescription}
+                  className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                  title="説明を編集"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
-          )}
-
-          {/* Meta */}
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-gray-500 dark:text-gray-400">優先度</span>
-              <p className="font-medium text-gray-800 dark:text-gray-200 capitalize">{task.priority}</p>
-            </div>
-            {task.due_date && (
-              <div>
-                <span className="text-gray-500 dark:text-gray-400">期限</span>
-                <p className="font-medium text-gray-800 dark:text-gray-200">
-                  {new Date(task.due_date).toLocaleDateString('ja-JP')}
-                </p>
+            {editingDescription ? (
+              <div className="space-y-2">
+                <textarea
+                  ref={descriptionRef}
+                  value={draftDescription}
+                  onChange={(e) => setDraftDescription(e.target.value)}
+                  rows={6}
+                  className={`${inputClasses} resize-none`}
+                  placeholder="説明を入力（Markdown対応）..."
+                />
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={cancelEditDescription}
+                    className="px-3 py-1 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={saveDescription}
+                    className="px-3 py-1 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+                  >
+                    保存
+                  </button>
+                </div>
               </div>
+            ) : task.description ? (
+              <div className="cursor-pointer" onClick={startEditDescription}>
+                <MarkdownRenderer>{task.description}</MarkdownRenderer>
+              </div>
+            ) : (
+              <p
+                className="text-sm text-gray-400 dark:text-gray-500 cursor-pointer hover:text-gray-500 dark:hover:text-gray-400"
+                onClick={startEditDescription}
+              >
+                クリックして説明を追加...
+              </p>
             )}
           </div>
 
           {/* Tags */}
-          {task.tags?.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {task.tags.map((tag: string) => (
-                <span key={tag} className="text-xs bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-2 py-1 rounded-full">
-                  {tag}
-                </span>
-              ))}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">タグ</label>
+              {!editingTags && (
+                <button
+                  onClick={startEditTags}
+                  className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                  title="タグを編集"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
-          )}
+            {editingTags ? (
+              <div className="space-y-2">
+                <input
+                  ref={tagsInputRef}
+                  type="text"
+                  value={draftTags}
+                  onChange={(e) => setDraftTags(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') saveTags()
+                    if (e.key === 'Escape') cancelEditTags()
+                  }}
+                  className={inputClasses}
+                  placeholder="カンマ区切り（例: bug, frontend）"
+                />
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={cancelEditTags}
+                    className="px-3 py-1 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={saveTags}
+                    className="px-3 py-1 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+                  >
+                    保存
+                  </button>
+                </div>
+              </div>
+            ) : task.tags?.length > 0 ? (
+              <div className="flex flex-wrap gap-2 cursor-pointer" onClick={startEditTags}>
+                {task.tags.map((tag: string) => (
+                  <span key={tag} className="text-xs bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-2 py-1 rounded-full">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p
+                className="text-sm text-gray-400 dark:text-gray-500 cursor-pointer hover:text-gray-500 dark:hover:text-gray-400"
+                onClick={startEditTags}
+              >
+                クリックしてタグを追加...
+              </p>
+            )}
+          </div>
 
           {/* Comments */}
           <div>
