@@ -7,6 +7,8 @@ import TaskList from '../components/task/TaskList'
 import TaskDetail from '../components/task/TaskDetail'
 import TaskCreateModal from '../components/task/TaskCreateModal'
 import { LayoutGrid, List, Plus } from 'lucide-react'
+import { showErrorToast } from '../components/common/Toast'
+import type { Task } from '../types'
 
 type ViewMode = 'board' | 'list'
 
@@ -20,7 +22,21 @@ export default function ProjectPage() {
   const updateFlagsMutation = useMutation({
     mutationFn: ({ taskId, flags }: { taskId: string; flags: Record<string, boolean> }) =>
       api.patch(`/projects/${projectId}/tasks/${taskId}`, flags),
-    onSuccess: () => {
+    onMutate: async ({ taskId, flags }) => {
+      await qc.cancelQueries({ queryKey: ['tasks', projectId] })
+      const previousTasks = qc.getQueryData<Task[]>(['tasks', projectId])
+      qc.setQueryData<Task[]>(['tasks', projectId], (old) =>
+        old?.map((t) => (t.id === taskId ? { ...t, ...flags } : t))
+      )
+      return { previousTasks }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previousTasks) {
+        qc.setQueryData(['tasks', projectId], context.previousTasks)
+      }
+      showErrorToast('フラグの更新に失敗しました')
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['tasks', projectId] })
     },
   })

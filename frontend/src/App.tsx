@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { api } from './api/client'
 import { useAuthStore } from './store/auth'
 import Layout from './components/common/Layout'
+import ToastContainer from './components/common/Toast'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import AdminRoute from './components/common/AdminRoute'
 import LoginPage from './pages/LoginPage'
@@ -48,6 +49,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AppInit>
+          <ToastContainer />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/auth/google/callback" element={

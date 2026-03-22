@@ -3,9 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { X, Send } from 'lucide-react'
 import { api } from '../../api/client'
 import clsx from 'clsx'
-import type { Comment } from '../../types'
+import type { Comment, Task } from '../../types'
 import { STATUS_OPTIONS } from '../../constants/task'
 import MarkdownRenderer from '../common/MarkdownRenderer'
+import { showErrorToast } from '../common/Toast'
 
 interface Props {
   taskId: string
@@ -34,7 +35,29 @@ export default function TaskDetail({ taskId, projectId, onClose }: Props) {
   const updateFlags = useMutation({
     mutationFn: (flags: { needs_detail?: boolean; approved?: boolean }) =>
       api.patch(`/projects/${projectId}/tasks/${taskId}`, flags),
-    onSuccess: () => {
+    onMutate: async (flags) => {
+      await qc.cancelQueries({ queryKey: ['task', taskId] })
+      await qc.cancelQueries({ queryKey: ['tasks', projectId] })
+      const previousTask = qc.getQueryData<Task>(['task', taskId])
+      const previousTasks = qc.getQueryData<Task[]>(['tasks', projectId])
+      qc.setQueryData<Task>(['task', taskId], (old) =>
+        old ? { ...old, ...flags } : old
+      )
+      qc.setQueryData<Task[]>(['tasks', projectId], (old) =>
+        old?.map((t) => (t.id === taskId ? { ...t, ...flags } : t))
+      )
+      return { previousTask, previousTasks }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previousTask) {
+        qc.setQueryData(['task', taskId], context.previousTask)
+      }
+      if (context?.previousTasks) {
+        qc.setQueryData(['tasks', projectId], context.previousTasks)
+      }
+      showErrorToast('フラグの更新に失敗しました')
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['tasks', projectId] })
       qc.invalidateQueries({ queryKey: ['task', taskId] })
     },
