@@ -1,8 +1,8 @@
-"""Redis バックエンド EventStore。
+"""Redis-backed EventStore.
 
-FastMCP の stateful SSE セッションイベントを Redis に永続化する。
-サーバ再起動後も Last-Event-ID によるリジューム可能。
-複数 uvicorn ワーカー間でセッション共有可能。
+Persists FastMCP stateful SSE session events to Redis.
+Supports Last-Event-ID resumption after server restarts
+and session sharing across multiple uvicorn workers.
 """
 
 from __future__ import annotations
@@ -25,23 +25,23 @@ from .config import settings
 
 logger = logging.getLogger(__name__)
 
-_TTL = 3600  # SSEセッションイベントの保持時間（秒）
+_TTL = 3600  # SSE session event retention (seconds)
 _KEY_PREFIX = "todo:mcp:events:"
 _MAX_EVENTS_PER_STREAM = 1000
 
-# JSONRPCMessage（Union型）のPydantic TypeAdapter
+# Pydantic TypeAdapter for JSONRPCMessage (Union type)
 _message_adapter: TypeAdapter[JSONRPCMessage] = TypeAdapter(JSONRPCMessage)
 
 
 class RedisEventStore(EventStore):
-    """Redis List を使った EventStore 実装。
+    """EventStore implementation backed by Redis Lists.
 
-    各 stream_id に対して Redis List にイベントをアペンドし、
-    Last-Event-ID 以降のイベントをリプレイする。
+    Appends events to a Redis List per stream_id and replays events
+    after a given Last-Event-ID.
 
-    event_id のフォーマット: "{stream_id}:{seq}"
-    クライアントの Last-Event-ID をそのまま replay_events_after に渡すことで
-    stream_id と seq を復元できる。
+    event_id format: "{stream_id}:{seq}"
+    The client's Last-Event-ID is passed directly to replay_events_after
+    to recover the stream_id and sequence number.
     """
 
     def __init__(self) -> None:
@@ -59,7 +59,7 @@ class RedisEventStore(EventStore):
     ) -> EventId:
         key = self._key(stream_id)
         seq = await self._redis.incr(f"{key}:seq")
-        # JSONRPCMessage はPydantic Union型なのでTypeAdapterでシリアライズ
+        # Serialize JSONRPCMessage (Pydantic Union) via TypeAdapter
         payload = json.dumps({
             "seq": seq,
             "data": _message_adapter.dump_python(message, mode="json"),
@@ -70,8 +70,8 @@ class RedisEventStore(EventStore):
         pipe.expire(key, _TTL)
         pipe.expire(f"{key}:seq", _TTL)
         await pipe.execute()
-        # event_id は "{stream_id}:{seq}" 形式。Last-Event-ID として返却され
-        # replay_events_after でそのまま受け取る。
+        # event_id format: "{stream_id}:{seq}". Returned as Last-Event-ID and
+        # passed back to replay_events_after for resumption.
         return f"{stream_id}:{seq}"
 
     async def replay_events_after(
@@ -79,7 +79,7 @@ class RedisEventStore(EventStore):
         last_event_id: EventId,
         send_callback: EventCallback,
     ) -> StreamId | None:
-        # last_event_id は store_event が返した "{stream_id}:{seq}" 形式
+        # last_event_id is in the "{stream_id}:{seq}" format from store_event
         try:
             stream_id, last_seq_str = str(last_event_id).rsplit(":", 1)
             last_seq = int(last_seq_str)

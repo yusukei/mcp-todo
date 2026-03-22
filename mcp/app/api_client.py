@@ -1,7 +1,7 @@
-"""Backend API クライアント。
+"""Backend API client.
 
-MCP tools から Backend の /api/v1/internal/* エンドポイントを呼び出す。
-X-MCP-Internal-Secret ヘッダーで内部認証。
+Calls Backend /api/v1/internal/* endpoints from MCP tools.
+Authenticated via the X-MCP-Internal-Secret header.
 """
 
 import asyncio

@@ -5,7 +5,7 @@ from ..server import mcp
 
 @mcp.tool()
 async def list_projects() -> list[dict]:
-    """アクセス可能なプロジェクト一覧を取得する。"""
+    """List all accessible projects."""
     key_info = await authenticate()
     scopes = key_info["project_scopes"]
     params = {"project_scopes": ",".join(scopes)} if scopes else {}
@@ -14,10 +14,10 @@ async def list_projects() -> list[dict]:
 
 @mcp.tool()
 async def get_project(project_id: str) -> dict:
-    """プロジェクトの詳細情報を取得する。
+    """Get detailed information about a project.
 
     Args:
-        project_id: プロジェクトID
+        project_id: Project ID
     """
     key_info = await authenticate()
     from ..auth import check_project_access
@@ -27,10 +27,10 @@ async def get_project(project_id: str) -> dict:
 
 @mcp.tool()
 async def get_project_summary(project_id: str) -> dict:
-    """プロジェクトの進捗サマリ（ステータス別タスク数・完了率）を取得する。
+    """Get project progress summary (task counts by status, completion rate).
 
     Args:
-        project_id: プロジェクトID
+        project_id: Project ID
     """
     key_info = await authenticate()
     from ..auth import check_project_access
