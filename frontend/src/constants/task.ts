@@ -65,7 +65,7 @@ export const BOARD_COLUMNS: { key: TaskStatus; label: string; color: string; col
 
 export const TASK_TYPE_OPTIONS = [
   { value: 'action' as TaskType, label: '作業' },
-  { value: 'decision' as TaskType, label: '判断要' },
+  { value: 'decision' as TaskType, label: '要判断' },
 ]
 
 export const REVIEW_FLAG_LABELS = {

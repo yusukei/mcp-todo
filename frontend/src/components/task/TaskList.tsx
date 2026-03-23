@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react'
 import clsx from 'clsx'
-import { Archive, ArchiveRestore, Calendar, CornerDownRight } from 'lucide-react'
+import { Archive, ArchiveRestore, Calendar, CornerDownRight, HelpCircle } from 'lucide-react'
 import type { Task } from '../../types'
 import { STATUS_LABELS, STATUS_COLORS, PRIORITY_DOT_COLORS } from '../../constants/task'
 
@@ -50,6 +50,12 @@ const TaskRow = React.memo(function TaskRow({
         <CornerDownRight className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 flex-shrink-0 -ml-2" />
       )}
       <span className={clsx('w-2 h-2 rounded-full flex-shrink-0', PRIORITY_DOT_COLORS[task.priority])} />
+      {task.task_type === 'decision' && (
+        <span className="flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400 flex-shrink-0">
+          <HelpCircle className="w-3 h-3" />
+          要判断
+        </span>
+      )}
       <span className="flex-1 text-sm text-gray-800 dark:text-gray-100 font-medium">{task.title}</span>
       {task.tags && task.tags.length > 0 && (
         <div className="flex items-center gap-1 flex-shrink-0">
