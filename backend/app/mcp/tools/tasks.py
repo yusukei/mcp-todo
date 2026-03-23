@@ -324,8 +324,8 @@ async def update_task(
         assignee_id: New assignee user ID
         tags: New tag list
         completion_report: Completion report text (supports Markdown)
-        needs_detail: Flag indicating task needs more detail before implementation
-        approved: Flag indicating task is approved for implementation
+        needs_detail: Flag indicating the user cannot decide whether/how to address this task and needs investigation results first. Setting true automatically clears approved.
+        approved: Flag indicating the task is approved for implementation. Setting true automatically clears needs_detail.
     """
     if title is not None and len(title) > 255:
         raise ToolError("Title exceeds maximum length of 255 characters")
@@ -519,6 +519,9 @@ async def unarchive_task(task_id: str) -> dict:
 @mcp.tool()
 async def add_comment(task_id: str, content: str) -> dict:
     """Add a comment to a task.
+
+    Use this to record investigation findings for needs_detail tasks,
+    or to leave notes and updates. Comments preserve the original description intact.
 
     Args:
         task_id: Task ID
@@ -764,7 +767,10 @@ async def list_review_tasks(
 ) -> dict:
     """List tasks filtered by review flag status within a single project.
 
-    Use this to check which tasks need detail reports or are approved for implementation.
+    Use this to check which tasks need investigation (needs_detail),
+    are approved for implementation (approved), or are awaiting review (pending).
+    For needs_detail tasks, the expected action is to investigate and add findings
+    as comments — not to implement.
     For a cross-project view of all approved tasks ready for implementation,
     use list_approved_tasks instead.
 
