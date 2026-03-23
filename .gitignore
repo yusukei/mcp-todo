@@ -20,3 +20,4 @@ coverage/
 htmlcov/
 .pytest_cache/
 search_index/
+search_index_knowledge/

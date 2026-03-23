@@ -73,6 +73,24 @@ async def lifespan(app: FastAPI):
         else:
             logger.info("tantivy not available — full-text search disabled (using $regex fallback)")
 
+    # ── Knowledge search index initialization ─────────────
+    if not _is_testing:
+        from .services.knowledge_search import TANTIVY_AVAILABLE as K_TANTIVY
+        if K_TANTIVY:
+            try:
+                from pathlib import Path as _Path
+                from .services.knowledge_search import (
+                    KnowledgeSearchIndex, KnowledgeSearchIndexer, KnowledgeSearchService,
+                )
+                k_index = KnowledgeSearchIndex(_Path(settings.KNOWLEDGE_INDEX_DIR))
+                k_indexer = KnowledgeSearchIndexer(k_index)
+                KnowledgeSearchIndexer.set_instance(k_indexer)
+                KnowledgeSearchService.set_instance(KnowledgeSearchService(k_index))
+                k_count = await k_indexer.rebuild()
+                logger.info("Knowledge search index ready: %d entries indexed", k_count)
+            except Exception as e:
+                logger.warning("Failed to initialize knowledge search index: %s", e)
+
     # ── MCP server integration ────────────────────────────────
     from .mcp.server import MCP_PATH, MOUNT_PREFIX, register_tools
     from .mcp.server import mcp as _mcp_server
@@ -143,7 +161,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # Routers
-from .api.v1.endpoints import attachments, auth, backup, events, mcp_keys, projects, tasks, users  # noqa: E402
+from .api.v1.endpoints import attachments, auth, backup, events, knowledge, mcp_keys, projects, tasks, users  # noqa: E402
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
@@ -153,6 +171,7 @@ app.include_router(mcp_keys.router, prefix="/api/v1")
 app.include_router(events.router, prefix="/api/v1")
 app.include_router(attachments.router, prefix="/api/v1")
 app.include_router(backup.router, prefix="/api/v1")
+app.include_router(knowledge.router, prefix="/api/v1")
 
 
 @app.get("/health")

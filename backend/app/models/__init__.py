@@ -1,4 +1,5 @@
 from .allowed_email import AllowedEmail
+from .knowledge import Knowledge
 from .mcp_api_key import McpApiKey
 from .project import Project, ProjectMember
 from .task import Attachment, Comment, Task
@@ -14,4 +15,5 @@ __all__ = [
     "Attachment",
     "Comment",
     "McpApiKey",
+    "Knowledge",
 ]

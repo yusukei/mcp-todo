@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..models import Project, Task
+    from ..models.knowledge import Knowledge
 
 
 def task_to_dict(t: Task) -> dict:
@@ -86,4 +87,19 @@ def project_to_dict(p: Project) -> dict:
         "created_by": str(p.created_by.ref.id) if hasattr(p.created_by, "ref") else str(p.created_by.id) if hasattr(p.created_by, "id") else str(p.created_by),
         "created_at": p.created_at.isoformat(),
         "updated_at": p.updated_at.isoformat(),
+    }
+
+
+def knowledge_to_dict(k: Knowledge) -> dict:
+    """Convert a Knowledge document to a plain dict for API/MCP responses."""
+    return {
+        "id": str(k.id),
+        "title": k.title,
+        "content": k.content,
+        "tags": k.tags,
+        "category": k.category,
+        "source": k.source,
+        "created_by": k.created_by,
+        "created_at": k.created_at.isoformat(),
+        "updated_at": k.updated_at.isoformat(),
     }

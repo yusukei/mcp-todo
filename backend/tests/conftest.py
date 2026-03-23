@@ -30,7 +30,7 @@ import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.models import AllowedEmail, McpApiKey, Project, Task, User
+from app.models import AllowedEmail, Knowledge, McpApiKey, Project, Task, User
 from app.models.project import ProjectMember
 from app.models.user import AuthType
 from app.core.security import create_access_token, hash_password
@@ -62,7 +62,7 @@ async def _setup_infra():
 
     await init_beanie(
         database=db,
-        document_models=[User, AllowedEmail, Project, Task, McpApiKey],
+        document_models=[User, AllowedEmail, Project, Task, McpApiKey, Knowledge],
     )
     yield
 
@@ -109,7 +109,7 @@ async def client(test_app):
 @pytest_asyncio.fixture(autouse=True)
 async def reset_db(_setup_infra):
     """各テスト前に全コレクションを空にする"""
-    for model in [User, Project, Task, AllowedEmail, McpApiKey]:
+    for model in [User, Project, Task, AllowedEmail, McpApiKey, Knowledge]:
         await model.find({}).delete()
     yield
 

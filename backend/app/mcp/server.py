@@ -27,10 +27,14 @@ mcp = FastMCP(
         "5. Do NOT start implementation — wait for the user's decision\n"
         "After the user reviews, they will either:\n"
         "- Approve: set approved=true (automatically clears needs_detail)\n"
-        "- Reject: cancel or archive the task"
+        "- Reject: cancel or archive the task\n\n"
+        "## Knowledge base\n"
+        "Cross-project knowledge entries for reusable technical know-how. "
+        "Categories: recipe, reference, tip, troubleshooting, architecture. "
+        "Use search_knowledge for full-text search (Japanese supported via Lindera)."
     ),
 )
 
 
 def register_tools() -> None:
-    from .tools import projects, tasks  # noqa: F401
+    from .tools import knowledge, projects, tasks  # noqa: F401
