@@ -1,18 +1,47 @@
+import asyncio
+import logging
 import os
-import subprocess
 import tempfile
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 
 from ....core.config import settings
 from ....core.deps import get_admin_user
 from ....models import User
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/backup", tags=["backup"])
 
 BACKUP_DIR = "/tmp/backups"
+
+
+async def _run_subprocess(args: list[str], timeout: int = 300) -> tuple[int, str, str]:
+    """Run a subprocess asynchronously without blocking the event loop.
+
+    Returns (returncode, stdout, stderr).
+    """
+    proc = await asyncio.create_subprocess_exec(
+        *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+            proc.communicate(), timeout=timeout
+        )
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.communicate()
+        raise
+    return (
+        proc.returncode or 0,
+        stdout_bytes.decode(errors="replace"),
+        stderr_bytes.decode(errors="replace"),
+    )
 
 
 def _build_mongodump_args() -> list[str]:
@@ -52,17 +81,27 @@ async def export_backup(_: User = Depends(get_admin_user)):
     # Set archive output path
     args[-1] = f"--archive={filepath}"
 
-    result = subprocess.run(args, capture_output=True, text=True, timeout=300)
-    if result.returncode != 0:
+    try:
+        returncode, _, stderr = await _run_subprocess(args)
+    except asyncio.TimeoutError:
+        logger.error("mongodump timed out")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"mongodump failed: {result.stderr}",
+            detail="Backup operation timed out",
+        )
+    if returncode != 0:
+        logger.error("mongodump failed: %s", stderr)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="mongodump failed. Check server logs for details.",
         )
 
+    cleanup = BackgroundTask(os.unlink, filepath)
     return FileResponse(
         filepath,
         media_type="application/gzip",
         filename=filename,
+        background=cleanup,
     )
 
 
@@ -90,11 +129,19 @@ async def import_backup(
         args = [a for a in args if not a.startswith("--archive")]
         args.append(f"--archive={tmp_path}")
 
-        result = subprocess.run(args, capture_output=True, text=True, timeout=300)
-        if result.returncode != 0:
+        try:
+            returncode, _, stderr = await _run_subprocess(args)
+        except asyncio.TimeoutError:
+            logger.error("mongorestore timed out")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"mongorestore failed: {result.stderr}",
+                detail="Restore operation timed out",
+            )
+        if returncode != 0:
+            logger.error("mongorestore failed: %s", stderr)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="mongorestore failed. Check server logs for details.",
             )
 
         return {"status": "ok", "message": "Restore completed successfully"}

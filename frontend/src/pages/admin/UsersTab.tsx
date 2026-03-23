@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Plus } from 'lucide-react'
 import { api } from '../../api/client'
+import { showErrorToast } from '../../components/common/Toast'
 import type { User } from '../../types'
 
 export default function UsersTab() {
@@ -23,16 +24,19 @@ export default function UsersTab() {
       qc.invalidateQueries({ queryKey: ['admin-users'] })
       setEmail(''); setName(''); setPassword(''); setIsAdmin(false); setShowForm(false)
     },
+    onError: () => showErrorToast('ユーザの作成に失敗しました'),
   })
 
   const toggleActive = useMutation({
     mutationFn: (u: User) => api.patch(`/users/${u.id}`, { is_active: !u.is_active }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
+    onError: () => showErrorToast('ユーザの有効/無効切り替えに失敗しました'),
   })
 
   const del = useMutation({
     mutationFn: (id: string) => api.delete(`/users/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
+    onError: () => showErrorToast('ユーザの削除に失敗しました'),
   })
 
   return (
@@ -120,6 +124,7 @@ export default function UsersTab() {
                   <button
                     onClick={() => { if (confirm(`"${u.name}" を無効化しますか？`)) del.mutate(u.id) }}
                     className="text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400"
+                    aria-label="削除"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>

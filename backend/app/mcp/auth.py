@@ -100,6 +100,7 @@ async def authenticate() -> dict:
 
     result = {
         "key_id": str(api_key_doc.id),
+        "key_name": api_key_doc.name,
         "project_scopes": api_key_doc.project_scopes,
     }
     _auth_cache.put(cache_key, (result, time.monotonic() + AUTH_CACHE_TTL))

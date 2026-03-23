@@ -31,9 +31,11 @@ async def list_tasks(
     tag: str | None = None,
     needs_detail: bool | None = None,
     approved: bool | None = None,
-    archived: bool | None = None,
+    archived: bool | None = False,
     due_before: str | None = None,
     due_after: str | None = None,
+    sort_by: str = "sort_order",
+    order: str = "asc",
     limit: int = 50,
     skip: int = 0,
 ) -> dict:
@@ -50,9 +52,11 @@ async def list_tasks(
         tag: Filter by tag name
         needs_detail: Filter by needs_detail flag (true/false)
         approved: Filter by approved flag (true/false)
-        archived: Filter by archived flag (true/false). Omit to return all tasks.
+        archived: Filter by archived flag (true/false). Default false (hides archived). Set to null/omit to include all.
         due_before: Filter tasks with due_date before this date (ISO 8601 format)
         due_after: Filter tasks with due_date after this date (ISO 8601 format)
+        sort_by: Sort field: sort_order (default) / created_at / due_date / priority / updated_at
+        order: Sort direction: asc (default) / desc
         limit: Maximum number of tasks to return (default 50)
         skip: Number of tasks to skip for pagination (default 0)
     """
@@ -80,8 +84,25 @@ async def list_tasks(
     if due_after:
         query = query.find(Task.due_date >= datetime.fromisoformat(due_after))
 
+    SORT_FIELDS = {
+        "sort_order": Task.sort_order,
+        "created_at": Task.created_at,
+        "due_date": Task.due_date,
+        "priority": Task.priority,
+        "updated_at": Task.updated_at,
+    }
+    sort_field = SORT_FIELDS.get(sort_by)
+    if sort_field is None:
+        raise ToolError(f"Invalid sort_by '{sort_by}'. Valid: {', '.join(sorted(SORT_FIELDS))}")
+    if order not in ("asc", "desc"):
+        raise ToolError(f"Invalid order '{order}'. Valid: asc, desc")
+
+    sort_expr = +sort_field if order == "asc" else -sort_field
+    # Secondary sort for stability
+    secondary = +Task.created_at if sort_by != "created_at" else +Task.sort_order
+
     total = await query.count()
-    tasks = await query.sort(+Task.sort_order, +Task.created_at).skip(skip).limit(limit).to_list()
+    tasks = await query.sort(sort_expr, secondary).skip(skip).limit(limit).to_list()
     return {"items": [_task_dict(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
 
 
@@ -131,6 +152,7 @@ async def create_task(
     key_info = await authenticate()
     project_id = await _resolve_project_id(project_id)
     check_project_access(project_id, key_info["project_scopes"])
+    creator = f"mcp:{key_info['key_name']}" if key_info.get("key_name") else "mcp"
 
     parsed_due_date = None
     if due_date:
@@ -146,7 +168,7 @@ async def create_task(
         assignee_id=assignee_id,
         parent_task_id=parent_task_id,
         tags=tags or [],
-        created_by="mcp",
+        created_by=creator,
     )
     await task.insert()
     await publish_event(project_id, "task.created", _task_dict(task))
@@ -164,6 +186,8 @@ async def update_task(
     assignee_id: str | None = None,
     tags: list[str] | None = None,
     completion_report: str | None = None,
+    needs_detail: bool | None = None,
+    approved: bool | None = None,
 ) -> dict:
     """Update a task. Only provided fields are changed.
 
@@ -180,6 +204,8 @@ async def update_task(
         assignee_id: New assignee user ID
         tags: New tag list
         completion_report: Completion report text (supports Markdown)
+        needs_detail: Flag indicating task needs more detail before implementation
+        approved: Flag indicating task is approved for implementation
     """
     key_info = await authenticate()
 
@@ -212,6 +238,10 @@ async def update_task(
         updates["tags"] = tags
     if completion_report is not None:
         updates["completion_report"] = completion_report
+    if needs_detail is not None:
+        updates["needs_detail"] = needs_detail
+    if approved is not None:
+        updates["approved"] = approved
 
     disallowed = set(updates.keys()) - UPDATABLE_FIELDS
     if disallowed:
@@ -358,7 +388,8 @@ async def add_comment(task_id: str, content: str) -> dict:
         raise ToolError("Task not found")
     check_project_access(task.project_id, key_info["project_scopes"])
 
-    comment = Comment(content=content, author_id="mcp", author_name="Claude")
+    author_name = key_info.get("key_name", "Claude")
+    comment = Comment(content=content, author_id="mcp", author_name=author_name)
     task.comments.append(comment)
     await task.save_updated()
     await publish_event(task.project_id, "comment.added", {"task_id": task_id, "comment": {
@@ -504,6 +535,7 @@ async def batch_create_tasks(project_id: str, tasks: list[dict]) -> dict:
     key_info = await authenticate()
     project_id = await _resolve_project_id(project_id)
     check_project_access(project_id, key_info["project_scopes"])
+    creator = f"mcp:{key_info['key_name']}" if key_info.get("key_name") else "mcp"
 
     created = []
     failed = []
@@ -523,7 +555,7 @@ async def batch_create_tasks(project_id: str, tasks: list[dict]) -> dict:
                 assignee_id=item.get("assignee_id"),
                 parent_task_id=item.get("parent_task_id"),
                 tags=item.get("tags", []),
-                created_by="mcp",
+                created_by=creator,
             )
             await task.insert()
             await publish_event(project_id, "task.created", _task_dict(task))

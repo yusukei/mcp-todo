@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
 import { api } from '../../api/client'
+import { showErrorToast } from '../../components/common/Toast'
 import type { Project } from '../../types'
 
 export default function ProjectsTab() {
@@ -23,6 +24,7 @@ export default function ProjectsTab() {
       qc.invalidateQueries({ queryKey: ['projects'] })
       setName(''); setDescription(''); setColor('#6366f1'); setShowForm(false)
     },
+    onError: () => showErrorToast('プロジェクトの作成に失敗しました'),
   })
 
   const archive = useMutation({
@@ -31,6 +33,7 @@ export default function ProjectsTab() {
       qc.invalidateQueries({ queryKey: ['admin-projects'] })
       qc.invalidateQueries({ queryKey: ['projects'] })
     },
+    onError: () => showErrorToast('プロジェクトのアーカイブに失敗しました'),
   })
 
   return (

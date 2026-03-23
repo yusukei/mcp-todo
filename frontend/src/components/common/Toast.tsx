@@ -72,7 +72,7 @@ function ToastItem({ toast }: { toast: ToastMessage }) {
     >
       <Icon className="w-4 h-4 flex-shrink-0" />
       <span className="flex-1">{toast.text}</span>
-      <button onClick={handleDismiss} className="flex-shrink-0 hover:opacity-80">
+      <button onClick={handleDismiss} className="flex-shrink-0 hover:opacity-80" aria-label="閉じる">
         <X className="w-4 h-4" />
       </button>
     </div>

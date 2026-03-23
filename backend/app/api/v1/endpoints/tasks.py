@@ -317,7 +317,8 @@ async def upload_attachment(
             detail=f"File too large. Max size: {MAX_FILE_SIZE // (1024 * 1024)}MB",
         )
 
-    unique_name = f"{uuid.uuid4().hex}_{file.filename}"
+    safe_filename = Path(file.filename).name if file.filename else "upload"
+    unique_name = f"{uuid.uuid4().hex}_{safe_filename}"
     task_dir = UPLOADS_DIR / task_id
     task_dir.mkdir(parents=True, exist_ok=True)
     dest = task_dir / unique_name

@@ -28,6 +28,9 @@ const TaskRow = React.memo(function TaskRow({
   return (
     <div
       onClick={() => onTaskClick(task.id)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onTaskClick(task.id) } }}
+      role="button"
+      tabIndex={0}
       className={clsx(
         'flex items-center gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer',
         task.archived && 'opacity-60',

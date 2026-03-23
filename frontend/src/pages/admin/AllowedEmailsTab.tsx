@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Plus } from 'lucide-react'
 import { api } from '../../api/client'
+import { showErrorToast } from '../../components/common/Toast'
 import type { AllowedEmail } from '../../types'
 
 export default function AllowedEmailsTab() {
@@ -16,11 +17,13 @@ export default function AllowedEmailsTab() {
   const add = useMutation({
     mutationFn: () => api.post('/users/allowed-emails/', { email }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-allowed-emails'] }); setEmail('') },
+    onError: () => showErrorToast('許可メールの追加に失敗しました'),
   })
 
   const del = useMutation({
     mutationFn: (id: string) => api.delete(`/users/allowed-emails/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-allowed-emails'] }),
+    onError: () => showErrorToast('許可メールの削除に失敗しました'),
   })
 
   return (
@@ -57,7 +60,7 @@ export default function AllowedEmailsTab() {
                 <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{e.email}</td>
                 <td className="px-4 py-3 text-gray-400 dark:text-gray-500">{new Date(e.created_at).toLocaleDateString('ja-JP')}</td>
                 <td className="px-4 py-3 text-right">
-                  <button onClick={() => del.mutate(e.id)} className="text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400">
+                  <button onClick={() => del.mutate(e.id)} className="text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400" aria-label="削除">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </td>

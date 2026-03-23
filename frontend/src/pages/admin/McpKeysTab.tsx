@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Key, Copy, Check } from 'lucide-react'
 import { api } from '../../api/client'
+import { showErrorToast } from '../../components/common/Toast'
 import type { McpApiKey } from '../../types'
 
 export default function McpKeysTab() {
@@ -22,11 +23,13 @@ export default function McpKeysTab() {
       setNewKey(data.key)
       setName('')
     },
+    onError: () => showErrorToast('APIキーの作成に失敗しました'),
   })
 
   const revoke = useMutation({
     mutationFn: (id: string) => api.delete(`/mcp-keys/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-mcp-keys'] }),
+    onError: () => showErrorToast('APIキーの削除に失敗しました'),
   })
 
   const copyKey = async () => {
@@ -47,7 +50,7 @@ export default function McpKeysTab() {
             <code className="flex-1 text-xs bg-white dark:bg-gray-800 border border-green-200 dark:border-green-800 rounded px-3 py-2 text-gray-800 dark:text-gray-200 font-mono break-all">
               {newKey}
             </code>
-            <button onClick={copyKey} className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300">
+            <button onClick={copyKey} className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300" aria-label="コピー">
               {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
             </button>
           </div>
@@ -99,6 +102,7 @@ export default function McpKeysTab() {
                   <button
                     onClick={() => { if (confirm(`"${k.name}" を無効化しますか？`)) revoke.mutate(k.id) }}
                     className="text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400"
+                    aria-label="削除"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>

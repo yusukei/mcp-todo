@@ -48,6 +48,7 @@ export function useSSE() {
 
     const handleOnline = () => {
       retryCount = 0
+      es?.close()
       connect()
     }
     window.addEventListener('online', handleOnline)

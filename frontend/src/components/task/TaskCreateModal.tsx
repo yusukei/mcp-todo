@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { api } from '../../api/client'
+import { showErrorToast } from '../common/Toast'
 import { PRIORITY_OPTIONS, STATUS_OPTIONS as ALL_STATUS_OPTIONS } from '../../constants/task'
 
 const STATUS_OPTIONS = ALL_STATUS_OPTIONS.filter((o) => !['done', 'cancelled'].includes(o.value))
@@ -44,6 +45,7 @@ export default function TaskCreateModal({ projectId, onClose }: Props) {
       qc.invalidateQueries({ queryKey: ['project-summary', projectId] })
       onClose()
     },
+    onError: () => showErrorToast('タスクの作成に失敗しました'),
   })
 
   const handleSubmit = (e: React.FormEvent) => {

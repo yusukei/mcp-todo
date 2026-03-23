@@ -158,18 +158,27 @@ async def get_project_summary(project_id: str) -> dict:
     if not project:
         raise ToolError("Project not found")
 
-    tasks = await Task.find(
-        Task.project_id == project_id, Task.is_deleted == False  # noqa: E712
-    ).to_list()
+    pipeline = [
+        {"$match": {"project_id": project_id, "is_deleted": False}},
+        {"$group": {"_id": "$status", "count": {"$sum": 1}}},
+    ]
+    results = await Task.get_motor_collection().aggregate(pipeline).to_list(length=None)
+
     counts = {s: 0 for s in TaskStatus}
-    for t in tasks:
-        counts[t.status] += 1
+    total = 0
+    for doc in results:
+        try:
+            key = TaskStatus(doc["_id"])
+        except ValueError:
+            continue
+        counts[key] = doc["count"]
+        total += doc["count"]
 
     return {
         "project_id": project_id,
-        "total": len(tasks),
+        "total": total,
         "by_status": {k: v for k, v in counts.items()},
-        "completion_rate": round(counts[TaskStatus.done] / len(tasks) * 100, 1) if tasks else 0,
+        "completion_rate": round(counts[TaskStatus.done] / total * 100, 1) if total else 0,
     }
 
 
@@ -197,13 +206,12 @@ async def _resolve_project_id(project_id: str) -> str:
     if cached and cached[1] > now:
         return cached[0]
 
-    projects = await Project.find(
-        Project.status == ProjectStatus.active
-    ).to_list()
-    for p in projects:
-        pid = str(p.id)
-        _project_cache[p.name] = (pid, now + _PROJECT_CACHE_TTL)
-        if p.name == project_id:
-            return pid
+    project = await Project.find_one(
+        Project.name == project_id, Project.status == ProjectStatus.active
+    )
+    if project:
+        pid = str(project.id)
+        _project_cache[project_id] = (pid, now + _PROJECT_CACHE_TTL)
+        return pid
 
     raise ToolError(f"Project not found: {project_id}")

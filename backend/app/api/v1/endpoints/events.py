@@ -41,7 +41,14 @@ async def sse_stream(token: str = Query(..., description="JWT access token")) ->
         try:
             yield "data: {\"type\": \"connected\"}\n\n"
             while True:
-                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=30)
+                try:
+                    message = await asyncio.wait_for(
+                        pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0),
+                        timeout=30,
+                    )
+                except asyncio.TimeoutError:
+                    message = None
+
                 if message and message["type"] == "message":
                     # Project filtering
                     if user_project_ids is not None:
@@ -55,7 +62,6 @@ async def sse_stream(token: str = Query(..., description="JWT access token")) ->
                     yield f"data: {message['data']}\n\n"
                 else:
                     yield ": keepalive\n\n"
-                await asyncio.sleep(0.1)
         except asyncio.CancelledError:
             pass
         finally:

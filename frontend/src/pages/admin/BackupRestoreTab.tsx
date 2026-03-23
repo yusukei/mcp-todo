@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { Download, Upload, AlertTriangle } from 'lucide-react'
 import { api } from '../../api/client'
+import { showErrorToast, showSuccessToast } from '../../components/common/Toast'
 
 export default function BackupRestoreTab() {
   const [exporting, setExporting] = useState(false)
@@ -23,7 +24,7 @@ export default function BackupRestoreTab() {
       a.click()
       window.URL.revokeObjectURL(url)
     } catch {
-      alert('バックアップの作成に失敗しました')
+      showErrorToast('バックアップの作成に失敗しました')
     } finally {
       setExporting(false)
     }
@@ -47,10 +48,10 @@ export default function BackupRestoreTab() {
       await api.post('/backup/import', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      alert('リストアが完了しました。ページを再読み込みします。')
+      showSuccessToast('リストアが完了しました。ページを再読み込みします。')
       window.location.reload()
     } catch {
-      alert('リストアに失敗しました')
+      showErrorToast('リストアに失敗しました')
     } finally {
       setImporting(false)
     }
