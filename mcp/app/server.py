@@ -4,9 +4,9 @@ MOUNT_PREFIX = "/mcp"
 MCP_PATH = "/"
 
 mcp = FastMCP(
-    name="ClaudeTodo",
+    name="McpTodo",
     instructions=(
-        "Claude Todo is a task management system. "
+        "MCP Todo is a task management system. "
         "It provides tools for project management, task CRUD, search, "
         "batch operations, and comment management. "
         "Authenticate with the X-API-Key header."

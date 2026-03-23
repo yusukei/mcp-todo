@@ -46,7 +46,7 @@ class TestCreateProject:
 
         patches = _patch_project_auth()
         with patches[0], patches[1], _patch_project_publish() as mock_pub:
-            result = await create_project(name="My Project")
+            result = await create_project.fn(name="My Project")
 
         assert result["name"] == "My Project"
         assert result["description"] == ""
@@ -66,7 +66,7 @@ class TestCreateProject:
 
         patches = _patch_project_auth()
         with patches[0], patches[1], _patch_project_publish():
-            result = await create_project(
+            result = await create_project.fn(
                 name="Custom Project",
                 description="A detailed description",
                 color="#ff0000",
@@ -82,7 +82,7 @@ class TestCreateProject:
 
         patches = _patch_project_auth()
         with patches[0], patches[1], _patch_project_publish():
-            result = await create_project(name="Persisted Project")
+            result = await create_project.fn(name="Persisted Project")
 
         db_project = await Project.get(result["id"])
         assert db_project is not None
@@ -98,7 +98,7 @@ class TestCreateProject:
         patches = _patch_project_auth()
         with patches[0], patches[1], _patch_project_publish():
             with pytest.raises(ToolError, match="No admin user found"):
-                await create_project(name="No Admin")
+                await create_project.fn(name="No Admin")
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +120,7 @@ class TestUpdateProject:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await update_project(project_id=pid, name="Updated Name")
+                result = await update_project.fn(project_id=pid, name="Updated Name")
 
         assert result["name"] == "Updated Name"
 
@@ -143,7 +143,7 @@ class TestUpdateProject:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await update_project(project_id=pid, description="New desc")
+                result = await update_project.fn(project_id=pid, description="New desc")
 
         assert result["description"] == "New desc"
 
@@ -160,7 +160,7 @@ class TestUpdateProject:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await update_project(project_id=pid, color="#00ff00")
+                result = await update_project.fn(project_id=pid, color="#00ff00")
 
         assert result["color"] == "#00ff00"
 
@@ -177,7 +177,7 @@ class TestUpdateProject:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await update_project(project_id=pid, status="archived")
+                result = await update_project.fn(project_id=pid, status="archived")
 
         assert result["status"] == "archived"
 
@@ -197,7 +197,7 @@ class TestUpdateProject:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await update_project(
+                result = await update_project.fn(
                     project_id=pid,
                     name="Multi Update",
                     description="Multi desc",
@@ -224,7 +224,7 @@ class TestUpdateProject:
                 return_value=pid,
             ):
                 with pytest.raises(ToolError, match="Invalid status"):
-                    await update_project(project_id=pid, status="invalid")
+                    await update_project.fn(project_id=pid, status="invalid")
 
     async def test_update_nonexistent_project_raises(self, admin_user):
         """update_project raises ToolError for missing project."""
@@ -242,7 +242,7 @@ class TestUpdateProject:
                 return_value=fake_id,
             ):
                 with pytest.raises(ToolError, match="Project not found"):
-                    await update_project(project_id=fake_id, name="Ghost")
+                    await update_project.fn(project_id=fake_id, name="Ghost")
 
     async def test_update_no_changes(self, admin_user, test_project):
         """update_project with no fields still returns the project."""
@@ -257,7 +257,7 @@ class TestUpdateProject:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await update_project(project_id=pid)
+                result = await update_project.fn(project_id=pid)
 
         assert result["name"] == "Test Project"
 
@@ -281,7 +281,7 @@ class TestDeleteProject:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await delete_project(project_id=pid)
+                result = await delete_project.fn(project_id=pid)
 
         assert result["success"] is True
         assert result["project_id"] == pid
@@ -308,7 +308,7 @@ class TestDeleteProject:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                await delete_project(project_id=pid)
+                await delete_project.fn(project_id=pid)
 
         db_task1 = await Task.get(task1.id)
         db_task2 = await Task.get(task2.id)
@@ -331,4 +331,4 @@ class TestDeleteProject:
                 return_value=fake_id,
             ):
                 with pytest.raises(ToolError, match="Project not found"):
-                    await delete_project(project_id=fake_id)
+                    await delete_project.fn(project_id=fake_id)

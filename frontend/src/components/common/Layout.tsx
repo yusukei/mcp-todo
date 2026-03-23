@@ -31,7 +31,7 @@ export default function Layout() {
       <div className="px-4 py-5 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <CheckSquare className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-          <span className="font-bold text-gray-800 dark:text-gray-100">Claude Todo</span>
+          <span className="font-bold text-gray-800 dark:text-gray-100">MCP Todo</span>
         </div>
         <button
           onClick={closeSidebar}
@@ -132,7 +132,7 @@ export default function Layout() {
           </button>
           <div className="flex items-center gap-2">
             <CheckSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            <span className="font-semibold text-sm text-gray-800 dark:text-gray-100">Claude Todo</span>
+            <span className="font-semibold text-sm text-gray-800 dark:text-gray-100">MCP Todo</span>
           </div>
         </div>
         <Outlet />

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Claude Todo is a task management system with a Claude Code MCP server integration. The MCP server is embedded in the backend (single process):
+MCP Todo is a task management system with a Claude Code MCP server integration. The MCP server is embedded in the backend (single process):
 
 - **backend/** — Python FastAPI REST API + MCP server (port 8000)
 - **frontend/** — React + TypeScript SPA (port 3000)
@@ -111,15 +111,24 @@ docker compose down              # Stop
 `users`, `projects` (with embedded `members`), `tasks` (with embedded `comments`), `allowed_emails`, `mcp_api_keys`
 
 ### Task Management（必須）
-- **タスク管理は必ず claude-todo MCP サーバーを使用すること**（TodoWrite ではなく MCP ツールを使う）
-- 作業で発生したタスクは claude-todo アプリに MCP サーバー経由 (`/mcp/`) で登録すること
+- **タスク管理は必ず mcp-todo MCP サーバーを使用すること**（TodoWrite ではなく MCP ツールを使う）
+- 作業で発生したタスクは mcp-todo アプリに MCP サーバー経由 (`/mcp/`) で登録すること
 - 完了したタスクも MCP サーバー経由で status を `done` に更新すること
 - MCP 呼び出し手順: `initialize` → `tools/call` (JSON-RPC over Streamable HTTP)
 - 認証: `X-API-Key` ヘッダーに MCP API キーを付与
 - 一括登録には `batch_create_tasks`、一括更新には `batch_update_tasks`、単体完了には `complete_task` を使用
 
+#### セッション開始時のワークフロー（推奨）
+セッション開始時にユーザーから作業指示がない場合、`get_work_context` を呼んで現状を把握すること：
+- **approved**: 承認済みで実装待ちのタスク
+- **in_progress**: 進行中のタスク
+- **overdue**: 期限超過タスク
+- **needs_detail**: 調査が必要なタスク
+
+タスクの詳細コンテキストが必要な場合は `get_task_context` を使用すること（get_task + get_subtasks + get_task_activity の3回呼び出しを1回に削減）。
+
 #### MCP 接続が利用できない場合の対処（必須）
-セッション開始時に claude-todo MCP サーバーのツールが利用できない場合、以下を必ず実施すること：
+セッション開始時に mcp-todo MCP サーバーのツールが利用できない場合、以下を必ず実施すること：
 1. `.mcp.json` の設定を確認（URL・API キーが正しいか）
 2. サーバーの稼働状態を確認（`curl -s https://todo.vtech-studios.com/health` または `docker compose ps`）
 3. サーバーが停止中なら `docker compose up -d` で起動

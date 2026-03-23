@@ -67,7 +67,7 @@ class TestReopenTask:
         task.completed_at = datetime.now(UTC)
         await task.save()
 
-        result = await reopen_task(task_id=str(task.id))
+        result = await reopen_task.fn(task_id=str(task.id))
 
         assert result["status"] == "todo"
         assert result["completed_at"] is None
@@ -90,7 +90,7 @@ class TestReopenTask:
             str(test_project.id), admin_user, status=TaskStatus.cancelled
         )
 
-        result = await reopen_task(task_id=str(task.id))
+        result = await reopen_task.fn(task_id=str(task.id))
 
         assert result["status"] == "todo"
         assert result["completed_at"] is None
@@ -105,7 +105,7 @@ class TestReopenTask:
             str(test_project.id), admin_user, status=TaskStatus.todo
         )
 
-        result = await reopen_task(task_id=str(task.id))
+        result = await reopen_task.fn(task_id=str(task.id))
 
         assert result["status"] == "todo"
 
@@ -122,7 +122,7 @@ class TestReopenTask:
         )
 
         with pytest.raises(ToolError, match="Task not found"):
-            await reopen_task(task_id=str(task.id))
+            await reopen_task.fn(task_id=str(task.id))
 
     async def test_reopen_nonexistent_task_raises(
         self, mock_auth, mock_check, mock_publish
@@ -133,7 +133,7 @@ class TestReopenTask:
         from app.mcp.tools.tasks import reopen_task
 
         with pytest.raises(ToolError, match="Task not found"):
-            await reopen_task(task_id="000000000000000000000000")
+            await reopen_task.fn(task_id="000000000000000000000000")
 
 
 class TestDeleteComment:
@@ -148,7 +148,7 @@ class TestDeleteComment:
         task.comments.append(comment)
         await task.save()
 
-        result = await delete_comment(task_id=str(task.id), comment_id=comment.id)
+        result = await delete_comment.fn(task_id=str(task.id), comment_id=comment.id)
 
         assert len(result["comments"]) == 0
 
@@ -172,7 +172,7 @@ class TestDeleteComment:
         task.comments = [comment1, comment2]
         await task.save()
 
-        result = await delete_comment(task_id=str(task.id), comment_id=comment2.id)
+        result = await delete_comment.fn(task_id=str(task.id), comment_id=comment2.id)
 
         assert len(result["comments"]) == 1
         assert result["comments"][0]["content"] == "Keep me"
@@ -188,7 +188,7 @@ class TestDeleteComment:
         task = await make_task(str(test_project.id), admin_user)
 
         with pytest.raises(ToolError, match="Comment not found"):
-            await delete_comment(task_id=str(task.id), comment_id="nonexistent-id")
+            await delete_comment.fn(task_id=str(task.id), comment_id="nonexistent-id")
 
     async def test_delete_comment_on_deleted_task_raises(
         self, admin_user, test_project, mock_auth, mock_check, mock_publish
@@ -203,7 +203,7 @@ class TestDeleteComment:
         )
 
         with pytest.raises(ToolError, match="Task not found"):
-            await delete_comment(task_id=str(task.id), comment_id="any-id")
+            await delete_comment.fn(task_id=str(task.id), comment_id="any-id")
 
     async def test_delete_comment_on_nonexistent_task_raises(
         self, mock_auth, mock_check, mock_publish
@@ -214,7 +214,7 @@ class TestDeleteComment:
         from app.mcp.tools.tasks import delete_comment
 
         with pytest.raises(ToolError, match="Task not found"):
-            await delete_comment(
+            await delete_comment.fn(
                 task_id="000000000000000000000000", comment_id="any-id"
             )
 
@@ -239,7 +239,7 @@ class TestGetSubtasks:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import get_subtasks
 
-            result = await get_subtasks(task_id=str(parent.id))
+            result = await get_subtasks.fn(task_id=str(parent.id))
 
         assert result["total"] == 2
         titles = {item["title"] for item in result["items"]}
@@ -257,7 +257,7 @@ class TestGetSubtasks:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import get_subtasks
 
-            result = await get_subtasks(task_id=str(parent.id))
+            result = await get_subtasks.fn(task_id=str(parent.id))
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Active"
@@ -274,7 +274,7 @@ class TestGetSubtasks:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import get_subtasks
 
-            result = await get_subtasks(task_id=str(parent.id), status="done")
+            result = await get_subtasks.fn(task_id=str(parent.id), status="done")
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Done"
@@ -288,8 +288,8 @@ class TestGetSubtasks:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import get_subtasks
 
-            with pytest.raises(ToolError, match="Parent task not found"):
-                await get_subtasks(task_id="000000000000000000000000")
+            with pytest.raises(ToolError, match="Task not found"):
+                await get_subtasks.fn(task_id="000000000000000000000000")
 
     async def test_no_subtasks_returns_empty(
         self, admin_user, test_project,
@@ -301,7 +301,7 @@ class TestGetSubtasks:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import get_subtasks
 
-            result = await get_subtasks(task_id=str(parent.id))
+            result = await get_subtasks.fn(task_id=str(parent.id))
 
         assert result["total"] == 0
         assert result["items"] == []
@@ -332,7 +332,7 @@ class TestListTasksDateFilter:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_tasks(
+                result = await list_tasks.fn(
                     project_id=pid,
                     due_before="2025-03-01T00:00:00+00:00",
                 )
@@ -358,7 +358,7 @@ class TestListTasksDateFilter:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_tasks(
+                result = await list_tasks.fn(
                     project_id=pid,
                     due_after="2025-03-01T00:00:00+00:00",
                 )
@@ -386,7 +386,7 @@ class TestListTasksDateFilter:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_tasks(
+                result = await list_tasks.fn(
                     project_id=pid,
                     due_after="2025-02-01T00:00:00+00:00",
                     due_before="2025-05-01T00:00:00+00:00",
@@ -412,7 +412,7 @@ class TestListTasksDateFilter:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_tasks(project_id=pid)
+                result = await list_tasks.fn(project_id=pid)
 
         assert result["total"] == 2
 
@@ -440,7 +440,7 @@ class TestListTags:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_tags(project_id=pid)
+                result = await list_tags.fn(project_id=pid)
 
         assert result == ["backend", "bug", "feature", "frontend"]
 
@@ -460,7 +460,7 @@ class TestListTags:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_tags(project_id=pid)
+                result = await list_tags.fn(project_id=pid)
 
         assert result == []
 
@@ -480,7 +480,7 @@ class TestListTags:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_tags(project_id=pid)
+                result = await list_tags.fn(project_id=pid)
 
         assert result == ["keep"]
 
@@ -499,7 +499,7 @@ class TestListTags:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_tags(project_id=pid)
+                result = await list_tags.fn(project_id=pid)
 
         assert result == ["alpha", "mu", "zeta"]
 
@@ -526,7 +526,7 @@ class TestListTasks:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_tasks(project_id=pid)
+                result = await list_tasks.fn(project_id=pid)
 
         assert result["total"] == 2
         titles = {item["title"] for item in result["items"]}
@@ -547,7 +547,7 @@ class TestListTasks:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_tasks(project_id=pid, status="done")
+                result = await list_tasks.fn(project_id=pid, status="done")
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Done"
@@ -569,7 +569,7 @@ class TestListTasks:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_tasks(project_id=pid, priority="urgent")
+                result = await list_tasks.fn(project_id=pid, priority="urgent")
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Urgent"
@@ -589,7 +589,7 @@ class TestListTasks:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_tasks(project_id=pid, tag="bug")
+                result = await list_tasks.fn(project_id=pid, tag="bug")
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Bug"
@@ -609,7 +609,7 @@ class TestListTasks:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_tasks(project_id=pid, needs_detail=True)
+                result = await list_tasks.fn(project_id=pid, needs_detail=True)
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Needs detail"
@@ -629,7 +629,7 @@ class TestListTasks:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_tasks(project_id=pid, approved=True)
+                result = await list_tasks.fn(project_id=pid, approved=True)
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Approved"
@@ -649,7 +649,7 @@ class TestListTasks:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_tasks(project_id=pid, limit=2, skip=1)
+                result = await list_tasks.fn(project_id=pid, limit=2, skip=1)
 
         assert result["total"] == 5
         assert len(result["items"]) == 2
@@ -672,7 +672,7 @@ class TestGetTask:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import get_task
 
-            result = await get_task(task_id=str(task.id))
+            result = await get_task.fn(task_id=str(task.id))
 
         assert result["id"] == str(task.id)
         assert result["title"] == "My Task"
@@ -687,7 +687,7 @@ class TestGetTask:
             from app.mcp.tools.tasks import get_task
 
             with pytest.raises(ToolError, match="Task not found"):
-                await get_task(task_id="000000000000000000000000")
+                await get_task.fn(task_id="000000000000000000000000")
 
     async def test_get_deleted_task_raises(self, admin_user, test_project):
         """get_task raises ToolError for soft-deleted task."""
@@ -701,7 +701,7 @@ class TestGetTask:
             from app.mcp.tools.tasks import get_task
 
             with pytest.raises(ToolError, match="Task not found"):
-                await get_task(task_id=str(task.id))
+                await get_task.fn(task_id=str(task.id))
 
 
 # ---------------------------------------------------------------------------
@@ -723,7 +723,7 @@ class TestCreateTask:
             new_callable=AsyncMock,
             return_value=pid,
         ):
-            result = await create_task(project_id=pid, title="New Task")
+            result = await create_task.fn(project_id=pid, title="New Task")
 
         assert result["title"] == "New Task"
         assert result["status"] == "todo"
@@ -750,7 +750,7 @@ class TestCreateTask:
             new_callable=AsyncMock,
             return_value=pid,
         ):
-            result = await create_task(
+            result = await create_task.fn(
                 project_id=pid,
                 title="Full Task",
                 description="Detailed description",
@@ -783,7 +783,7 @@ class TestCreateTask:
             new_callable=AsyncMock,
             return_value=pid,
         ):
-            result = await create_task(
+            result = await create_task.fn(
                 project_id=pid,
                 title="Subtask",
                 parent_task_id=str(parent.id),
@@ -804,7 +804,7 @@ class TestCreateTask:
             new_callable=AsyncMock,
             return_value=pid,
         ):
-            result = await create_task(project_id=pid, title="Persisted")
+            result = await create_task.fn(project_id=pid, title="Persisted")
 
         db_task = await Task.get(result["id"])
         assert db_task is not None
@@ -826,7 +826,7 @@ class TestUpdateTask:
         pid = str(test_project.id)
         task = await make_task(pid, admin_user, title="Old Title")
 
-        result = await update_task(task_id=str(task.id), title="New Title")
+        result = await update_task.fn(task_id=str(task.id), title="New Title")
 
         assert result["title"] == "New Title"
 
@@ -842,7 +842,7 @@ class TestUpdateTask:
         pid = str(test_project.id)
         task = await make_task(pid, admin_user, title="Task")
 
-        result = await update_task(
+        result = await update_task.fn(
             task_id=str(task.id),
             title="Updated",
             description="New desc",
@@ -864,7 +864,7 @@ class TestUpdateTask:
         pid = str(test_project.id)
         task = await make_task(pid, admin_user, status=TaskStatus.todo)
 
-        result = await update_task(task_id=str(task.id), status="done")
+        result = await update_task.fn(task_id=str(task.id), status="done")
 
         assert result["status"] == "done"
         assert result["completed_at"] is not None
@@ -880,7 +880,7 @@ class TestUpdateTask:
         task.completed_at = datetime.now(UTC)
         await task.save()
 
-        result = await update_task(task_id=str(task.id), status="todo")
+        result = await update_task.fn(task_id=str(task.id), status="todo")
 
         assert result["status"] == "todo"
         assert result["completed_at"] is None
@@ -897,7 +897,7 @@ class TestUpdateTask:
         task = await make_task(pid, admin_user)
 
         with pytest.raises(ToolError, match="Invalid status"):
-            await update_task(task_id=str(task.id), status="bogus")
+            await update_task.fn(task_id=str(task.id), status="bogus")
 
     async def test_update_invalid_priority_raises(
         self, admin_user, test_project, mock_auth, mock_check, mock_publish
@@ -911,7 +911,7 @@ class TestUpdateTask:
         task = await make_task(pid, admin_user)
 
         with pytest.raises(ToolError, match="Invalid priority"):
-            await update_task(task_id=str(task.id), priority="bogus")
+            await update_task.fn(task_id=str(task.id), priority="bogus")
 
     async def test_update_nonexistent_task_raises(
         self, mock_auth, mock_check, mock_publish
@@ -922,7 +922,7 @@ class TestUpdateTask:
         from app.mcp.tools.tasks import update_task
 
         with pytest.raises(ToolError, match="Task not found"):
-            await update_task(task_id="000000000000000000000000", title="X")
+            await update_task.fn(task_id="000000000000000000000000", title="X")
 
     async def test_update_deleted_task_raises(
         self, admin_user, test_project, mock_auth, mock_check, mock_publish
@@ -936,7 +936,7 @@ class TestUpdateTask:
         task = await make_task(pid, admin_user, is_deleted=True)
 
         with pytest.raises(ToolError, match="Task not found"):
-            await update_task(task_id=str(task.id), title="X")
+            await update_task.fn(task_id=str(task.id), title="X")
 
     async def test_update_publishes_event(
         self, admin_user, test_project, mock_auth, mock_check, mock_publish
@@ -947,7 +947,7 @@ class TestUpdateTask:
         pid = str(test_project.id)
         task = await make_task(pid, admin_user)
 
-        await update_task(task_id=str(task.id), title="Updated")
+        await update_task.fn(task_id=str(task.id), title="Updated")
 
         mock_publish.assert_called_once()
         call_args = mock_publish.call_args
@@ -969,7 +969,7 @@ class TestDeleteTask:
         pid = str(test_project.id)
         task = await make_task(pid, admin_user, title="To Delete")
 
-        result = await delete_task(task_id=str(task.id))
+        result = await delete_task.fn(task_id=str(task.id))
 
         assert result["success"] is True
         assert result["task_id"] == str(task.id)
@@ -990,7 +990,7 @@ class TestDeleteTask:
         from app.mcp.tools.tasks import delete_task
 
         with pytest.raises(ToolError, match="Task not found"):
-            await delete_task(task_id="000000000000000000000000")
+            await delete_task.fn(task_id="000000000000000000000000")
 
     async def test_delete_already_deleted_raises(
         self, admin_user, test_project, mock_auth, mock_check, mock_publish
@@ -1004,7 +1004,7 @@ class TestDeleteTask:
         task = await make_task(pid, admin_user, is_deleted=True)
 
         with pytest.raises(ToolError, match="Task not found"):
-            await delete_task(task_id=str(task.id))
+            await delete_task.fn(task_id=str(task.id))
 
 
 # ---------------------------------------------------------------------------
@@ -1022,7 +1022,7 @@ class TestCompleteTask:
         pid = str(test_project.id)
         task = await make_task(pid, admin_user, status=TaskStatus.todo)
 
-        result = await complete_task(task_id=str(task.id))
+        result = await complete_task.fn(task_id=str(task.id))
 
         assert result["status"] == "done"
         assert result["completed_at"] is not None
@@ -1046,7 +1046,7 @@ class TestCompleteTask:
         task.completed_at = datetime.now(UTC)
         await task.save()
 
-        result = await complete_task(task_id=str(task.id))
+        result = await complete_task.fn(task_id=str(task.id))
 
         assert result["status"] == "done"
         # publish_event should NOT be called because status was already done
@@ -1061,7 +1061,7 @@ class TestCompleteTask:
         from app.mcp.tools.tasks import complete_task
 
         with pytest.raises(ToolError, match="Task not found"):
-            await complete_task(task_id="000000000000000000000000")
+            await complete_task.fn(task_id="000000000000000000000000")
 
     async def test_complete_deleted_task_raises(
         self, admin_user, test_project, mock_auth, mock_check, mock_publish
@@ -1075,7 +1075,7 @@ class TestCompleteTask:
         task = await make_task(pid, admin_user, is_deleted=True)
 
         with pytest.raises(ToolError, match="Task not found"):
-            await complete_task(task_id=str(task.id))
+            await complete_task.fn(task_id=str(task.id))
 
 
 # ---------------------------------------------------------------------------
@@ -1093,7 +1093,7 @@ class TestAddComment:
         pid = str(test_project.id)
         task = await make_task(pid, admin_user)
 
-        result = await add_comment(task_id=str(task.id), content="Hello")
+        result = await add_comment.fn(task_id=str(task.id), content="Hello")
 
         assert len(result["comments"]) == 1
         assert result["comments"][0]["content"] == "Hello"
@@ -1117,7 +1117,7 @@ class TestAddComment:
         from app.mcp.tools.tasks import add_comment
 
         with pytest.raises(ToolError, match="Task not found"):
-            await add_comment(
+            await add_comment.fn(
                 task_id="000000000000000000000000", content="Hello"
             )
 
@@ -1133,7 +1133,7 @@ class TestAddComment:
         task = await make_task(pid, admin_user, is_deleted=True)
 
         with pytest.raises(ToolError, match="Task not found"):
-            await add_comment(task_id=str(task.id), content="Hello")
+            await add_comment.fn(task_id=str(task.id), content="Hello")
 
     async def test_add_multiple_comments(
         self, admin_user, test_project, mock_auth, mock_check, mock_publish
@@ -1147,7 +1147,7 @@ class TestAddComment:
         task.comments.append(comment)
         await task.save()
 
-        result = await add_comment(task_id=str(task.id), content="Second")
+        result = await add_comment.fn(task_id=str(task.id), content="Second")
 
         assert len(result["comments"]) == 2
         assert result["comments"][0]["content"] == "First"
@@ -1170,7 +1170,7 @@ class TestSearchTasks:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import search_tasks
 
-            result = await search_tasks(query="Login")
+            result = await search_tasks.fn(query="Login")
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Login Bug"
@@ -1187,7 +1187,7 @@ class TestSearchTasks:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import search_tasks
 
-            result = await search_tasks(query="authentication")
+            result = await search_tasks.fn(query="authentication")
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Task A"
@@ -1201,7 +1201,7 @@ class TestSearchTasks:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import search_tasks
 
-            result = await search_tasks(query="uppercase")
+            result = await search_tasks.fn(query="uppercase")
 
         assert result["total"] == 1
 
@@ -1215,7 +1215,7 @@ class TestSearchTasks:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import search_tasks
 
-            result = await search_tasks(query="Bug")
+            result = await search_tasks.fn(query="Bug")
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Active Bug"
@@ -1234,7 +1234,7 @@ class TestSearchTasks:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await search_tasks(query="Scoped", project_id=pid)
+                result = await search_tasks.fn(query="Scoped", project_id=pid)
 
         assert result["total"] == 1
 
@@ -1248,7 +1248,7 @@ class TestSearchTasks:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import search_tasks
 
-            result = await search_tasks(query="Bug", status="todo")
+            result = await search_tasks.fn(query="Bug", status="todo")
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Bug Todo"
@@ -1262,7 +1262,7 @@ class TestSearchTasks:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import search_tasks
 
-            result = await search_tasks(query="nonexistent_xyz")
+            result = await search_tasks.fn(query="nonexistent_xyz")
 
         assert result["total"] == 0
         assert result["items"] == []
@@ -1292,7 +1292,7 @@ class TestListOverdueTasks:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_overdue_tasks(project_id=pid)
+                result = await list_overdue_tasks.fn(project_id=pid)
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Overdue"
@@ -1313,7 +1313,7 @@ class TestListOverdueTasks:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_overdue_tasks(project_id=pid)
+                result = await list_overdue_tasks.fn(project_id=pid)
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Overdue Todo"
@@ -1334,7 +1334,7 @@ class TestListOverdueTasks:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_overdue_tasks(project_id=pid)
+                result = await list_overdue_tasks.fn(project_id=pid)
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Overdue Active"
@@ -1355,7 +1355,7 @@ class TestListOverdueTasks:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_overdue_tasks(project_id=pid)
+                result = await list_overdue_tasks.fn(project_id=pid)
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Active Overdue"
@@ -1375,7 +1375,7 @@ class TestListOverdueTasks:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_overdue_tasks(project_id=pid)
+                result = await list_overdue_tasks.fn(project_id=pid)
 
         assert result["total"] == 0
         assert result["items"] == []
@@ -1400,7 +1400,7 @@ class TestBatchCreateTasks:
             new_callable=AsyncMock,
             return_value=pid,
         ):
-            result = await batch_create_tasks(
+            result = await batch_create_tasks.fn(
                 project_id=pid,
                 tasks=[
                     {"title": "Task A"},
@@ -1419,8 +1419,8 @@ class TestBatchCreateTasks:
         task_b = next(t for t in result["created"] if t["title"] == "Task B")
         assert task_b["priority"] == "high"
 
-        # publish_event called once per task
-        assert mock_publish.call_count == 3
+        # publish_event called once for the batch
+        assert mock_publish.call_count == 1
 
     async def test_handles_failures(
         self, admin_user, test_project, mock_auth, mock_check, mock_publish
@@ -1435,7 +1435,7 @@ class TestBatchCreateTasks:
             new_callable=AsyncMock,
             return_value=pid,
         ):
-            result = await batch_create_tasks(
+            result = await batch_create_tasks.fn(
                 project_id=pid,
                 tasks=[
                     {"title": "Valid Task"},
@@ -1461,7 +1461,7 @@ class TestBatchCreateTasks:
             new_callable=AsyncMock,
             return_value=pid,
         ):
-            result = await batch_create_tasks(
+            result = await batch_create_tasks.fn(
                 project_id=pid,
                 tasks=[{"title": "Persisted A"}, {"title": "Persisted B"}],
             )
@@ -1490,7 +1490,7 @@ class TestBatchUpdateTasks:
         task1 = await make_task(pid, admin_user, title="Task 1")
         task2 = await make_task(pid, admin_user, title="Task 2")
 
-        result = await batch_update_tasks(
+        result = await batch_update_tasks.fn(
             updates=[
                 {"task_id": str(task1.id), "title": "Updated 1"},
                 {"task_id": str(task2.id), "priority": "high"},
@@ -1512,7 +1512,7 @@ class TestBatchUpdateTasks:
         """batch_update_tasks reports failure when task_id is missing."""
         from app.mcp.tools.tasks import batch_update_tasks
 
-        result = await batch_update_tasks(
+        result = await batch_update_tasks.fn(
             updates=[{"title": "No ID"}]
         )
 
@@ -1526,7 +1526,7 @@ class TestBatchUpdateTasks:
         """batch_update_tasks reports failure for non-existent task."""
         from app.mcp.tools.tasks import batch_update_tasks
 
-        result = await batch_update_tasks(
+        result = await batch_update_tasks.fn(
             updates=[{"task_id": "000000000000000000000000", "title": "X"}]
         )
 
@@ -1543,7 +1543,7 @@ class TestBatchUpdateTasks:
         pid = str(test_project.id)
         task = await make_task(pid, admin_user, is_deleted=True)
 
-        result = await batch_update_tasks(
+        result = await batch_update_tasks.fn(
             updates=[{"task_id": str(task.id), "title": "X"}]
         )
 
@@ -1560,7 +1560,7 @@ class TestBatchUpdateTasks:
         pid = str(test_project.id)
         task = await make_task(pid, admin_user, title="Valid")
 
-        result = await batch_update_tasks(
+        result = await batch_update_tasks.fn(
             updates=[
                 {"task_id": str(task.id), "title": "Updated"},
                 {"task_id": "000000000000000000000000", "title": "Missing"},
@@ -1580,7 +1580,7 @@ class TestBatchUpdateTasks:
         pid = str(test_project.id)
         task = await make_task(pid, admin_user, status=TaskStatus.todo)
 
-        result = await batch_update_tasks(
+        result = await batch_update_tasks.fn(
             updates=[{"task_id": str(task.id), "status": "done"}]
         )
 
@@ -1609,7 +1609,7 @@ class TestListReviewTasks:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_review_tasks(project_id=pid, flag="needs_detail")
+                result = await list_review_tasks.fn(project_id=pid, flag="needs_detail")
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Needs Detail"
@@ -1629,7 +1629,7 @@ class TestListReviewTasks:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_review_tasks(project_id=pid, flag="approved")
+                result = await list_review_tasks.fn(project_id=pid, flag="approved")
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Approved"
@@ -1650,7 +1650,7 @@ class TestListReviewTasks:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_review_tasks(project_id=pid, flag="pending")
+                result = await list_review_tasks.fn(project_id=pid, flag="pending")
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Pending"
@@ -1671,7 +1671,7 @@ class TestListReviewTasks:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_review_tasks(project_id=pid, flag="all")
+                result = await list_review_tasks.fn(project_id=pid, flag="all")
 
         assert result["total"] == 3
 
@@ -1691,7 +1691,7 @@ class TestListReviewTasks:
                 return_value=pid,
             ):
                 with pytest.raises(ToolError, match="Invalid flag"):
-                    await list_review_tasks(project_id=pid, flag="bogus")
+                    await list_review_tasks.fn(project_id=pid, flag="bogus")
 
     async def test_excludes_deleted_tasks(self, admin_user, test_project):
         """list_review_tasks excludes soft-deleted tasks."""
@@ -1708,7 +1708,7 @@ class TestListReviewTasks:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await list_review_tasks(project_id=pid, flag="needs_detail")
+                result = await list_review_tasks.fn(project_id=pid, flag="needs_detail")
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Active"
@@ -1726,7 +1726,7 @@ class TestListUsers:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import list_users
 
-            result = await list_users()
+            result = await list_users.fn()
 
         assert len(result) == 2
         emails = {u["email"] for u in result}
@@ -1744,7 +1744,7 @@ class TestListUsers:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import list_users
 
-            result = await list_users()
+            result = await list_users.fn()
 
         assert len(result) == 1
         assert result[0]["email"] == "admin@test.com"
@@ -1755,7 +1755,7 @@ class TestListUsers:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import list_users
 
-            result = await list_users()
+            result = await list_users.fn()
 
         assert result == []
 
@@ -1789,7 +1789,7 @@ class TestListProjects:
         with patches[0], patches[1]:
             from app.mcp.tools.projects import list_projects
 
-            result = await list_projects()
+            result = await list_projects.fn()
 
         assert len(result) == 1
         assert result[0]["name"] == "Test Project"
@@ -1808,7 +1808,7 @@ class TestListProjects:
         with patches[0], patches[1]:
             from app.mcp.tools.projects import list_projects
 
-            result = await list_projects()
+            result = await list_projects.fn()
 
         names = {p["name"] for p in result}
         assert "Test Project" in names
@@ -1838,7 +1838,7 @@ class TestListProjects:
         with patches[0], patches[1]:
             from app.mcp.tools.projects import list_projects
 
-            result = await list_projects()
+            result = await list_projects.fn()
 
         names = {p["name"] for p in result}
         assert "Test Project" in names
@@ -1850,7 +1850,7 @@ class TestListProjects:
         with patches[0], patches[1]:
             from app.mcp.tools.projects import list_projects
 
-            result = await list_projects()
+            result = await list_projects.fn()
 
         assert len(result) == 1
         p = result[0]
@@ -1884,7 +1884,7 @@ class TestGetProject:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await get_project(project_id=pid)
+                result = await get_project.fn(project_id=pid)
 
         assert result["id"] == pid
         assert result["name"] == "Test Project"
@@ -1905,7 +1905,7 @@ class TestGetProject:
                 return_value=fake_id,
             ):
                 with pytest.raises(ToolError, match="Project not found"):
-                    await get_project(project_id=fake_id)
+                    await get_project.fn(project_id=fake_id)
 
 
 # ---------------------------------------------------------------------------
@@ -1931,7 +1931,7 @@ class TestGetProjectSummary:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await get_project_summary(project_id=pid)
+                result = await get_project_summary.fn(project_id=pid)
 
         assert result["total"] == 4
         assert result["by_status"]["todo"] == 2
@@ -1955,7 +1955,7 @@ class TestGetProjectSummary:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await get_project_summary(project_id=pid)
+                result = await get_project_summary.fn(project_id=pid)
 
         assert result["completion_rate"] == 50.0
 
@@ -1972,7 +1972,7 @@ class TestGetProjectSummary:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await get_project_summary(project_id=pid)
+                result = await get_project_summary.fn(project_id=pid)
 
         assert result["total"] == 0
         assert result["completion_rate"] == 0
@@ -1992,7 +1992,7 @@ class TestGetProjectSummary:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await get_project_summary(project_id=pid)
+                result = await get_project_summary.fn(project_id=pid)
 
         assert result["total"] == 1
 
@@ -2012,7 +2012,7 @@ class TestGetProjectSummary:
                 return_value=fake_id,
             ):
                 with pytest.raises(ToolError, match="Project not found"):
-                    await get_project_summary(project_id=fake_id)
+                    await get_project_summary.fn(project_id=fake_id)
 
     async def test_returns_project_id(self, admin_user, test_project):
         """get_project_summary includes project_id in result."""
@@ -2027,7 +2027,7 @@ class TestGetProjectSummary:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await get_project_summary(project_id=pid)
+                result = await get_project_summary.fn(project_id=pid)
 
         assert result["project_id"] == pid
 
@@ -2054,7 +2054,7 @@ class TestBatchCreateTasksCreatedBy:
                 "app.mcp.tools.tasks.publish_event",
                 new_callable=AsyncMock,
             ):
-                result = await batch_create_tasks(
+                result = await batch_create_tasks.fn(
                     project_id=pid,
                     tasks=[{"title": "Injected", "created_by": "attacker"}],
                 )
@@ -2062,7 +2062,9 @@ class TestBatchCreateTasksCreatedBy:
         assert len(result["created"]) == 1
         assert result["created"][0]["created_by"] == "mcp"
 
-        db_task = await Task.get(result["created"][0]["id"])
+        # Verify in DB - find by title since insert_many may not set id in mock
+        db_task = await Task.find_one(Task.title == "Injected")
+        assert db_task is not None
         assert db_task.created_by == "mcp"
 
 
@@ -2086,7 +2088,7 @@ class TestUpdateTaskFieldAllowlist:
                 "app.mcp.tools.tasks.publish_event",
                 new_callable=AsyncMock,
             ):
-                result = await batch_update_tasks(
+                result = await batch_update_tasks.fn(
                     updates=[{"task_id": str(task.id), "is_deleted": True}],
                 )
 
@@ -2112,7 +2114,7 @@ class TestUpdateTaskFieldAllowlist:
                 "app.mcp.tools.tasks.publish_event",
                 new_callable=AsyncMock,
             ):
-                result = await batch_update_tasks(
+                result = await batch_update_tasks.fn(
                     updates=[{"task_id": str(task.id), "created_by": "attacker"}],
                 )
 
@@ -2133,7 +2135,7 @@ class TestUpdateTaskFieldAllowlist:
                 "app.mcp.tools.tasks.publish_event",
                 new_callable=AsyncMock,
             ):
-                result = await batch_update_tasks(
+                result = await batch_update_tasks.fn(
                     updates=[{"task_id": str(task.id), "comments": []}],
                 )
 
@@ -2154,7 +2156,7 @@ class TestUpdateTaskFieldAllowlist:
                 "app.mcp.tools.tasks.publish_event",
                 new_callable=AsyncMock,
             ):
-                result = await batch_update_tasks(
+                result = await batch_update_tasks.fn(
                     updates=[{
                         "task_id": str(task.id),
                         "title": "Updated Title",
@@ -2194,7 +2196,7 @@ class TestSearchTasksRegexEscape:
                 return_value=pid,
             ):
                 # Search with parentheses - should be treated as literal, not regex group
-                result = await search_tasks(query="(critical)", project_id=pid)
+                result = await search_tasks.fn(query="(critical)", project_id=pid)
 
         # Only the task with literal "(critical)" should match
         assert result["total"] == 1
@@ -2217,7 +2219,7 @@ class TestSearchTasksRegexEscape:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await search_tasks(query="2.0", project_id=pid)
+                result = await search_tasks.fn(query="2.0", project_id=pid)
 
         # Without escaping, "2.0" would match "2X0" too (dot = any char)
         assert result["total"] == 1
@@ -2240,7 +2242,7 @@ class TestSearchTasksRegexEscape:
                 new_callable=AsyncMock,
                 return_value=pid,
             ):
-                result = await search_tasks(query="task*important", project_id=pid)
+                result = await search_tasks.fn(query="task*important", project_id=pid)
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "task*important"

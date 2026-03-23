@@ -1,4 +1,4 @@
-# Claude Todo
+# MCP Todo
 
 Claude Code 向けタスク管理システム。Web UI でプロジェクト・タスクを管理し、MCP サーバ経由で Claude Code から直接タスク操作が可能。
 
@@ -86,7 +86,7 @@ docker compose exec backend uv run python -m app.cli init-admin
 ```json
 {
   "mcpServers": {
-    "claude-todo": {
+    "mcp-todo": {
       "type": "http",
       "url": "http://localhost/mcp",
       "headers": {

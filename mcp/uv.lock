@@ -172,7 +172,7 @@ wheels = [
 ]
 
 [[package]]
-name = "claude-todo-mcp"
+name = "mcp-todo-mcp"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

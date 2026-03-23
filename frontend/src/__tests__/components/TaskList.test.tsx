@@ -56,6 +56,8 @@ const defaultProps = {
   onTaskClick: vi.fn(),
   onUpdateFlags: vi.fn(),
   onArchive: vi.fn(),
+  onBatchUpdateFlags: vi.fn(),
+  onBatchArchive: vi.fn(),
   showArchived: false,
 }
 
@@ -152,31 +154,29 @@ describe('TaskList', () => {
       expect(screen.getByText('実行許可 OFF')).toBeInTheDocument()
     })
 
-    it('詳細要求 ON ボタンで全選択タスクの onUpdateFlags が呼ばれる', async () => {
-      const onUpdateFlags = vi.fn()
-      render(<TaskList tasks={baseTasks} {...defaultProps} onUpdateFlags={onUpdateFlags} />)
+    it('詳細要求 ON ボタンで onBatchUpdateFlags が呼ばれる', async () => {
+      const onBatchUpdateFlags = vi.fn()
+      render(<TaskList tasks={baseTasks} {...defaultProps} onBatchUpdateFlags={onBatchUpdateFlags} />)
       const checkboxes = screen.getAllByRole('checkbox')
       await userEvent.click(checkboxes[0]) // select all
       await userEvent.click(screen.getByText('詳細要求 ON'))
-      expect(onUpdateFlags).toHaveBeenCalledTimes(2)
-      expect(onUpdateFlags).toHaveBeenCalledWith('task-1', { needs_detail: true, approved: false })
-      expect(onUpdateFlags).toHaveBeenCalledWith('task-2', { needs_detail: true, approved: false })
+      expect(onBatchUpdateFlags).toHaveBeenCalledTimes(1)
+      expect(onBatchUpdateFlags).toHaveBeenCalledWith(['task-1', 'task-2'], { needs_detail: true, approved: false })
     })
 
-    it('実行許可 ON ボタンで全選択タスクの onUpdateFlags が呼ばれる', async () => {
-      const onUpdateFlags = vi.fn()
-      render(<TaskList tasks={baseTasks} {...defaultProps} onUpdateFlags={onUpdateFlags} />)
+    it('実行許可 ON ボタンで onBatchUpdateFlags が呼ばれる', async () => {
+      const onBatchUpdateFlags = vi.fn()
+      render(<TaskList tasks={baseTasks} {...defaultProps} onBatchUpdateFlags={onBatchUpdateFlags} />)
       const checkboxes = screen.getAllByRole('checkbox')
       await userEvent.click(checkboxes[0]) // select all
       await userEvent.click(screen.getByText('実行許可 ON'))
-      expect(onUpdateFlags).toHaveBeenCalledTimes(2)
-      expect(onUpdateFlags).toHaveBeenCalledWith('task-1', { approved: true, needs_detail: false })
-      expect(onUpdateFlags).toHaveBeenCalledWith('task-2', { approved: true, needs_detail: false })
+      expect(onBatchUpdateFlags).toHaveBeenCalledTimes(1)
+      expect(onBatchUpdateFlags).toHaveBeenCalledWith(['task-1', 'task-2'], { approved: true, needs_detail: false })
     })
 
     it('一括操作後に選択がクリアされる', async () => {
-      const onUpdateFlags = vi.fn()
-      render(<TaskList tasks={baseTasks} {...defaultProps} onUpdateFlags={onUpdateFlags} />)
+      const onBatchUpdateFlags = vi.fn()
+      render(<TaskList tasks={baseTasks} {...defaultProps} onBatchUpdateFlags={onBatchUpdateFlags} />)
       const checkboxes = screen.getAllByRole('checkbox')
       await userEvent.click(checkboxes[0]) // select all
       expect(screen.getByText('2件選択')).toBeInTheDocument()

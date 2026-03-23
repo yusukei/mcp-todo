@@ -40,7 +40,7 @@ export default function LoginPage() {
         <ThemeToggle />
       </div>
       <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow dark:shadow-gray-900/50 w-full max-w-md space-y-6">
-        <h1 className="text-2xl font-bold text-center text-gray-800 dark:text-gray-100">Claude Todo</h1>
+        <h1 className="text-2xl font-bold text-center text-gray-800 dark:text-gray-100">MCP Todo</h1>
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>

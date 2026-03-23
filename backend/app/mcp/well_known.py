@@ -19,7 +19,7 @@ from .server import MOUNT_PREFIX
 # OAuth well-known discovery (static JSON)
 # ---------------------------------------------------------------------------
 
-# Claude Todo uses API key auth, not OAuth.
+# MCP Todo uses API key auth, not OAuth.
 # These endpoints return minimal metadata so MCP clients
 # that probe /.well-known don't get 404s.
 

@@ -1,4 +1,4 @@
-"""CLI management commands for Claude Todo backend."""
+"""CLI management commands for MCP Todo backend."""
 
 import argparse
 import asyncio
@@ -89,7 +89,7 @@ def _resolve_value(args_val: str | None, env_val: str, prompt_msg: str, *, secre
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Claude Todo management CLI")
+    parser = argparse.ArgumentParser(description="MCP Todo management CLI")
     sub = parser.add_subparsers(dest="command")
 
     init_cmd = sub.add_parser("init-admin", help="Create initial admin user")

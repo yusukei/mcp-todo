@@ -54,6 +54,25 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning("Failed to auto-create admin user: %s", e)
 
+    # ── Search index initialization ─────────────────────────
+    _is_testing = os.environ.get("TESTING") == "1"
+    if not _is_testing:
+        from .services.search import TANTIVY_AVAILABLE
+        if TANTIVY_AVAILABLE:
+            try:
+                from pathlib import Path
+                from .services.search import SearchIndex, SearchIndexer, SearchService
+                search_index = SearchIndex(Path(settings.SEARCH_INDEX_DIR))
+                indexer = SearchIndexer(search_index)
+                SearchIndexer.set_instance(indexer)
+                SearchService.set_instance(SearchService(search_index))
+                count = await indexer.rebuild()
+                logger.info("Search index ready: %d tasks indexed", count)
+            except Exception as e:
+                logger.warning("Failed to initialize search index: %s — full-text search disabled", e)
+        else:
+            logger.info("tantivy not available — full-text search disabled (using $regex fallback)")
+
     # ── MCP server integration ────────────────────────────────
     from .mcp.server import MCP_PATH, MOUNT_PREFIX, register_tools
     from .mcp.server import mcp as _mcp_server
@@ -82,7 +101,6 @@ async def lifespan(app: FastAPI):
     logger.info("MCP server mounted at %s (stateful + RedisEventStore)", MOUNT_PREFIX)
 
     # MCP subapp lifespan (Starlette mount doesn't auto-execute subapp lifespan)
-    _is_testing = os.environ.get("TESTING") == "1"
     if not _is_testing:
         async with _mcp_app.lifespan(_mcp_app):
             yield
@@ -96,7 +114,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Claude Todo API",
+    title="MCP Todo API",
     version="0.1.0",
     lifespan=lifespan,
     default_response_class=ORJSONResponse,

@@ -74,7 +74,7 @@ async def lifespan(app: FastAPI):
     logger.info("MCP server stopped")
 
 
-app = FastAPI(title="Claude Todo MCP Server", lifespan=lifespan)
+app = FastAPI(title="MCP Todo MCP Server", lifespan=lifespan)
 app.add_middleware(McpTrailingSlashMiddleware)
 
 

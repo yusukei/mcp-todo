@@ -1,5 +1,5 @@
 [project]
-name = "claude-todo-backend"
+name = "mcp-todo-backend"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [

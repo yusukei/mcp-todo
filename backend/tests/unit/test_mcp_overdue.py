@@ -54,7 +54,7 @@ class TestListOverdueTasks:
         # no due date
         await make_task(pid, user, title="No Due", status=TaskStatus.todo)
 
-        result = await list_overdue_tasks(project_id=pid)
+        result = await list_overdue_tasks.fn(project_id=pid)
 
         assert result["total"] == 1
         assert len(result["items"]) == 1
@@ -70,7 +70,7 @@ class TestListOverdueTasks:
         await make_task(pid, user, title="Done Overdue", due_date=yesterday, status=TaskStatus.done)
         await make_task(pid, user, title="Active Overdue", due_date=yesterday, status=TaskStatus.todo)
 
-        result = await list_overdue_tasks(project_id=pid)
+        result = await list_overdue_tasks.fn(project_id=pid)
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Active Overdue"
@@ -85,7 +85,7 @@ class TestListOverdueTasks:
         await make_task(pid, user, title="Cancelled", due_date=yesterday, status=TaskStatus.cancelled)
         await make_task(pid, user, title="In Progress", due_date=yesterday, status=TaskStatus.in_progress)
 
-        result = await list_overdue_tasks(project_id=pid)
+        result = await list_overdue_tasks.fn(project_id=pid)
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "In Progress"
@@ -100,7 +100,7 @@ class TestListOverdueTasks:
         await make_task(pid, user, title="Deleted", due_date=yesterday, is_deleted=True)
         await make_task(pid, user, title="Active", due_date=yesterday, status=TaskStatus.todo)
 
-        result = await list_overdue_tasks(project_id=pid)
+        result = await list_overdue_tasks.fn(project_id=pid)
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Active"
@@ -116,7 +116,7 @@ class TestListOverdueTasks:
         await make_task(pid, user, title="Recent", due_date=one_day_ago)
         await make_task(pid, user, title="Oldest", due_date=three_days_ago)
 
-        result = await list_overdue_tasks(project_id=pid)
+        result = await list_overdue_tasks.fn(project_id=pid)
 
         assert len(result["items"]) == 2
         assert result["items"][0]["title"] == "Oldest"
@@ -132,7 +132,7 @@ class TestListOverdueTasks:
         for i in range(5):
             await make_task(pid, user, title=f"Task {i}", due_date=yesterday)
 
-        result = await list_overdue_tasks(project_id=pid, limit=3)
+        result = await list_overdue_tasks.fn(project_id=pid, limit=3)
 
         assert result["total"] == 5
         assert len(result["items"]) == 3
@@ -149,7 +149,7 @@ class TestListOverdueTasks:
         for i in range(5):
             await make_task(pid, user, title=f"Task {i}", due_date=yesterday)
 
-        result = await list_overdue_tasks(project_id=pid, limit=2, skip=3)
+        result = await list_overdue_tasks.fn(project_id=pid, limit=2, skip=3)
 
         assert result["total"] == 5
         assert len(result["items"]) == 2
@@ -164,7 +164,7 @@ class TestListOverdueTasks:
 
         await make_task(pid, user, title="Check Format", due_date=yesterday)
 
-        result = await list_overdue_tasks(project_id=pid)
+        result = await list_overdue_tasks.fn(project_id=pid)
 
         assert "items" in result
         assert "total" in result
@@ -179,7 +179,7 @@ class TestListOverdueTasks:
         _, project = setup_data
         pid = str(project.id)
 
-        result = await list_overdue_tasks(project_id=pid)
+        result = await list_overdue_tasks.fn(project_id=pid)
 
         assert result["total"] == 0
         assert result["items"] == []
@@ -198,7 +198,7 @@ class TestListOverdueTasks:
         await make_task(pid, user, title="P1 Overdue", due_date=yesterday)
         await make_task(pid2, user, title="P2 Overdue", due_date=yesterday)
 
-        result = await list_overdue_tasks()
+        result = await list_overdue_tasks.fn()
 
         assert result["total"] == 2
 
