@@ -181,22 +181,27 @@ async def update_task(
     # This allows clients to clear fields like due_date and assignee_id by
     # sending null explicitly.
     updates = body.model_dump(exclude_unset=True)
+    actor = str(user.id)
 
     if "title" in updates:
         task.title = updates["title"]
     if "description" in updates:
         task.description = updates["description"]
     if "priority" in updates:
+        task.record_change("priority", task.priority, updates["priority"], actor)
         task.priority = updates["priority"]
     if "status" in updates:
+        task.record_change("status", task.status, updates["status"], actor)
         task.transition_status(updates["status"])
     if "due_date" in updates:
         task.due_date = updates["due_date"]
     if "assignee_id" in updates:
+        task.record_change("assignee_id", task.assignee_id, updates["assignee_id"], actor)
         task.assignee_id = updates["assignee_id"]
     if "tags" in updates:
         task.tags = updates["tags"]
     if "task_type" in updates:
+        task.record_change("task_type", task.task_type, updates["task_type"], actor)
         task.task_type = updates["task_type"]
     if "decision_context" in updates:
         dc = updates["decision_context"]
@@ -209,10 +214,12 @@ async def update_task(
                 options=[DecisionOption(label=o["label"], description=o.get("description", "")) for o in dc.get("options", [])],
             )
     if "needs_detail" in updates:
+        task.record_change("needs_detail", str(task.needs_detail), str(updates["needs_detail"]), actor)
         task.needs_detail = updates["needs_detail"]
         if updates["needs_detail"]:
             task.approved = False
     if "approved" in updates:
+        task.record_change("approved", str(task.approved), str(updates["approved"]), actor)
         task.approved = updates["approved"]
         if updates["approved"]:
             task.needs_detail = False
@@ -251,6 +258,7 @@ async def complete_task(
     task = await Task.get(task_id)
     if not task or task.project_id != project_id or task.is_deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    task.record_change("status", task.status, TaskStatus.done, str(user.id))
     task.status = TaskStatus.done
     task.completed_at = datetime.now(UTC)
     if body and body.completion_report is not None:
@@ -267,6 +275,7 @@ async def reopen_task(project_id: str, task_id: str, user: User = Depends(get_cu
     task = await Task.get(task_id)
     if not task or task.project_id != project_id or task.is_deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    task.record_change("status", task.status, TaskStatus.todo, str(user.id))
     task.status = TaskStatus.todo
     task.completed_at = None
     await task.save_updated()

@@ -57,6 +57,11 @@ def _parse_date_filter(value: str) -> datetime:
     return datetime.fromisoformat(value)
 
 
+def _scope_meta(scopes: list[str]) -> dict:
+    """Build _meta dict showing which project scopes are applied."""
+    return {"scoped_projects": scopes if scopes else None}
+
+
 UPDATABLE_FIELDS = {
     "title", "description", "status", "priority", "due_date",
     "assignee_id", "tags", "needs_detail", "approved", "sort_order", "archived",
@@ -154,7 +159,7 @@ async def list_tasks(
         query.clone().sort(sort_expr, secondary).skip(skip).limit(limit).to_list(),
     )
     serialize = _task_summary if summary else _task_dict
-    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
+    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip, "_meta": _scope_meta(key_info["project_scopes"])}
 
 
 @mcp.tool()
@@ -167,6 +172,38 @@ async def get_task(task_id: str) -> dict:
     key_info = await authenticate()
     task = await _get_task_or_raise(task_id, key_info["project_scopes"])
     return _task_dict(task)
+
+
+@mcp.tool()
+async def get_task_activity(task_id: str, limit: int = 20) -> dict:
+    """Get the change history (activity log) of a task.
+
+    Returns recent field changes such as status transitions, priority changes,
+    assignee changes, and flag updates.
+
+    Args:
+        task_id: Task ID
+        limit: Maximum number of entries to return (default 20, most recent first)
+    """
+    key_info = await authenticate()
+    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
+
+    entries = sorted(task.activity_log, key=lambda e: e.changed_at, reverse=True)[:limit]
+    return {
+        "task_id": str(task.id),
+        "title": task.title,
+        "entries": [
+            {
+                "field": e.field,
+                "old_value": e.old_value,
+                "new_value": e.new_value,
+                "changed_by": e.changed_by,
+                "changed_at": e.changed_at.isoformat(),
+            }
+            for e in entries
+        ],
+        "total": len(task.activity_log),
+    }
 
 
 @mcp.tool()
@@ -341,7 +378,14 @@ async def update_task(
     if disallowed:
         raise ToolError(f"Cannot update field(s): {', '.join(sorted(disallowed))}")
 
+    actor = f"mcp:{key_info['key_name']}" if key_info.get("key_name") else "mcp"
+    TRACKED_FIELDS = {"status", "priority", "assignee_id", "task_type", "needs_detail", "approved"}
+
     for field, value in updates.items():
+        if field in TRACKED_FIELDS:
+            old = getattr(task, field, None)
+            task.record_change(field, str(old) if old is not None else None, str(value), actor)
+
         if field == "status":
             task.transition_status(TaskStatus(value))
         elif field == "due_date":
@@ -405,8 +449,10 @@ async def complete_task(task_id: str, completion_report: str | None = None) -> d
     key_info = await authenticate()
     task = await _get_task_or_raise(task_id, key_info["project_scopes"])
 
+    actor = f"mcp:{key_info['key_name']}" if key_info.get("key_name") else "mcp"
     changed = False
     if task.status != TaskStatus.done:
+        task.record_change("status", task.status, TaskStatus.done, actor)
         task.status = TaskStatus.done
         task.completed_at = datetime.now(UTC)
         changed = True
@@ -428,7 +474,9 @@ async def reopen_task(task_id: str) -> dict:
     """
     key_info = await authenticate()
     task = await _get_task_or_raise(task_id, key_info["project_scopes"])
+    actor = f"mcp:{key_info['key_name']}" if key_info.get("key_name") else "mcp"
 
+    task.record_change("status", task.status, TaskStatus.todo, actor)
     task.status = TaskStatus.todo
     task.completed_at = None
     await task.save_updated()
@@ -570,7 +618,7 @@ async def search_tasks(
         db_query.clone().skip(skip).limit(limit).to_list(),
     )
     serialize = _task_summary if summary else _task_dict
-    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
+    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip, "_meta": _scope_meta(scopes)}
 
 
 @mcp.tool()
@@ -611,7 +659,7 @@ async def list_overdue_tasks(
         db_query.clone().sort(+Task.due_date).skip(skip).limit(limit).to_list(),
     )
     serialize = _task_summary if summary else _task_dict
-    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
+    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip, "_meta": _scope_meta(scopes)}
 
 
 @mcp.tool()
@@ -743,7 +791,7 @@ async def list_review_tasks(
     total = await query.count()
     tasks = await query.sort(+Task.sort_order, +Task.created_at).limit(limit).to_list()
     serialize = _task_summary if summary else _task_dict
-    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": 0}
+    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": 0, "_meta": _scope_meta(key_info["project_scopes"])}
 
 
 @mcp.tool()
@@ -787,7 +835,7 @@ async def list_approved_tasks(
     total = await db_query.count()
     tasks = await db_query.sort(+Task.sort_order, +Task.created_at).limit(limit).to_list()
     serialize = _task_summary if summary else _task_dict
-    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": 0}
+    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": 0, "_meta": _scope_meta(scopes)}
 
 
 @mcp.tool()
@@ -916,7 +964,7 @@ async def get_subtasks(
         query.clone().sort(+Task.sort_order, +Task.created_at).skip(skip).limit(limit).to_list(),
     )
     serialize = _task_summary if summary else _task_dict
-    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
+    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip, "_meta": _scope_meta(key_info["project_scopes"])}
 
 
 @mcp.tool()

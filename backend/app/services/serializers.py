@@ -64,6 +64,16 @@ def task_to_dict(t: Task) -> dict:
         "archived": t.archived,
         "needs_detail": t.needs_detail,
         "approved": t.approved,
+        "activity_log": [
+            {
+                "field": e.field,
+                "old_value": e.old_value,
+                "new_value": e.new_value,
+                "changed_by": e.changed_by,
+                "changed_at": e.changed_at.isoformat(),
+            }
+            for e in (t.activity_log[-10:] if t.activity_log else [])
+        ],
         "sort_order": t.sort_order,
         "created_at": t.created_at.isoformat(),
         "updated_at": t.updated_at.isoformat(),

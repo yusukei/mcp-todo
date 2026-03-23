@@ -6,8 +6,8 @@ import TaskBoard from '../components/task/TaskBoard'
 import TaskList from '../components/task/TaskList'
 import TaskDetail from '../components/task/TaskDetail'
 import TaskCreateModal from '../components/task/TaskCreateModal'
-import { LayoutGrid, List, Plus, Archive, Filter } from 'lucide-react'
-import { STATUS_OPTIONS } from '../constants/task'
+import { LayoutGrid, List, Plus, Archive, Filter, Columns3 } from 'lucide-react'
+import { STATUS_OPTIONS, BOARD_COLUMNS } from '../constants/task'
 import { showErrorToast } from '../components/common/Toast'
 import type { Task, TaskStatus } from '../types'
 
@@ -24,6 +24,22 @@ export default function ProjectPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [showColumnPicker, setShowColumnPicker] = useState(false)
+  const [visibleColumns, setVisibleColumns] = useState<TaskStatus[]>(() => {
+    const saved = localStorage.getItem(`board-columns:${projectId}`)
+    if (saved) {
+      try { return JSON.parse(saved) } catch { /* ignore */ }
+    }
+    return BOARD_COLUMNS.map((c) => c.key)
+  })
+  const toggleColumn = (key: TaskStatus) => {
+    setVisibleColumns((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+      if (next.length === 0) return prev
+      localStorage.setItem(`board-columns:${projectId}`, JSON.stringify(next))
+      return next
+    })
+  }
   const qc = useQueryClient()
 
   const updateFlagsMutation = useMutation({
@@ -140,6 +156,32 @@ export default function ProjectPage() {
               ))}
             </select>
           </div>
+          {view === 'board' && (
+            <div className="relative">
+              <button
+                onClick={() => setShowColumnPicker(!showColumnPicker)}
+                className={`p-2 rounded-lg transition-colors ${showColumnPicker ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                title="表示カラム"
+              >
+                <Columns3 className="w-5 h-5" />
+              </button>
+              {showColumnPicker && (
+                <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-20 min-w-[140px]">
+                  {BOARD_COLUMNS.map((col) => (
+                    <label key={col.key} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={visibleColumns.includes(col.key)}
+                        onChange={() => toggleColumn(col.key)}
+                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-200">{col.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <button
             onClick={() => setShowArchived(!showArchived)}
             className={`p-2 rounded-lg transition-colors ${showArchived ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
@@ -167,7 +209,7 @@ export default function ProjectPage() {
       {/* Content */}
       <div className="flex-1 overflow-hidden">
         {view === 'board' ? (
-          <TaskBoard tasks={filteredTasks} projectId={projectId!} onTaskClick={setSelectedTaskId} onUpdateFlags={handleUpdateFlags} onArchive={handleArchive} onStatusChange={handleStatusChange} showArchived={showArchived} />
+          <TaskBoard tasks={filteredTasks} projectId={projectId!} onTaskClick={setSelectedTaskId} onUpdateFlags={handleUpdateFlags} onArchive={handleArchive} onStatusChange={handleStatusChange} showArchived={showArchived} visibleColumns={visibleColumns} />
         ) : (
           <TaskList tasks={filteredTasks} projectId={projectId!} onTaskClick={setSelectedTaskId} onUpdateFlags={handleUpdateFlags} onArchive={handleArchive} showArchived={showArchived} />
         )}

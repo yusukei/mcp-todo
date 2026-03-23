@@ -36,6 +36,14 @@ class DecisionContext(BaseModel):
     options: list[DecisionOption] = Field(default_factory=list)
 
 
+class ActivityEntry(BaseModel):
+    field: str
+    old_value: str | None = None
+    new_value: str | None = None
+    changed_by: str = ""
+    changed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
 class Attachment(BaseModel):
     id: str = Field(default_factory=lambda: str(ObjectId()))
     filename: str
@@ -66,6 +74,7 @@ class Task(Document):
     tags: list[str] = Field(default_factory=list)
     comments: list[Comment] = Field(default_factory=list)
     attachments: list[Attachment] = Field(default_factory=list)
+    activity_log: list[ActivityEntry] = Field(default_factory=list)
     created_by: str
     completion_report: str | None = None
     completed_at: datetime | None = None
@@ -86,6 +95,17 @@ class Task(Document):
             [("parent_task_id", 1), ("is_deleted", 1)],
             [("due_date", 1), ("status", 1), ("is_deleted", 1)],
         ]
+
+    def record_change(self, field: str, old_value: str | None, new_value: str | None, changed_by: str = "") -> None:
+        """Append an activity log entry for a field change."""
+        if old_value == new_value:
+            return
+        self.activity_log.append(ActivityEntry(
+            field=field,
+            old_value=old_value,
+            new_value=new_value,
+            changed_by=changed_by,
+        ))
 
     def transition_status(self, new_status: "TaskStatus") -> None:
         """Update status and manage completed_at timestamp accordingly."""

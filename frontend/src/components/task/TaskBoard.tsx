@@ -23,6 +23,7 @@ interface Props {
   onArchive: (taskId: string, archive: boolean) => void
   onStatusChange: (taskId: string, status: TaskStatus) => void
   showArchived: boolean
+  visibleColumns?: TaskStatus[]
 }
 
 function DroppableColumn({
@@ -47,7 +48,7 @@ function DroppableColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`flex-shrink-0 w-72 flex flex-col rounded-xl transition-all duration-200 ${
+      className={`flex-1 min-w-[240px] max-w-[600px] flex flex-col rounded-xl transition-all duration-200 ${
         isOver
           ? 'ring-2 ring-indigo-400 dark:ring-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20'
           : ''
@@ -74,7 +75,11 @@ export default function TaskBoard({
   onArchive,
   onStatusChange,
   showArchived,
+  visibleColumns,
 }: Props) {
+  const columns = visibleColumns
+    ? BOARD_COLUMNS.filter((col) => visibleColumns.includes(col.key))
+    : BOARD_COLUMNS
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [overColumnId, setOverColumnId] = useState<string | null>(null)
 
@@ -90,7 +95,7 @@ export default function TaskBoard({
 
   const tasksByStatus = useMemo(() => {
     const map: Record<string, Task[]> = {}
-    for (const col of BOARD_COLUMNS) map[col.key] = []
+    for (const col of columns) map[col.key] = []
     for (const t of tasks) {
       if (map[t.status]) map[t.status].push(t)
     }
@@ -98,7 +103,7 @@ export default function TaskBoard({
       map[key].sort((a, b) => (priorityOrder[a.priority] ?? 99) - (priorityOrder[b.priority] ?? 99))
     }
     return map
-  }, [tasks])
+  }, [tasks, columns])
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
@@ -111,12 +116,12 @@ export default function TaskBoard({
 
   const handleDragOver = useCallback((event: DragOverEvent) => {
     const overId = event.over?.id as string | undefined
-    if (overId && BOARD_COLUMNS.some((col) => col.key === overId)) {
+    if (overId && columns.some((col) => col.key === overId)) {
       setOverColumnId(overId)
     } else {
       setOverColumnId(null)
     }
-  }, [])
+  }, [columns])
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -129,14 +134,14 @@ export default function TaskBoard({
       const taskId = active.id as string
       const newStatus = over.id as TaskStatus
 
-      if (!BOARD_COLUMNS.some((col) => col.key === newStatus)) return
+      if (!columns.some((col) => col.key === newStatus)) return
 
       const task = tasks.find((t) => t.id === taskId)
       if (!task || task.status === newStatus) return
 
       onStatusChange(taskId, newStatus)
     },
-    [tasks, onStatusChange],
+    [tasks, onStatusChange, columns],
   )
 
   const handleDragCancel = useCallback(() => {
@@ -153,7 +158,7 @@ export default function TaskBoard({
       onDragCancel={handleDragCancel}
     >
       <div className="flex gap-4 p-6 h-full overflow-x-auto">
-        {BOARD_COLUMNS.map((col) => {
+        {columns.map((col) => {
           const colTasks = tasksByStatus[col.key] ?? []
           return (
             <DroppableColumn
