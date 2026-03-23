@@ -3,6 +3,7 @@
 import pytest
 
 from app.core.security import create_access_token, create_refresh_token
+from app.core.redis import get_redis
 from app.models import AllowedEmail, User
 from app.models.user import AuthType
 from app.core.security import hash_password
@@ -63,7 +64,9 @@ class TestLogin:
 
 class TestRefresh:
     async def test_refresh_with_valid_token(self, client, admin_user):
-        refresh = create_refresh_token(str(admin_user.id))
+        refresh, jti = create_refresh_token(str(admin_user.id))
+        redis = get_redis()
+        await redis.set(f"refresh_jti:{jti}", "valid", ex=604800)
         resp = await client.post(
             "/api/v1/auth/refresh", json={"refresh_token": refresh}
         )
@@ -88,14 +91,18 @@ class TestRefresh:
 
     async def test_refresh_user_not_found(self, client):
         """存在しないユーザーの refresh トークン"""
-        token = create_refresh_token("000000000000000000000000")
+        token, jti = create_refresh_token("000000000000000000000000")
+        redis = get_redis()
+        await redis.set(f"refresh_jti:{jti}", "valid", ex=604800)
         resp = await client.post(
             "/api/v1/auth/refresh", json={"refresh_token": token}
         )
         assert resp.status_code == 401
 
     async def test_refresh_inactive_user(self, client, inactive_user):
-        token = create_refresh_token(str(inactive_user.id))
+        token, jti = create_refresh_token(str(inactive_user.id))
+        redis = get_redis()
+        await redis.set(f"refresh_jti:{jti}", "valid", ex=604800)
         resp = await client.post(
             "/api/v1/auth/refresh", json={"refresh_token": token}
         )
@@ -118,7 +125,7 @@ class TestMe:
 
     async def test_me_with_refresh_token(self, client, admin_user):
         """refresh トークンは /me に使えない"""
-        refresh = create_refresh_token(str(admin_user.id))
+        refresh, _ = create_refresh_token(str(admin_user.id))
         resp = await client.get(
             "/api/v1/auth/me",
             headers={"Authorization": f"Bearer {refresh}"},

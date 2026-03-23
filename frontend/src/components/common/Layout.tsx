@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import { Link, Outlet, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { FolderOpen, LogOut, Settings, CheckSquare } from 'lucide-react'
+import { FolderOpen, LogOut, Settings, CheckSquare, Menu, X } from 'lucide-react'
 import { api } from '../../api/client'
 import { useAuthStore } from '../../store/auth'
 import { useSSE } from '../../hooks/useSSE'
@@ -10,6 +11,7 @@ import type { Project } from '../../types'
 export default function Layout() {
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   useSSE()
 
   const { data: projects = [] } = useQuery({
@@ -22,68 +24,117 @@ export default function Layout() {
     navigate('/login')
   }
 
-  return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Sidebar */}
-      <aside className="w-56 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-        <div className="px-4 py-5 border-b border-gray-100 dark:border-gray-700">
-          <div className="flex items-center gap-2">
-            <CheckSquare className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-            <span className="font-bold text-gray-800 dark:text-gray-100">Claude Todo</span>
-          </div>
-        </div>
+  const closeSidebar = () => setSidebarOpen(false)
 
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider px-2 mb-2">
-            プロジェクト
-          </p>
+  const sidebarContent = (
+    <>
+      <div className="px-4 py-5 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <CheckSquare className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+          <span className="font-bold text-gray-800 dark:text-gray-100">Claude Todo</span>
+        </div>
+        <button
+          onClick={closeSidebar}
+          className="md:hidden p-1 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+          aria-label="サイドバーを閉じる"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider px-2 mb-2">
+          プロジェクト
+        </p>
+        <Link
+          to="/projects"
+          onClick={closeSidebar}
+          className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+        >
+          <FolderOpen className="w-4 h-4" />
+          すべて
+        </Link>
+        {projects.map((p: Project) => (
           <Link
-            to="/projects"
+            key={p.id}
+            to={`/projects/${p.id}`}
+            onClick={closeSidebar}
             className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
           >
-            <FolderOpen className="w-4 h-4" />
-            すべて
+            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.color ?? undefined }} />
+            <span className="truncate">{p.name}</span>
           </Link>
-          {projects.map((p: Project) => (
-            <Link
-              key={p.id}
-              to={`/projects/${p.id}`}
-              className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-            >
-              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.color ?? undefined }} />
-              <span className="truncate">{p.name}</span>
-            </Link>
-          ))}
-        </nav>
+        ))}
+      </nav>
 
-        <div className="px-3 py-4 border-t border-gray-100 dark:border-gray-700 space-y-1">
-          {user?.is_admin && (
-            <Link
-              to="/admin"
-              aria-label="管理画面"
-              className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-            >
-              <Settings className="w-4 h-4" />
-              管理者設定
-            </Link>
-          )}
-          <button
-            onClick={handleLogout}
-            aria-label="ログアウト"
-            className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+      <div className="px-3 py-4 border-t border-gray-100 dark:border-gray-700 space-y-1">
+        {user?.is_admin && (
+          <Link
+            to="/admin"
+            onClick={closeSidebar}
+            aria-label="管理画面"
+            className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
           >
-            <LogOut className="w-4 h-4" />
-            ログアウト
-          </button>
-          <div className="px-2 pt-2 flex items-center justify-between">
-            <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{user?.name}</p>
-            <ThemeToggle />
-          </div>
+            <Settings className="w-4 h-4" />
+            管理者設定
+          </Link>
+        )}
+        <button
+          onClick={handleLogout}
+          aria-label="ログアウト"
+          className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+        >
+          <LogOut className="w-4 h-4" />
+          ログアウト
+        </button>
+        <div className="px-2 pt-2 flex items-center justify-between">
+          <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{user?.name}</p>
+          <ThemeToggle />
         </div>
+      </div>
+    </>
+  )
+
+  return (
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Desktop sidebar */}
+      <aside className="hidden md:flex w-56 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex-col">
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={closeSidebar}
+        />
+      )}
+
+      {/* Mobile sidebar drawer */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-56 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col transform transition-transform duration-200 ease-in-out md:hidden ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {sidebarContent}
       </aside>
 
       {/* Main */}
       <main className="flex-1 overflow-hidden flex flex-col">
+        {/* Mobile header with hamburger */}
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 md:hidden">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-1 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+            aria-label="メニューを開く"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            <CheckSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <span className="font-semibold text-sm text-gray-800 dark:text-gray-100">Claude Todo</span>
+          </div>
+        </div>
         <Outlet />
       </main>
     </div>

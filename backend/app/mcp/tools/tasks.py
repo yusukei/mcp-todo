@@ -1,6 +1,7 @@
+import asyncio
 import logging
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastmcp.exceptions import ToolError
 
@@ -14,6 +15,47 @@ from ..server import mcp
 from .projects import _resolve_project_id
 
 logger = logging.getLogger(__name__)
+
+async def _get_task_or_raise(task_id: str, scopes: list[str]) -> Task:
+    """Fetch a task by ID, verify it exists and is not deleted, and check project access."""
+    task = await Task.get(task_id)
+    if not task or task.is_deleted:
+        raise ToolError("Task not found")
+    check_project_access(task.project_id, scopes)
+    return task
+
+
+def _task_summary(task: "Task") -> dict:
+    """Lightweight task serialization excluding comments and attachments."""
+    d = _task_dict(task)
+    d.pop("comments", None)
+    d.pop("attachments", None)
+    return d
+
+
+def _parse_date_filter(value: str) -> datetime:
+    """Parse a date filter value. Supports ISO 8601 and shorthands."""
+    shorthands = {
+        "today": lambda: datetime.now(UTC).replace(hour=23, minute=59, second=59),
+        "tomorrow": lambda: (datetime.now(UTC) + timedelta(days=1)).replace(hour=23, minute=59, second=59),
+        "yesterday": lambda: (datetime.now(UTC) - timedelta(days=1)).replace(hour=23, minute=59, second=59),
+        "this_week": lambda: datetime.now(UTC) + timedelta(days=(6 - datetime.now(UTC).weekday())),
+        "next_week": lambda: datetime.now(UTC) + timedelta(days=(13 - datetime.now(UTC).weekday())),
+        "this_month": lambda: (datetime.now(UTC).replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(seconds=1),
+    }
+
+    if value in shorthands:
+        return shorthands[value]()
+
+    # Relative days: +7d, -3d
+    rel_match = re.match(r'^([+-]?\d+)d$', value)
+    if rel_match:
+        days = int(rel_match.group(1))
+        return datetime.now(UTC) + timedelta(days=days)
+
+    # ISO 8601 fallback
+    return datetime.fromisoformat(value)
+
 
 UPDATABLE_FIELDS = {
     "title", "description", "status", "priority", "due_date",
@@ -38,6 +80,7 @@ async def list_tasks(
     order: str = "asc",
     limit: int = 50,
     skip: int = 0,
+    summary: bool = False,
 ) -> dict:
     """List tasks in a project with optional filters.
 
@@ -53,12 +96,13 @@ async def list_tasks(
         needs_detail: Filter by needs_detail flag (true/false)
         approved: Filter by approved flag (true/false)
         archived: Filter by archived flag (true/false). Default false (hides archived). Set to null/omit to include all.
-        due_before: Filter tasks with due_date before this date (ISO 8601 format)
-        due_after: Filter tasks with due_date after this date (ISO 8601 format)
+        due_before: Filter tasks due before this date. Supports ISO 8601, or shorthands: today, tomorrow, yesterday, this_week, next_week, this_month, +7d, -3d
+        due_after: Filter tasks due after this date. Supports ISO 8601, or shorthands: today, tomorrow, yesterday, this_week, next_week, this_month, +7d, -3d
         sort_by: Sort field: sort_order (default) / created_at / due_date / priority / updated_at
         order: Sort direction: asc (default) / desc
         limit: Maximum number of tasks to return (default 50)
         skip: Number of tasks to skip for pagination (default 0)
+        summary: If true, exclude comments and attachments from response for lighter payload (default false)
     """
     key_info = await authenticate()
     project_id = await _resolve_project_id(project_id)
@@ -80,9 +124,9 @@ async def list_tasks(
     if archived is not None:
         query = query.find(Task.archived == archived)
     if due_before:
-        query = query.find(Task.due_date <= datetime.fromisoformat(due_before))
+        query = query.find(Task.due_date <= _parse_date_filter(due_before))
     if due_after:
-        query = query.find(Task.due_date >= datetime.fromisoformat(due_after))
+        query = query.find(Task.due_date >= _parse_date_filter(due_after))
 
     SORT_FIELDS = {
         "sort_order": Task.sort_order,
@@ -101,9 +145,12 @@ async def list_tasks(
     # Secondary sort for stability
     secondary = +Task.created_at if sort_by != "created_at" else +Task.sort_order
 
-    total = await query.count()
-    tasks = await query.sort(sort_expr, secondary).skip(skip).limit(limit).to_list()
-    return {"items": [_task_dict(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
+    total, tasks = await asyncio.gather(
+        query.count(),
+        query.clone().sort(sort_expr, secondary).skip(skip).limit(limit).to_list(),
+    )
+    serialize = _task_summary if summary else _task_dict
+    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
 
 
 @mcp.tool()
@@ -114,10 +161,7 @@ async def get_task(task_id: str) -> dict:
         task_id: Task ID
     """
     key_info = await authenticate()
-    task = await Task.get(task_id)
-    if not task or task.is_deleted:
-        raise ToolError("Task not found")
-    check_project_access(task.project_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
     return _task_dict(task)
 
 
@@ -216,10 +260,7 @@ async def update_task(
     if priority is not None and priority not in VALID_PRIORITIES:
         raise ToolError(f"Invalid priority '{priority}'. Valid: {', '.join(sorted(VALID_PRIORITIES))}")
 
-    task = await Task.get(task_id)
-    if not task or task.is_deleted:
-        raise ToolError("Task not found")
-    check_project_access(task.project_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
 
     updates: dict = {}
     if title is not None:
@@ -275,10 +316,7 @@ async def delete_task(task_id: str) -> dict:
         task_id: Task ID
     """
     key_info = await authenticate()
-    task = await Task.get(task_id)
-    if not task or task.is_deleted:
-        raise ToolError("Task not found")
-    check_project_access(task.project_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
 
     task.is_deleted = True
     await task.save_updated()
@@ -295,10 +333,7 @@ async def complete_task(task_id: str, completion_report: str | None = None) -> d
         completion_report: Optional completion report text (supports Markdown)
     """
     key_info = await authenticate()
-    task = await Task.get(task_id)
-    if not task or task.is_deleted:
-        raise ToolError("Task not found")
-    check_project_access(task.project_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
 
     changed = False
     if task.status != TaskStatus.done:
@@ -322,10 +357,7 @@ async def reopen_task(task_id: str) -> dict:
         task_id: Task ID
     """
     key_info = await authenticate()
-    task = await Task.get(task_id)
-    if not task or task.is_deleted:
-        raise ToolError("Task not found")
-    check_project_access(task.project_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
 
     task.status = TaskStatus.todo
     task.completed_at = None
@@ -342,10 +374,7 @@ async def archive_task(task_id: str) -> dict:
         task_id: Task ID
     """
     key_info = await authenticate()
-    task = await Task.get(task_id)
-    if not task or task.is_deleted:
-        raise ToolError("Task not found")
-    check_project_access(task.project_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
 
     task.archived = True
     await task.save_updated()
@@ -361,10 +390,7 @@ async def unarchive_task(task_id: str) -> dict:
         task_id: Task ID
     """
     key_info = await authenticate()
-    task = await Task.get(task_id)
-    if not task or task.is_deleted:
-        raise ToolError("Task not found")
-    check_project_access(task.project_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
 
     task.archived = False
     await task.save_updated()
@@ -383,10 +409,7 @@ async def add_comment(task_id: str, content: str) -> dict:
     key_info = await authenticate()
     if len(content) > 10000:
         raise ToolError("Comment content exceeds maximum length of 10000 characters")
-    task = await Task.get(task_id)
-    if not task or task.is_deleted:
-        raise ToolError("Task not found")
-    check_project_access(task.project_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
 
     author_name = key_info.get("key_name", "Claude")
     comment = Comment(content=content, author_id="mcp", author_name=author_name)
@@ -409,10 +432,7 @@ async def delete_comment(task_id: str, comment_id: str) -> dict:
         comment_id: Comment ID to delete
     """
     key_info = await authenticate()
-    task = await Task.get(task_id)
-    if not task or task.is_deleted:
-        raise ToolError("Task not found")
-    check_project_access(task.project_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
 
     comment = next((c for c in task.comments if c.id == comment_id), None)
     if not comment:
@@ -435,6 +455,7 @@ async def search_tasks(
     approved: bool | None = None,
     limit: int = 50,
     skip: int = 0,
+    summary: bool = False,
 ) -> dict:
     """Search tasks by keyword across title and description.
 
@@ -446,6 +467,7 @@ async def search_tasks(
         approved: Filter by approved flag (true/false)
         limit: Maximum number of results (default 50)
         skip: Number of results to skip for pagination (default 0)
+        summary: If true, exclude comments and attachments from response for lighter payload (default false)
     """
     key_info = await authenticate()
     scopes = key_info["project_scopes"]
@@ -473,9 +495,12 @@ async def search_tasks(
         filters["approved"] = approved
 
     db_query = Task.find(filters)
-    total = await db_query.count()
-    tasks = await db_query.skip(skip).limit(limit).to_list()
-    return {"items": [_task_dict(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
+    total, tasks = await asyncio.gather(
+        db_query.count(),
+        db_query.clone().skip(skip).limit(limit).to_list(),
+    )
+    serialize = _task_summary if summary else _task_dict
+    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
 
 
 @mcp.tool()
@@ -483,6 +508,7 @@ async def list_overdue_tasks(
     project_id: str | None = None,
     limit: int = 50,
     skip: int = 0,
+    summary: bool = False,
 ) -> dict:
     """List overdue tasks (past their due date and not completed).
 
@@ -490,6 +516,7 @@ async def list_overdue_tasks(
         project_id: Limit to a specific project by ID or name (omit for all projects)
         limit: Maximum number of results (default 50)
         skip: Number of tasks to skip for pagination (default 0)
+        summary: If true, exclude comments and attachments from response for lighter payload (default false)
     """
     key_info = await authenticate()
     scopes = key_info["project_scopes"]
@@ -509,9 +536,12 @@ async def list_overdue_tasks(
         filters["project_id"] = {"$in": scopes}
 
     db_query = Task.find(filters)
-    total = await db_query.count()
-    tasks = await db_query.sort(+Task.due_date).skip(skip).limit(limit).to_list()
-    return {"items": [_task_dict(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
+    total, tasks = await asyncio.gather(
+        db_query.count(),
+        db_query.clone().sort(+Task.due_date).skip(skip).limit(limit).to_list(),
+    )
+    serialize = _task_summary if summary else _task_dict
+    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
 
 
 @mcp.tool()
@@ -539,6 +569,7 @@ async def batch_create_tasks(project_id: str, tasks: list[dict]) -> dict:
 
     created = []
     failed = []
+    task_objects = []
     for item in tasks:
         try:
             parsed_due_date = None
@@ -557,12 +588,28 @@ async def batch_create_tasks(project_id: str, tasks: list[dict]) -> dict:
                 tags=item.get("tags", []),
                 created_by=creator,
             )
-            await task.insert()
-            await publish_event(project_id, "task.created", _task_dict(task))
-            created.append(_task_dict(task))
+            task_objects.append(task)
         except Exception as e:
             logger.warning("batch_create_tasks: failed to create task '%s': %s", item.get("title"), e)
             failed.append({"title": item.get("title"), "error": str(e)})
+
+    if task_objects:
+        try:
+            await Task.insert_many(task_objects)
+            created = [_task_dict(t) for t in task_objects]
+        except Exception:
+            logger.warning("batch_create_tasks: insert_many failed, falling back to one-by-one")
+            for task in task_objects:
+                try:
+                    await task.insert()
+                    created.append(_task_dict(task))
+                except Exception as e:
+                    logger.warning("batch_create_tasks: failed to insert task '%s': %s", task.title, e)
+                    failed.append({"title": task.title, "error": str(e)})
+
+    if created:
+        await publish_event(project_id, "tasks.batch_created", {"count": len(created)})
+
     return {"created": created, "failed": failed}
 
 
@@ -571,6 +618,7 @@ async def list_review_tasks(
     project_id: str,
     flag: str = "all",
     limit: int = 50,
+    summary: bool = False,
 ) -> dict:
     """List tasks filtered by review flag status within a single project.
 
@@ -582,6 +630,7 @@ async def list_review_tasks(
         project_id: Project ID or project name
         flag: Review flag filter: needs_detail / approved / pending (neither flag set) / all
         limit: Maximum number of tasks to return (default 50)
+        summary: If true, exclude comments and attachments from response for lighter payload (default false)
     """
     key_info = await authenticate()
     project_id = await _resolve_project_id(project_id)
@@ -599,7 +648,8 @@ async def list_review_tasks(
 
     total = await query.count()
     tasks = await query.sort(+Task.sort_order, +Task.created_at).limit(limit).to_list()
-    return {"items": [_task_dict(t) for t in tasks], "total": total, "limit": limit, "skip": 0}
+    serialize = _task_summary if summary else _task_dict
+    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": 0}
 
 
 @mcp.tool()
@@ -607,6 +657,7 @@ async def list_approved_tasks(
     project_id: str | None = None,
     status: str | None = None,
     limit: int = 50,
+    summary: bool = False,
 ) -> dict:
     """List tasks that have been approved for implementation.
 
@@ -618,6 +669,7 @@ async def list_approved_tasks(
         project_id: Project ID or project name (omit for all projects)
         status: Filter by status (todo / in_progress / done / cancelled)
         limit: Maximum number of results (default 50)
+        summary: If true, exclude comments and attachments from response for lighter payload (default false)
     """
     key_info = await authenticate()
     scopes = key_info["project_scopes"]
@@ -640,7 +692,8 @@ async def list_approved_tasks(
     db_query = Task.find(filters)
     total = await db_query.count()
     tasks = await db_query.sort(+Task.sort_order, +Task.created_at).limit(limit).to_list()
-    return {"items": [_task_dict(t) for t in tasks], "total": total, "limit": limit, "skip": 0}
+    serialize = _task_summary if summary else _task_dict
+    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": 0}
 
 
 @mcp.tool()
@@ -657,6 +710,10 @@ async def batch_update_tasks(updates: list[dict]) -> dict:
 
     updated = []
     failed = []
+    tasks_to_save = []
+    project_ids: set[str] = set()
+
+    # Phase 1: validate and apply field changes sequentially
     for item in updates:
         try:
             task_id = item.get("task_id")
@@ -692,12 +749,30 @@ async def batch_update_tasks(updates: list[dict]) -> dict:
             if fields.get("approved"):
                 task.needs_detail = False
 
-            await task.save_updated()
-            await publish_event(task.project_id, "task.updated", _task_dict(task))
-            updated.append(_task_dict(task))
+            tasks_to_save.append(task)
         except Exception as e:
             logger.warning("batch_update_tasks: failed to update task '%s': %s", item.get("task_id"), e)
             failed.append({"task_id": item.get("task_id"), "error": str(e)})
+
+    # Phase 2: save all validated tasks in parallel
+    if tasks_to_save:
+        results = await asyncio.gather(
+            *[t.save_updated() for t in tasks_to_save],
+            return_exceptions=True,
+        )
+        for task, result in zip(tasks_to_save, results):
+            if isinstance(result, Exception):
+                logger.warning("batch_update_tasks: failed to save task '%s': %s", str(task.id), result)
+                failed.append({"task_id": str(task.id), "error": str(result)})
+            else:
+                updated.append(_task_dict(task))
+                project_ids.add(task.project_id)
+
+    # Phase 3: publish a single batch event per project
+    for pid in project_ids:
+        pid_count = sum(1 for t in tasks_to_save if t.project_id == pid and _task_dict(t) in updated)
+        await publish_event(pid, "tasks.batch_updated", {"count": pid_count})
+
     return {"updated": updated, "failed": failed}
 
 
@@ -707,6 +782,7 @@ async def get_subtasks(
     status: str | None = None,
     limit: int = 50,
     skip: int = 0,
+    summary: bool = False,
 ) -> dict:
     """Get all subtasks of a given parent task.
 
@@ -715,12 +791,10 @@ async def get_subtasks(
         status: Filter: todo / in_progress / done / cancelled
         limit: Maximum number of subtasks to return (default 50)
         skip: Number of subtasks to skip for pagination (default 0)
+        summary: If true, exclude comments and attachments from response for lighter payload (default false)
     """
     key_info = await authenticate()
-    parent = await Task.get(task_id)
-    if not parent or parent.is_deleted:
-        raise ToolError("Parent task not found")
-    check_project_access(parent.project_id, key_info["project_scopes"])
+    parent = await _get_task_or_raise(task_id, key_info["project_scopes"])
 
     query = Task.find(
         Task.parent_task_id == task_id,
@@ -729,9 +803,12 @@ async def get_subtasks(
     if status:
         query = query.find(Task.status == TaskStatus(status))
 
-    total = await query.count()
-    tasks = await query.sort(+Task.sort_order, +Task.created_at).skip(skip).limit(limit).to_list()
-    return {"items": [_task_dict(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
+    total, tasks = await asyncio.gather(
+        query.count(),
+        query.clone().sort(+Task.sort_order, +Task.created_at).skip(skip).limit(limit).to_list(),
+    )
+    serialize = _task_summary if summary else _task_dict
+    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
 
 
 @mcp.tool()

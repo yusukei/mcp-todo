@@ -33,14 +33,16 @@ def create_access_token(subject: str) -> str:
     )
 
 
-def create_refresh_token(subject: str) -> str:
+def create_refresh_token(subject: str) -> tuple[str, str]:
+    """Create a refresh token and return (token, jti) tuple."""
     expire = datetime.now(UTC) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    jti = str(uuid.uuid4())
-    return jwt.encode(
+    jti = uuid.uuid4().hex
+    token = jwt.encode(
         {"sub": subject, "exp": expire, "type": "refresh", "jti": jti},
         settings.REFRESH_SECRET_KEY,
         algorithm=ALGORITHM,
     )
+    return token, jti
 
 
 def decode_access_token(token: str) -> dict | None:

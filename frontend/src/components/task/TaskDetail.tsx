@@ -311,29 +311,29 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask 
             </div>
           </div>
 
-          {/* Priority */}
-          <div>
-            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">優先度</label>
-            <select
-              value={task.priority}
-              onChange={(e) => handlePriorityChange(e.target.value as TaskPriority)}
-              className={selectClasses}
-            >
-              {PRIORITY_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Due date */}
-          <div>
-            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">期限</label>
-            <input
-              type="date"
-              value={draftDueDate}
-              onChange={(e) => handleDueDateChange(e.target.value)}
-              className={inputClasses}
-            />
+          {/* Priority & Due date */}
+          <div className="flex items-center gap-4">
+            <div className="w-40">
+              <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">優先度</label>
+              <select
+                value={task.priority}
+                onChange={(e) => handlePriorityChange(e.target.value as TaskPriority)}
+                className={selectClasses}
+              >
+                {PRIORITY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">期限</label>
+              <input
+                type="date"
+                value={draftDueDate}
+                onChange={(e) => handleDueDateChange(e.target.value)}
+                className={inputClasses}
+              />
+            </div>
           </div>
 
           {/* Review Flags */}

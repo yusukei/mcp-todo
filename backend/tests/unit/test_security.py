@@ -80,16 +80,17 @@ class TestTokenCreation:
         assert payload["sub"] == "user-id-123"
 
     def test_refresh_token_has_refresh_type(self):
-        token = create_refresh_token("user-id-123")
+        token, jti = create_refresh_token("user-id-123")
         payload = jwt.decode(token, settings.REFRESH_SECRET_KEY, algorithms=[ALGORITHM])
         assert payload["type"] == "refresh"
         assert payload["sub"] == "user-id-123"
         assert "jti" in payload
+        assert payload["jti"] == jti
 
     def test_access_and_refresh_tokens_differ(self):
         subject = "user-id-abc"
         access = create_access_token(subject)
-        refresh = create_refresh_token(subject)
+        refresh, _ = create_refresh_token(subject)
         assert access != refresh
 
 
@@ -103,7 +104,7 @@ class TestDecodeAccessToken:
 
     def test_returns_none_for_refresh_token(self):
         """refresh トークンを decode_access_token でデコードできないことを確認"""
-        token = create_refresh_token("uid-2")
+        token, _ = create_refresh_token("uid-2")
         assert decode_access_token(token) is None
 
     def test_returns_none_for_tampered_token(self):
@@ -129,7 +130,7 @@ class TestDecodeAccessToken:
 
 class TestDecodeRefreshToken:
     def test_decodes_valid_refresh_token(self):
-        token = create_refresh_token("uid-2")
+        token, _ = create_refresh_token("uid-2")
         payload = decode_refresh_token(token)
         assert payload is not None
         assert payload["sub"] == "uid-2"
@@ -141,7 +142,7 @@ class TestDecodeRefreshToken:
         assert decode_refresh_token(token) is None
 
     def test_returns_none_for_tampered_token(self):
-        token = create_refresh_token("uid-3")
+        token, _ = create_refresh_token("uid-3")
         tampered = token[:-5] + "xxxxx"
         assert decode_refresh_token(tampered) is None
 

@@ -37,7 +37,7 @@ class TestSSEAuthentication:
 
     async def test_refresh_token_returns_401(self, client, admin_user):
         """refresh トークンは type が 'refresh' なので拒否される"""
-        token = create_refresh_token(str(admin_user.id))
+        token, _ = create_refresh_token(str(admin_user.id))
         resp = await client.get(f"/api/v1/events?token={token}")
         assert resp.status_code == 401
 

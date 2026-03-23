@@ -1,3 +1,4 @@
+import asyncio
 import shutil
 import uuid
 from datetime import UTC, datetime
@@ -94,8 +95,10 @@ async def list_tasks(
     if archived is not None:
         query = query.find(Task.archived == archived)
 
-    total = await query.count()
-    tasks = await query.sort(+Task.sort_order, +Task.created_at).skip(skip).limit(limit).to_list()
+    total, tasks = await asyncio.gather(
+        query.count(),
+        query.clone().sort(+Task.sort_order, +Task.created_at).skip(skip).limit(limit).to_list(),
+    )
     return {"items": [_task_dict(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
 
 

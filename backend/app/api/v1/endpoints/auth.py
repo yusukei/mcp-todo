@@ -28,6 +28,33 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 _OAUTH_STATE_TTL = 600  # 10分
 _LOGIN_MAX_ATTEMPTS = 5
 _LOGIN_LOCKOUT_SECONDS = 900  # 15分
+_REFRESH_JTI_TTL = settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400  # seconds
+
+
+async def _store_refresh_jti(jti: str) -> None:
+    """Store a refresh token JTI in Redis so it can be validated later."""
+    redis = get_redis()
+    await redis.set(f"refresh_jti:{jti}", "valid", ex=_REFRESH_JTI_TTL)
+
+
+async def _validate_and_revoke_jti(jti: str | None) -> bool:
+    """Validate a JTI exists in Redis and delete it (one-time use).
+
+    Returns True if valid (or if jti is None for backward compatibility).
+    """
+    if jti is None:
+        # Backward compatibility: old tokens without JTI are accepted
+        return True
+    redis = get_redis()
+    result = await redis.delete(f"refresh_jti:{jti}")
+    return result > 0
+
+
+async def _create_and_store_refresh_token(subject: str) -> str:
+    """Create a refresh token and store its JTI in Redis."""
+    token, jti = create_refresh_token(subject)
+    await _store_refresh_jti(jti)
+    return token
 
 
 async def _check_rate_limit(email: str) -> None:
@@ -87,7 +114,7 @@ async def login(body: LoginRequest) -> TokenResponse:
     await _clear_login_attempts(body.username)
     return TokenResponse(
         access_token=create_access_token(str(user.id)),
-        refresh_token=create_refresh_token(str(user.id)),
+        refresh_token=await _create_and_store_refresh_token(str(user.id)),
     )
 
 
@@ -97,13 +124,18 @@ async def refresh(body: RefreshRequest) -> TokenResponse:
     if not payload:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
+    # Validate and revoke old JTI (one-time use)
+    jti = payload.get("jti")
+    if not await _validate_and_revoke_jti(jti):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token already used")
+
     user = await User.get(payload["sub"])
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
     return TokenResponse(
         access_token=create_access_token(str(user.id)),
-        refresh_token=create_refresh_token(str(user.id)),
+        refresh_token=await _create_and_store_refresh_token(str(user.id)),
     )
 
 
@@ -192,5 +224,5 @@ async def google_callback(code: str, state: str) -> TokenResponse:
 
     return TokenResponse(
         access_token=create_access_token(str(user.id)),
-        refresh_token=create_refresh_token(str(user.id)),
+        refresh_token=await _create_and_store_refresh_token(str(user.id)),
     )

@@ -208,7 +208,7 @@ export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags,
                 <span className="text-xs text-gray-500 dark:text-gray-400">
                   {selectedIds.size}件選択
                 </span>
-                <div className="flex items-center gap-1.5 ml-2">
+                <div className="flex flex-wrap items-center gap-2 ml-2">
                   <button
                     onClick={() => bulkUpdateFlags({ needs_detail: true, approved: false })}
                     className="text-xs px-2 py-1 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/60 transition-colors"
