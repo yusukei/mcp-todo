@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
 
@@ -20,6 +21,8 @@ MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 
 router = APIRouter(prefix="/projects/{project_id}/tasks", tags=["tasks"])
+
+MAX_BATCH_SIZE = 100
 
 
 class DecisionOptionRequest(BaseModel):
@@ -122,6 +125,80 @@ async def list_tasks(
         query.clone().sort(+Task.sort_order, +Task.created_at).skip(skip).limit(limit).to_list(),
     )
     return {"items": [_task_dict(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
+
+
+class BatchUpdateItem(BaseModel):
+    task_id: str
+    needs_detail: bool | None = None
+    approved: bool | None = None
+    archived: bool | None = None
+
+
+class BatchUpdateRequest(BaseModel):
+    updates: list[BatchUpdateItem] = Field(..., max_length=MAX_BATCH_SIZE)
+
+
+@router.patch("/batch")
+async def batch_update_tasks(
+    project_id: str, body: BatchUpdateRequest, user: User = Depends(get_current_user)
+) -> dict:
+    """Update flags (needs_detail, approved, archived) for multiple tasks in one request."""
+    await _check_project_access(project_id, user)
+    actor = str(user.id)
+
+    task_ids = [u.task_id for u in body.updates]
+    for tid in task_ids:
+        valid_object_id(tid)
+
+    tasks = await Task.find(
+        {"_id": {"$in": [ObjectId(tid) for tid in task_ids]}},
+        Task.project_id == project_id,
+        Task.is_deleted == False,
+    ).to_list()
+    task_map = {str(t.id): t for t in tasks}
+
+    updated = []
+    failed = []
+
+    for item in body.updates:
+        task = task_map.get(item.task_id)
+        if not task:
+            failed.append({"task_id": item.task_id, "error": "Task not found"})
+            continue
+
+        changes = item.model_dump(exclude_unset=True, exclude={"task_id"})
+        if "needs_detail" in changes:
+            task.record_change("needs_detail", str(task.needs_detail), str(changes["needs_detail"]), actor)
+            task.needs_detail = changes["needs_detail"]
+            if changes["needs_detail"]:
+                task.approved = False
+        if "approved" in changes:
+            task.record_change("approved", str(task.approved), str(changes["approved"]), actor)
+            task.approved = changes["approved"]
+            if changes["approved"]:
+                task.needs_detail = False
+        if "archived" in changes:
+            task.archived = changes["archived"]
+
+        updated.append(task)
+
+    results = await asyncio.gather(
+        *[t.save_updated() for t in updated], return_exceptions=True
+    )
+
+    saved = []
+    for task, result in zip(updated, results):
+        if isinstance(result, Exception):
+            failed.append({"task_id": str(task.id), "error": str(result)})
+        else:
+            saved.append(_task_dict(task))
+
+    if saved:
+        await publish_event(project_id, "tasks.batch_updated", {
+            "count": len(saved), "task_ids": [t["id"] for t in saved]
+        })
+
+    return {"updated": saved, "failed": failed}
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)

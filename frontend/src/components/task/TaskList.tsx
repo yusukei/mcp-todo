@@ -130,10 +130,12 @@ interface Props {
   onTaskClick: (id: string) => void
   onUpdateFlags: (taskId: string, flags: { needs_detail?: boolean; approved?: boolean }) => void
   onArchive: (taskId: string, archive: boolean) => void
+  onBatchUpdateFlags: (taskIds: string[], flags: { needs_detail?: boolean; approved?: boolean }) => void
+  onBatchArchive: (taskIds: string[]) => void
   showArchived: boolean
 }
 
-export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags, onArchive, showArchived }: Props) {
+export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags, onArchive, onBatchUpdateFlags, onBatchArchive, showArchived }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const allSelected = tasks.length > 0 && selectedIds.size === tasks.length
@@ -160,9 +162,7 @@ export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags,
   }, [])
 
   const bulkUpdateFlags = (flags: { needs_detail?: boolean; approved?: boolean }) => {
-    for (const taskId of selectedIds) {
-      onUpdateFlags(taskId, flags)
-    }
+    onBatchUpdateFlags(Array.from(selectedIds), flags)
     setSelectedIds(new Set())
   }
 
@@ -241,9 +241,7 @@ export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags,
                   </button>
                   <button
                     onClick={() => {
-                      for (const taskId of selectedIds) {
-                        onArchive(taskId, true)
-                      }
+                      onBatchArchive(Array.from(selectedIds))
                       setSelectedIds(new Set())
                     }}
                     className="text-xs px-2 py-1 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-900/60 transition-colors"

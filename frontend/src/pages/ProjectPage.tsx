@@ -64,6 +64,32 @@ export default function ProjectPage() {
     },
   })
 
+  const batchUpdateMutation = useMutation({
+    mutationFn: (updates: { task_id: string; needs_detail?: boolean; approved?: boolean; archived?: boolean }[]) =>
+      api.patch(`/projects/${projectId}/tasks/batch`, { updates }),
+    onMutate: async (updates) => {
+      await qc.cancelQueries({ queryKey: ['tasks', projectId, showArchived] })
+      const previousTasks = qc.getQueryData<Task[]>(['tasks', projectId, showArchived])
+      const updateMap = new Map(updates.map((u) => [u.task_id, u]))
+      qc.setQueryData<Task[]>(['tasks', projectId, showArchived], (old) =>
+        old?.map((t) => {
+          const u = updateMap.get(t.id)
+          return u ? { ...t, ...u } : t
+        })
+      )
+      return { previousTasks }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previousTasks) {
+        qc.setQueryData(['tasks', projectId, showArchived], context.previousTasks)
+      }
+      showErrorToast('一括更新に失敗しました')
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['tasks', projectId] })
+    },
+  })
+
   const archiveMutation = useMutation({
     mutationFn: ({ taskId, archive }: { taskId: string; archive: boolean }) =>
       api.post(`/projects/${projectId}/tasks/${taskId}/${archive ? 'archive' : 'unarchive'}`),
@@ -81,6 +107,14 @@ export default function ProjectPage() {
 
   const handleArchive = (taskId: string, archive: boolean) => {
     archiveMutation.mutate({ taskId, archive })
+  }
+
+  const handleBatchUpdateFlags = (taskIds: string[], flags: { needs_detail?: boolean; approved?: boolean }) => {
+    batchUpdateMutation.mutate(taskIds.map((task_id) => ({ task_id, ...flags })))
+  }
+
+  const handleBatchArchive = (taskIds: string[]) => {
+    batchUpdateMutation.mutate(taskIds.map((task_id) => ({ task_id, archived: true })))
   }
 
   const statusChangeMutation = useMutation({
@@ -214,7 +248,7 @@ export default function ProjectPage() {
         {view === 'board' ? (
           <TaskBoard tasks={filteredTasks} projectId={projectId!} onTaskClick={setSelectedTaskId} onUpdateFlags={handleUpdateFlags} onArchive={handleArchive} onStatusChange={handleStatusChange} showArchived={showArchived} visibleColumns={visibleColumns} />
         ) : (
-          <TaskList tasks={filteredTasks} projectId={projectId!} onTaskClick={setSelectedTaskId} onUpdateFlags={handleUpdateFlags} onArchive={handleArchive} showArchived={showArchived} />
+          <TaskList tasks={filteredTasks} projectId={projectId!} onTaskClick={setSelectedTaskId} onUpdateFlags={handleUpdateFlags} onArchive={handleArchive} onBatchUpdateFlags={handleBatchUpdateFlags} onBatchArchive={handleBatchArchive} showArchived={showArchived} />
         )}
       </div>
 
