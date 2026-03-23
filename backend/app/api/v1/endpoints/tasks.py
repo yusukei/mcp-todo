@@ -86,6 +86,7 @@ async def list_tasks(
     priority: TaskPriority | None = None,
     assignee_id: str | None = None,
     tag: str | None = None,
+    task_type: TaskType | None = None,
     needs_detail: bool | None = None,
     approved: bool | None = None,
     archived: bool | None = None,
@@ -105,6 +106,8 @@ async def list_tasks(
         query = query.find(Task.assignee_id == assignee_id)
     if tag:
         query = query.find({"tags": tag})
+    if task_type:
+        query = query.find(Task.task_type == task_type)
     if needs_detail is not None:
         query = query.find(Task.needs_detail == needs_detail)
     if approved is not None:
@@ -127,12 +130,22 @@ async def create_task(
 ) -> dict:
     await _check_project_access(project_id, user)
 
+    decision_ctx = None
+    if body.decision_context:
+        decision_ctx = DecisionContext(
+            background=body.decision_context.background,
+            decision_point=body.decision_context.decision_point,
+            options=[DecisionOption(label=o.label, description=o.description) for o in body.decision_context.options],
+        )
+
     task = Task(
         project_id=project_id,
         title=body.title,
         description=body.description,
         priority=body.priority,
         status=body.status,
+        task_type=body.task_type,
+        decision_context=decision_ctx,
         due_date=body.due_date,
         assignee_id=body.assignee_id,
         parent_task_id=body.parent_task_id,
@@ -183,6 +196,18 @@ async def update_task(
         task.assignee_id = updates["assignee_id"]
     if "tags" in updates:
         task.tags = updates["tags"]
+    if "task_type" in updates:
+        task.task_type = updates["task_type"]
+    if "decision_context" in updates:
+        dc = updates["decision_context"]
+        if dc is None:
+            task.decision_context = None
+        else:
+            task.decision_context = DecisionContext(
+                background=dc["background"],
+                decision_point=dc["decision_point"],
+                options=[DecisionOption(label=o["label"], description=o.get("description", "")) for o in dc.get("options", [])],
+            )
     if "needs_detail" in updates:
         task.needs_detail = updates["needs_detail"]
         if updates["needs_detail"]:

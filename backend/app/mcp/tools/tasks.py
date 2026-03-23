@@ -7,7 +7,7 @@ from fastmcp.exceptions import ToolError
 
 from ...models import Project, Task, User
 from ...models.project import ProjectStatus
-from ...models.task import Comment, TaskPriority, TaskStatus
+from ...models.task import Comment, DecisionContext, DecisionOption, TaskPriority, TaskStatus, TaskType
 from ...services.events import publish_event
 from ...services.serializers import task_to_dict as _task_dict
 from ..auth import authenticate, check_project_access
@@ -60,7 +60,7 @@ def _parse_date_filter(value: str) -> datetime:
 UPDATABLE_FIELDS = {
     "title", "description", "status", "priority", "due_date",
     "assignee_id", "tags", "needs_detail", "approved", "sort_order", "archived",
-    "completion_report",
+    "completion_report", "task_type", "decision_context",
 }
 
 
@@ -69,6 +69,7 @@ async def list_tasks(
     project_id: str,
     status: str | None = None,
     priority: str | None = None,
+    task_type: str | None = None,
     assignee_id: str | None = None,
     tag: str | None = None,
     needs_detail: bool | None = None,
@@ -91,6 +92,7 @@ async def list_tasks(
         project_id: Project ID or project name
         status: Filter: todo / in_progress / done / cancelled
         priority: Filter: low / medium / high / urgent
+        task_type: Filter by task type: action / decision
         assignee_id: Filter by assignee user ID
         tag: Filter by tag name
         needs_detail: Filter by needs_detail flag (true/false)
@@ -117,6 +119,8 @@ async def list_tasks(
         query = query.find(Task.assignee_id == assignee_id)
     if tag:
         query = query.find({"tags": tag})
+    if task_type:
+        query = query.find(Task.task_type == TaskType(task_type))
     if needs_detail is not None:
         query = query.find(Task.needs_detail == needs_detail)
     if approved is not None:
@@ -172,6 +176,8 @@ async def create_task(
     description: str = "",
     priority: str = "medium",
     status: str = "todo",
+    task_type: str = "action",
+    decision_context: dict | None = None,
     due_date: str | None = None,
     assignee_id: str | None = None,
     parent_task_id: str | None = None,
@@ -188,6 +194,11 @@ async def create_task(
         description: Detailed task description (supports Markdown)
         priority: Priority level (low / medium / high / urgent)
         status: Initial status (todo / in_progress / done / cancelled)
+        task_type: Task type (action / decision). Use "decision" when the task requires user judgment
+        decision_context: Decision context for decision-type tasks. Dict with keys:
+            background (str): Background information about the issue,
+            decision_point (str): What the user needs to decide,
+            options (list[dict]): Available choices, each with "label" and optional "description"
         due_date: Due date in ISO 8601 format (e.g. 2025-12-31T00:00:00)
         assignee_id: Assignee user ID
         parent_task_id: Parent task ID (for subtasks)
@@ -197,6 +208,8 @@ async def create_task(
         raise ToolError("Title exceeds maximum length of 255 characters")
     if len(description) > 10000:
         raise ToolError("Description exceeds maximum length of 10000 characters")
+    if task_type not in ("action", "decision"):
+        raise ToolError(f"Invalid task_type '{task_type}'. Valid: action, decision")
 
     key_info = await authenticate()
     project_id = await _resolve_project_id(project_id)
@@ -207,12 +220,25 @@ async def create_task(
     if due_date:
         parsed_due_date = datetime.fromisoformat(due_date)
 
+    parsed_decision_context = None
+    if decision_context:
+        parsed_decision_context = DecisionContext(
+            background=decision_context.get("background", ""),
+            decision_point=decision_context.get("decision_point", ""),
+            options=[
+                DecisionOption(label=o.get("label", ""), description=o.get("description", ""))
+                for o in decision_context.get("options", [])
+            ],
+        )
+
     task = Task(
         project_id=project_id,
         title=title,
         description=description,
         priority=TaskPriority(priority),
         status=TaskStatus(status),
+        task_type=TaskType(task_type),
+        decision_context=parsed_decision_context,
         due_date=parsed_due_date,
         assignee_id=assignee_id,
         parent_task_id=parent_task_id,
@@ -231,6 +257,8 @@ async def update_task(
     description: str | None = None,
     priority: str | None = None,
     status: str | None = None,
+    task_type: str | None = None,
+    decision_context: dict | None = None,
     due_date: str | None = None,
     assignee_id: str | None = None,
     tags: list[str] | None = None,
@@ -249,6 +277,12 @@ async def update_task(
         description: New description (supports Markdown)
         priority: New priority (low / medium / high / urgent)
         status: New status (todo / in_progress / done / cancelled)
+        task_type: Task type (action / decision). Use "decision" when the task requires user judgment
+        decision_context: Decision context for decision-type tasks. Dict with keys:
+            background (str): Background information about the issue,
+            decision_point (str): What the user needs to decide,
+            options (list[dict]): Available choices, each with "label" and optional "description".
+            Pass null/empty to clear.
         due_date: New due date (ISO 8601 format)
         assignee_id: New assignee user ID
         tags: New tag list
@@ -267,10 +301,13 @@ async def update_task(
 
     VALID_STATUSES = {"todo", "in_progress", "done", "cancelled"}
     VALID_PRIORITIES = {"low", "medium", "high", "urgent"}
+    VALID_TASK_TYPES = {"action", "decision"}
     if status is not None and status not in VALID_STATUSES:
         raise ToolError(f"Invalid status '{status}'. Valid: {', '.join(sorted(VALID_STATUSES))}")
     if priority is not None and priority not in VALID_PRIORITIES:
         raise ToolError(f"Invalid priority '{priority}'. Valid: {', '.join(sorted(VALID_PRIORITIES))}")
+    if task_type is not None and task_type not in VALID_TASK_TYPES:
+        raise ToolError(f"Invalid task_type '{task_type}'. Valid: {', '.join(sorted(VALID_TASK_TYPES))}")
 
     task = await _get_task_or_raise(task_id, key_info["project_scopes"])
 
@@ -283,6 +320,10 @@ async def update_task(
         updates["priority"] = priority
     if status is not None:
         updates["status"] = status
+    if task_type is not None:
+        updates["task_type"] = task_type
+    if decision_context is not None:
+        updates["decision_context"] = decision_context
     if due_date is not None:
         updates["due_date"] = due_date
     if assignee_id is not None:
@@ -307,6 +348,20 @@ async def update_task(
             task.due_date = datetime.fromisoformat(value) if value else None
         elif field == "priority":
             task.priority = TaskPriority(value)
+        elif field == "task_type":
+            task.task_type = TaskType(value)
+        elif field == "decision_context":
+            if value is None or value == {}:
+                task.decision_context = None
+            else:
+                task.decision_context = DecisionContext(
+                    background=value.get("background", ""),
+                    decision_point=value.get("decision_point", ""),
+                    options=[
+                        DecisionOption(label=o.get("label", ""), description=o.get("description", ""))
+                        for o in value.get("options", [])
+                    ],
+                )
         else:
             setattr(task, field, value)
 
@@ -600,12 +655,27 @@ async def batch_create_tasks(project_id: str, tasks: list[dict]) -> dict:
             if item.get("due_date"):
                 parsed_due_date = datetime.fromisoformat(item["due_date"])
 
+            item_task_type = TaskType(item.get("task_type", "action"))
+            item_dc = item.get("decision_context")
+            parsed_dc = None
+            if item_dc:
+                parsed_dc = DecisionContext(
+                    background=item_dc.get("background", ""),
+                    decision_point=item_dc.get("decision_point", ""),
+                    options=[
+                        DecisionOption(label=o.get("label", ""), description=o.get("description", ""))
+                        for o in item_dc.get("options", [])
+                    ],
+                )
+
             task = Task(
                 project_id=project_id,
                 title=item["title"],
                 description=item_desc,
                 priority=TaskPriority(item.get("priority", "medium")),
                 status=TaskStatus(item.get("status", "todo")),
+                task_type=item_task_type,
+                decision_context=parsed_dc,
                 due_date=parsed_due_date,
                 assignee_id=item.get("assignee_id"),
                 parent_task_id=item.get("parent_task_id"),
@@ -765,6 +835,20 @@ async def batch_update_tasks(updates: list[dict]) -> dict:
                     task.due_date = datetime.fromisoformat(value) if value else None
                 elif field == "priority":
                     task.priority = TaskPriority(value)
+                elif field == "task_type":
+                    task.task_type = TaskType(value)
+                elif field == "decision_context":
+                    if value is None or value == {}:
+                        task.decision_context = None
+                    else:
+                        task.decision_context = DecisionContext(
+                            background=value.get("background", ""),
+                            decision_point=value.get("decision_point", ""),
+                            options=[
+                                DecisionOption(label=o.get("label", ""), description=o.get("description", ""))
+                                for o in value.get("options", [])
+                            ],
+                        )
                 else:
                     setattr(task, field, value)
 
@@ -885,6 +969,8 @@ async def duplicate_task(
         title=title if title else f"{source.title}（コピー）",
         description=source.description,
         priority=source.priority,
+        task_type=source.task_type,
+        decision_context=source.decision_context.model_copy() if source.decision_context else None,
         tags=list(source.tags),
         due_date=source.due_date,
         status=TaskStatus.todo,

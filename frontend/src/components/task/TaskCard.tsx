@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, Calendar, User, CornerDownRight } from 'lucide-react'
+import { Archive, ArchiveRestore, Calendar, User, CornerDownRight, HelpCircle } from 'lucide-react'
 import clsx from 'clsx'
 import type { Task } from '../../types'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '../../constants/task'
@@ -35,6 +35,12 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive }: Pr
         <span className={clsx('text-xs px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap mt-0.5', PRIORITY_COLORS[task.priority])}>
           {PRIORITY_LABELS[task.priority]}
         </span>
+        {task.task_type === 'decision' && (
+          <span className="flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap mt-0.5 bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400">
+            <HelpCircle className="w-3 h-3" />
+            判断要
+          </span>
+        )}
         <p className="text-sm font-medium text-gray-800 dark:text-gray-100 line-clamp-2">{task.title}</p>
       </div>
 

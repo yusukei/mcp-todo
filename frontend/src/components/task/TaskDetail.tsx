@@ -3,12 +3,190 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { X, Pencil, Check, XCircle, ChevronUp, ImagePlus, Trash2 } from 'lucide-react'
 import { api } from '../../api/client'
 import clsx from 'clsx'
-import type { Attachment, Task, TaskPriority, TaskStatus } from '../../types'
-import { STATUS_OPTIONS, PRIORITY_OPTIONS } from '../../constants/task'
+import type { Attachment, DecisionContext, Task, TaskPriority, TaskStatus, TaskType } from '../../types'
+import { STATUS_OPTIONS, PRIORITY_OPTIONS, TASK_TYPE_OPTIONS } from '../../constants/task'
 import MarkdownRenderer from '../common/MarkdownRenderer'
 import { showErrorToast, showSuccessToast } from '../common/Toast'
 import { TaskCommentList, TaskCommentInput } from './TaskCommentSection'
 import TaskSubtaskSection from './TaskSubtaskSection'
+
+function DecisionContextSection({
+  task,
+  onUpdate,
+  inputClasses,
+}: {
+  task: Task
+  onUpdate: (dc: DecisionContext | null) => void
+  inputClasses: string
+}) {
+  const dc = task.decision_context
+  const [editing, setEditing] = useState(false)
+  const [draftBackground, setDraftBackground] = useState('')
+  const [draftDecisionPoint, setDraftDecisionPoint] = useState('')
+  const [draftOptions, setDraftOptions] = useState<{ label: string; description: string }[]>([])
+
+  const startEdit = () => {
+    setDraftBackground(dc?.background ?? '')
+    setDraftDecisionPoint(dc?.decision_point ?? '')
+    setDraftOptions(dc?.options?.length ? dc.options.map((o) => ({ ...o })) : [{ label: '', description: '' }])
+    setEditing(true)
+  }
+
+  const save = () => {
+    const filtered = draftOptions.filter((o) => o.label.trim())
+    onUpdate({
+      background: draftBackground.trim(),
+      decision_point: draftDecisionPoint.trim(),
+      options: filtered,
+    })
+    setEditing(false)
+  }
+
+  const addOption = () => setDraftOptions([...draftOptions, { label: '', description: '' }])
+  const removeOption = (i: number) => setDraftOptions(draftOptions.filter((_, idx) => idx !== i))
+  const updateOption = (i: number, field: 'label' | 'description', value: string) => {
+    const copy = [...draftOptions]
+    copy[i] = { ...copy[i], [field]: value }
+    setDraftOptions(copy)
+  }
+
+  return (
+    <div className="border border-violet-200 dark:border-violet-800 rounded-lg p-4 bg-violet-50/50 dark:bg-violet-900/20">
+      <div className="flex items-center justify-between mb-3">
+        <label className="block text-sm font-medium text-violet-700 dark:text-violet-400">判断コンテキスト</label>
+        {!editing && (
+          <button
+            onClick={startEdit}
+            className="text-violet-500 hover:text-violet-700 dark:text-violet-400 dark:hover:text-violet-300"
+            title="判断コンテキストを編集"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-violet-600 dark:text-violet-400 mb-1">背景</label>
+            <textarea
+              value={draftBackground}
+              onChange={(e) => setDraftBackground(e.target.value)}
+              rows={3}
+              className={`${inputClasses} resize-none`}
+              placeholder="課題に関する背景情報..."
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-violet-600 dark:text-violet-400 mb-1">判断事項</label>
+            <textarea
+              value={draftDecisionPoint}
+              onChange={(e) => setDraftDecisionPoint(e.target.value)}
+              rows={2}
+              className={`${inputClasses} resize-none`}
+              placeholder="ユーザが判断すべき箇所..."
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-violet-600 dark:text-violet-400 mb-1">選択肢</label>
+            <div className="space-y-2">
+              {draftOptions.map((opt, i) => (
+                <div key={i} className="flex gap-2 items-start">
+                  <span className="text-xs text-violet-400 mt-2.5 w-5 text-center flex-shrink-0">{i + 1}.</span>
+                  <div className="flex-1 space-y-1">
+                    <input
+                      type="text"
+                      value={opt.label}
+                      onChange={(e) => updateOption(i, 'label', e.target.value)}
+                      className={inputClasses}
+                      placeholder="選択肢名"
+                    />
+                    <input
+                      type="text"
+                      value={opt.description}
+                      onChange={(e) => updateOption(i, 'description', e.target.value)}
+                      className={`${inputClasses} text-xs`}
+                      placeholder="説明（任意）"
+                    />
+                  </div>
+                  {draftOptions.length > 1 && (
+                    <button
+                      onClick={() => removeOption(i)}
+                      className="text-red-400 hover:text-red-600 mt-2"
+                      title="削除"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={addOption}
+              className="mt-2 text-xs text-violet-600 dark:text-violet-400 hover:text-violet-800 dark:hover:text-violet-300"
+            >
+              + 選択肢を追加
+            </button>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={() => setEditing(false)}
+              className="px-3 py-1 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+            >
+              キャンセル
+            </button>
+            <button
+              onClick={save}
+              className="px-3 py-1 text-sm text-white bg-violet-600 rounded-lg hover:bg-violet-700"
+            >
+              保存
+            </button>
+          </div>
+        </div>
+      ) : dc && (dc.background || dc.decision_point || dc.options?.length) ? (
+        <div className="space-y-3 cursor-pointer" onClick={startEdit}>
+          {dc.background && (
+            <div>
+              <span className="text-xs font-medium text-violet-600 dark:text-violet-400">背景</span>
+              <MarkdownRenderer className="prose prose-sm prose-violet dark:prose-invert max-w-none mt-1">{dc.background}</MarkdownRenderer>
+            </div>
+          )}
+          {dc.decision_point && (
+            <div>
+              <span className="text-xs font-medium text-violet-600 dark:text-violet-400">判断事項</span>
+              <MarkdownRenderer className="prose prose-sm prose-violet dark:prose-invert max-w-none mt-1">{dc.decision_point}</MarkdownRenderer>
+            </div>
+          )}
+          {dc.options?.length > 0 && (
+            <div>
+              <span className="text-xs font-medium text-violet-600 dark:text-violet-400">選択肢</span>
+              <ol className="mt-1 space-y-1.5">
+                {dc.options.map((opt, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="text-sm font-semibold text-violet-500 mt-0.5">{i + 1}.</span>
+                    <div>
+                      <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{opt.label}</span>
+                      {opt.description && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{opt.description}</p>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </div>
+      ) : (
+        <p
+          className="text-sm text-violet-400 dark:text-violet-500 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
+          onClick={startEdit}
+        >
+          クリックして判断コンテキストを追加...
+        </p>
+      )}
+    </div>
+  )
+}
 
 interface Props {
   taskId: string
@@ -49,7 +227,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask 
   }, [task])
 
   const updateTask = useMutation({
-    mutationFn: (data: Partial<Pick<Task, 'title' | 'description' | 'priority' | 'status' | 'due_date' | 'tags' | 'completion_report'>>) =>
+    mutationFn: (data: Record<string, unknown>) =>
       api.patch(`/projects/${projectId}/tasks/${taskId}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks', projectId] })
@@ -366,6 +544,41 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask 
               </label>
             </div>
           </div>
+
+          {/* Task Type */}
+          <div>
+            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">タスク種別</label>
+            <div className="flex flex-wrap gap-2">
+              {TASK_TYPE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => {
+                    if (task.task_type === opt.value) return
+                    updateTask.mutate({ task_type: opt.value })
+                  }}
+                  className={clsx(
+                    'px-3 py-1 text-sm rounded-full border transition-colors',
+                    task.task_type === opt.value
+                      ? opt.value === 'decision'
+                        ? 'bg-violet-600 text-white border-violet-600'
+                        : 'bg-indigo-600 text-white border-indigo-600'
+                      : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-indigo-400 dark:hover:border-indigo-500'
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Decision Context */}
+          {task.task_type === 'decision' && (
+            <DecisionContextSection
+              task={task}
+              onUpdate={(dc) => updateTask.mutate({ decision_context: dc })}
+              inputClasses={inputClasses}
+            />
+          )}
 
           {/* Description */}
           <div>

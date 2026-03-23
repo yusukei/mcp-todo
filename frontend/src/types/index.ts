@@ -1,5 +1,17 @@
 export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'cancelled'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
+export type TaskType = 'action' | 'decision'
+
+export interface DecisionOption {
+  label: string
+  description: string
+}
+
+export interface DecisionContext {
+  background: string
+  decision_point: string
+  options: DecisionOption[]
+}
 
 export interface Attachment {
   id: string
@@ -27,6 +39,8 @@ export interface Task {
   due_date: string | null
   assignee_id: string | null
   parent_task_id: string | null
+  task_type: TaskType
+  decision_context: DecisionContext | null
   tags: string[]
   comments: Comment[]
   attachments: Attachment[]

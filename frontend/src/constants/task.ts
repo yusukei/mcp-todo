@@ -1,4 +1,4 @@
-import type { TaskStatus, TaskPriority } from '../types'
+import type { TaskStatus, TaskPriority, TaskType } from '../types'
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
   todo: 'TODO',
@@ -61,6 +61,11 @@ export const BOARD_COLUMNS: { key: TaskStatus; label: string; color: string; col
   { key: 'in_progress', label: '進行中', color: 'bg-blue-100', colorDark: 'dark:bg-blue-900/40' },
   { key: 'done', label: '完了', color: 'bg-green-100', colorDark: 'dark:bg-green-900/40' },
   { key: 'cancelled', label: 'キャンセル', color: 'bg-red-100', colorDark: 'dark:bg-red-900/40' },
+]
+
+export const TASK_TYPE_OPTIONS = [
+  { value: 'action' as TaskType, label: '作業' },
+  { value: 'decision' as TaskType, label: '判断要' },
 ]
 
 export const REVIEW_FLAG_LABELS = {
