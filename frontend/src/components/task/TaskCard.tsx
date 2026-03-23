@@ -11,7 +11,7 @@ interface Props {
 }
 
 export default function TaskCard({ task, onClick, onUpdateFlags, onArchive }: Props) {
-  const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done' && task.status !== 'cancelled'
+  const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done' && task.status !== 'cancelled' && task.status !== 'on_hold'
 
   return (
     <div

@@ -157,7 +157,7 @@ export default function TaskBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="flex gap-4 p-6 h-full overflow-x-auto">
+      <div className={`flex gap-4 p-6 h-full ${activeTask ? 'overflow-x-hidden' : 'overflow-x-auto'}`}>
         {columns.map((col) => {
           const colTasks = tasksByStatus[col.key] ?? []
           return (

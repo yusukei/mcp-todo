@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 class TaskStatus(str_enum):
     todo = "todo"
     in_progress = "in_progress"
+    on_hold = "on_hold"
     done = "done"
     cancelled = "cancelled"
 

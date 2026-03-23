@@ -15,7 +15,7 @@ export default function UsersTab() {
 
   const { data: users = [] } = useQuery({
     queryKey: ['admin-users'],
-    queryFn: () => api.get('/users').then((r) => r.data),
+    queryFn: () => api.get('/users').then((r) => r.data.items),
   })
 
   const create = useMutation({

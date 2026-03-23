@@ -23,7 +23,7 @@ const TaskRow = React.memo(function TaskRow({
   onUpdateFlags,
   onArchive,
 }: TaskRowProps) {
-  const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done'
+  const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done' && task.status !== 'on_hold'
 
   return (
     <div

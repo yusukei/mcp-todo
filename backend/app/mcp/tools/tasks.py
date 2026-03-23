@@ -95,7 +95,7 @@ async def list_tasks(
 
     Args:
         project_id: Project ID or project name
-        status: Filter: todo / in_progress / done / cancelled
+        status: Filter: todo / in_progress / on_hold / done / cancelled
         priority: Filter: low / medium / high / urgent
         task_type: Filter by task type: action / decision
         assignee_id: Filter by assignee user ID
@@ -230,7 +230,7 @@ async def create_task(
         title: Task title
         description: Detailed task description (supports Markdown)
         priority: Priority level (low / medium / high / urgent)
-        status: Initial status (todo / in_progress / done / cancelled)
+        status: Initial status (todo / in_progress / on_hold / done / cancelled)
         task_type: Task type (action / decision). Use "decision" when the task requires user judgment
         decision_context: Decision context for decision-type tasks. Dict with keys:
             background (str): Background information about the issue,
@@ -313,7 +313,7 @@ async def update_task(
         title: New title
         description: New description (supports Markdown)
         priority: New priority (low / medium / high / urgent)
-        status: New status (todo / in_progress / done / cancelled)
+        status: New status (todo / in_progress / on_hold / done / cancelled)
         task_type: Task type (action / decision). Use "decision" when the task requires user judgment
         decision_context: Decision context for decision-type tasks. Dict with keys:
             background (str): Background information about the issue,
@@ -336,7 +336,7 @@ async def update_task(
 
     key_info = await authenticate()
 
-    VALID_STATUSES = {"todo", "in_progress", "done", "cancelled"}
+    VALID_STATUSES = {"todo", "in_progress", "on_hold", "done", "cancelled"}
     VALID_PRIORITIES = {"low", "medium", "high", "urgent"}
     VALID_TASK_TYPES = {"action", "decision"}
     if status is not None and status not in VALID_STATUSES:
@@ -646,7 +646,7 @@ async def list_overdue_tasks(
     filters: dict = {
         "is_deleted": False,
         "due_date": {"$ne": None, "$lt": now},
-        "status": {"$nin": [TaskStatus.done, TaskStatus.cancelled]},
+        "status": {"$nin": [TaskStatus.on_hold, TaskStatus.done, TaskStatus.cancelled]},
     }
 
     if project_id:
@@ -815,7 +815,7 @@ async def list_approved_tasks(
 
     Args:
         project_id: Project ID or project name (omit for all projects)
-        status: Filter by status (todo / in_progress / done / cancelled)
+        status: Filter by status (todo / in_progress / on_hold / done / cancelled)
         limit: Maximum number of results (default 50)
         summary: If true, exclude comments and attachments from response for lighter payload (default false)
     """
@@ -950,7 +950,7 @@ async def get_subtasks(
 
     Args:
         task_id: Parent task ID
-        status: Filter: todo / in_progress / done / cancelled
+        status: Filter: todo / in_progress / on_hold / done / cancelled
         limit: Maximum number of subtasks to return (default 50)
         skip: Number of subtasks to skip for pagination (default 0)
         summary: If true, exclude comments and attachments from response for lighter payload (default false)
