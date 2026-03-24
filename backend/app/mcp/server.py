@@ -45,7 +45,10 @@ mcp = FastMCP(
         "read relevant documents before starting implementation work on a project. "
         "Documents are versioned: each update_document call creates a version snapshot automatically. "
         "Pass task_id when updating documents to link changes to the task that triggered them. "
-        "Use get_document_history to view past versions and get_document_version to retrieve a specific version.\n\n"
+        "Use get_document_history to view past versions and get_document_version to retrieve a specific version.\n"
+        "Document content supports Markdown with Mermaid diagrams — "
+        "use ```mermaid code blocks for sequence diagrams, flowcharts, ER diagrams, etc. "
+        "The frontend renders them automatically.\n\n"
         "## Development workflow\n"
         "IMPORTANT: Follow this workflow whenever you are about to modify code or configuration files.\n\n"
         "### 1. Task registration\n"
@@ -83,10 +86,15 @@ mcp = FastMCP(
         "## Commit convention\n"
         "When committing code changes, include the task ID in the commit message "
         "for traceability (e.g., 'feat: add versioning to documents [task:69c22641]'). "
-        "This links git history to the task management system."
+        "This links git history to the task management system.\n\n"
+        "## Onboarding\n"
+        "When a user asks to set up mcp-todo for their project, "
+        "call get_setup_guide to get the recommended CLAUDE.md snippet, "
+        "then write it to the project's CLAUDE.md (create if needed). "
+        "Prerequisite: .mcp.json is already configured manually by the user."
     ),
 )
 
 
 def register_tools() -> None:
-    from .tools import documents, knowledge, projects, tasks  # noqa: F401
+    from .tools import documents, knowledge, projects, setup, tasks  # noqa: F401

@@ -110,34 +110,30 @@ docker compose down              # Stop
 ### Database Collections
 `users`, `projects` (with embedded `members`), `tasks` (with embedded `comments`), `allowed_emails`, `mcp_api_keys`
 
-### Task Management（必須）
-- **タスク管理は必ず mcp-todo MCP サーバーを使用すること**（TodoWrite ではなく MCP ツールを使う）
-- 作業で発生したタスクは mcp-todo アプリに MCP サーバー経由 (`/mcp/`) で登録すること
-- 完了したタスクも MCP サーバー経由で status を `done` に更新すること
-- MCP 呼び出し手順: `initialize` → `tools/call` (JSON-RPC over Streamable HTTP)
-- 認証: `X-API-Key` ヘッダーに MCP API キーを付与
-- 一括登録には `batch_create_tasks`、一括更新には `batch_update_tasks`、単体完了には `complete_task` を使用
+### Task Management
+- Task management uses the mcp-todo MCP server (see MCP instructions for tool usage details)
+- At session start with no specific instructions, call `get_work_context` to check approved/in_progress/overdue/needs_detail tasks
+- Use `get_task_context` for detailed task context (combines get_task + get_subtasks + get_task_activity)
+- When MCP connection is unavailable, this project-specific troubleshooting applies:
+  1. Check `.mcp.json` config (URL and API key)
+  2. `curl -s https://todo.vtech-studios.com/health` or `docker compose ps`
+  3. If server is down: `docker compose up -d`
+  4. Check nginx rate limit (30r/m) is not being hit
+  5. If unresolved, restart session (`/mcp` to check status, then `/exit` and restart)
+  6. **Never fall back to TodoWrite — fix the connection**
 
-#### セッション開始時のワークフロー（推奨）
-セッション開始時にユーザーから作業指示がない場合、`get_work_context` を呼んで現状を把握すること：
-- **approved**: 承認済みで実装待ちのタスク
-- **in_progress**: 進行中のタスク
-- **overdue**: 期限超過タスク
-- **needs_detail**: 調査が必要なタスク
-
-タスクの詳細コンテキストが必要な場合は `get_task_context` を使用すること（get_task + get_subtasks + get_task_activity の3回呼び出しを1回に削減）。
-
-#### MCP 接続が利用できない場合の対処（必須）
-セッション開始時に mcp-todo MCP サーバーのツールが利用できない場合、以下を必ず実施すること：
-1. `.mcp.json` の設定を確認（URL・API キーが正しいか）
-2. サーバーの稼働状態を確認（`curl -s https://todo.vtech-studios.com/health` または `docker compose ps`）
-3. サーバーが停止中なら `docker compose up -d` で起動
-4. nginx レートリミット（30r/m）に引っかかっていないか確認
-5. 上記で解決しない場合、ユーザーにセッション再起動（`/mcp` で状態確認後 `/exit` → 再起動）を提案
-6. **接続問題を放置して TodoWrite 等で代替しないこと**
+### Development Workflow
+Before modifying code or configuration files:
+1. **Task first** — Ensure a task exists via `create_task` (exception: trivial typo/formatting fixes)
+2. **Docs first** — Search project documents (`search_documents`) and update relevant specs BEFORE implementation
+3. **Implement** — Follow the updated specs; record significant decisions as task comments
+4. **Test** — Run the test suite and verify all tests pass
+5. **Spec review** — Compare the diff against project documents; fix discrepancies before completing
+6. **Complete** — Mark the task done via `complete_task` with a completion report
 
 ### Git
-- コミット時に `Co-Authored-By` トレーラーを付与しない
+- Do not add `Co-Authored-By` trailer to commits
+- Include the task ID in commit messages for traceability (e.g., `feat: add versioning to documents [task:69c22641]`)
 
 ### Testing
 - **Backend**: pytest-asyncio with `mongomock-motor` + `fakeredis` (mock mode, default). Set `TEST_MODE=real` for real DB tests.
