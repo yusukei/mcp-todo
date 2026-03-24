@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, Outlet, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { FolderOpen, LogOut, Settings, CheckSquare, Menu, X, BookOpen } from 'lucide-react'
+import { FolderOpen, LogOut, Settings, UserCog, CheckSquare, Menu, X, BookOpen } from 'lucide-react'
 import { api } from '../../api/client'
 import { useAuthStore } from '../../store/auth'
 import { useSSE } from '../../hooks/useSSE'
@@ -79,6 +79,15 @@ export default function Layout() {
       </nav>
 
       <div className="px-3 py-4 border-t border-gray-100 dark:border-gray-700 space-y-1">
+        <Link
+          to="/settings"
+          onClick={closeSidebar}
+          aria-label="アカウント設定"
+          className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+        >
+          <UserCog className="w-4 h-4" />
+          アカウント設定
+        </Link>
         {user?.is_admin && (
           <Link
             to="/admin"

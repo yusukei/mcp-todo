@@ -13,6 +13,7 @@ import ProjectsPage from './pages/ProjectsPage'
 import ProjectPage from './pages/ProjectPage'
 import DocumentPage from './pages/DocumentPage'
 import KnowledgePage from './pages/KnowledgePage'
+import SettingsPage from './pages/SettingsPage'
 
 const GoogleCallbackPage = React.lazy(() => import('./pages/GoogleCallbackPage'))
 const AdminPage = React.lazy(() => import('./pages/AdminPage'))
@@ -74,6 +75,7 @@ function AppRoutes() {
             <Route path="projects/:projectId" element={<ProjectPage />} />
             <Route path="projects/:projectId/documents/:documentId" element={<DocumentPage />} />
             <Route path="knowledge" element={<KnowledgePage />} />
+            <Route path="settings" element={<SettingsPage />} />
             <Route
               path="admin"
               element={
