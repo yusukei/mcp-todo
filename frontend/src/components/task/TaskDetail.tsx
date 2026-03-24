@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { X, Pencil, Check, XCircle, ChevronUp, ImagePlus, Trash2 } from 'lucide-react'
+import { X, Pencil, Check, XCircle, ChevronUp, ImagePlus, Trash2, Copy } from 'lucide-react'
 import { api } from '../../api/client'
 import clsx from 'clsx'
 import type { Attachment, DecisionContext, Task, TaskPriority, TaskStatus, TaskType } from '../../types'
@@ -455,9 +455,21 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask 
               </button>
             </div>
           )}
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 flex-shrink-0">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(task.id)
+                showSuccessToast('タスクIDをコピーしました')
+              }}
+              className="text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 p-1 rounded transition-colors"
+              title={`ID: ${task.id}`}
+            >
+              <Copy className="w-4 h-4" />
+            </button>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Parent task link */}

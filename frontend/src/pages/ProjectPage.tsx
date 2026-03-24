@@ -1,12 +1,13 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
+import { useAuthStore } from '../store/auth'
 import TaskBoard from '../components/task/TaskBoard'
 import TaskList from '../components/task/TaskList'
 import TaskDetail from '../components/task/TaskDetail'
 import TaskCreateModal from '../components/task/TaskCreateModal'
-import { LayoutGrid, List, Plus, Archive, Filter, Columns3 } from 'lucide-react'
+import { LayoutGrid, List, Plus, Archive, Filter, Columns3, Pencil, Check, X } from 'lucide-react'
 import { STATUS_OPTIONS, BOARD_COLUMNS } from '../constants/task'
 import { showErrorToast } from '../components/common/Toast'
 import type { Task, TaskStatus } from '../types'
@@ -41,6 +42,47 @@ export default function ProjectPage() {
     })
   }
   const qc = useQueryClient()
+  const user = useAuthStore((s) => s.user)
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
+  const renameInputRef = useRef<HTMLInputElement>(null)
+
+  const renameMutation = useMutation({
+    mutationFn: (name: string) => api.patch(`/projects/${projectId}`, { name }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project', projectId] })
+      qc.invalidateQueries({ queryKey: ['projects'] })
+      qc.invalidateQueries({ queryKey: ['admin-projects'] })
+      setIsRenaming(false)
+    },
+    onError: () => showErrorToast('プロジェクト名の変更に失敗しました'),
+  })
+
+  const startRename = () => {
+    if (!project) return
+    setRenameValue(project.name)
+    setIsRenaming(true)
+  }
+
+  useEffect(() => {
+    if (isRenaming && renameInputRef.current) {
+      renameInputRef.current.focus()
+      renameInputRef.current.select()
+    }
+  }, [isRenaming])
+
+  const confirmRename = () => {
+    const trimmed = renameValue.trim()
+    if (trimmed && trimmed !== project?.name) {
+      renameMutation.mutate(trimmed)
+    } else {
+      setIsRenaming(false)
+    }
+  }
+
+  const cancelRename = () => {
+    setIsRenaming(false)
+  }
 
   const updateFlagsMutation = useMutation({
     mutationFn: ({ taskId, flags }: { taskId: string; flags: Record<string, boolean> }) =>
@@ -167,7 +209,40 @@ export default function ProjectPage() {
       <div className="px-8 py-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: project.color }} />
-          <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">{project.name}</h1>
+          {isRenaming ? (
+            <div className="flex items-center gap-2">
+              <input
+                ref={renameInputRef}
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') confirmRename()
+                  if (e.key === 'Escape') cancelRename()
+                }}
+                maxLength={255}
+                className="text-xl font-bold text-gray-800 dark:text-gray-100 bg-white dark:bg-gray-700 border border-indigo-400 rounded-lg px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <button onClick={confirmRename} disabled={renameMutation.isPending} className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded" title="確定">
+                <Check className="w-5 h-5" />
+              </button>
+              <button onClick={cancelRename} className="p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title="キャンセル">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 group">
+              <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">{project.name}</h1>
+              {user?.is_admin && (
+                <button
+                  onClick={startRename}
+                  className="p-1 text-gray-300 dark:text-gray-600 opacity-0 group-hover:opacity-100 hover:text-indigo-500 dark:hover:text-indigo-400 transition-opacity rounded"
+                  title="プロジェクト名を変更"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <button

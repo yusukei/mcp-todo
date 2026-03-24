@@ -1,4 +1,5 @@
-import { Archive, ArchiveRestore, Calendar, User, CornerDownRight, HelpCircle } from 'lucide-react'
+import { Archive, ArchiveRestore, Calendar, User, CornerDownRight, HelpCircle, Copy } from 'lucide-react'
+import { showSuccessToast } from '../common/Toast'
 import clsx from 'clsx'
 import type { Task } from '../../types'
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '../../constants/task'
@@ -20,11 +21,22 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive }: Pr
       role="button"
       tabIndex={0}
       className={clsx(
-        'bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 cursor-pointer hover:shadow-sm hover:border-indigo-300 dark:hover:border-indigo-600 transition-all',
+        'relative bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 cursor-pointer hover:shadow-sm hover:border-indigo-300 dark:hover:border-indigo-600 transition-all group/card',
         task.archived && 'opacity-60',
         isOverdue && 'border-l-4 border-l-red-500 dark:border-l-red-400',
       )}
     >
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          navigator.clipboard.writeText(task.id)
+          showSuccessToast('タスクIDをコピーしました')
+        }}
+        className="absolute top-1.5 right-1.5 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 p-0.5 rounded transition-all opacity-0 group-hover/card:opacity-100"
+        title={`ID: ${task.id}`}
+      >
+        <Copy className="w-3 h-3" />
+      </button>
       {task.parent_task_id && (
         <div className="flex items-center gap-1 mb-1">
           <CornerDownRight className="w-3 h-3 text-gray-400 dark:text-gray-500" />

@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus } from 'lucide-react'
+import { Plus, Pencil, Check, X } from 'lucide-react'
 import { api } from '../../api/client'
 import { showErrorToast } from '../../components/common/Toast'
 import type { Project } from '../../types'
@@ -26,6 +26,41 @@ export default function ProjectsTab() {
     },
     onError: () => showErrorToast('プロジェクトの作成に失敗しました'),
   })
+
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const renameInputRef = useRef<HTMLInputElement>(null)
+
+  const rename = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => api.patch(`/projects/${id}`, { name }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-projects'] })
+      qc.invalidateQueries({ queryKey: ['projects'] })
+      setRenamingId(null)
+    },
+    onError: () => showErrorToast('プロジェクト名の変更に失敗しました'),
+  })
+
+  const startRename = (p: Project) => {
+    setRenamingId(p.id)
+    setRenameValue(p.name)
+  }
+
+  useEffect(() => {
+    if (renamingId && renameInputRef.current) {
+      renameInputRef.current.focus()
+      renameInputRef.current.select()
+    }
+  }, [renamingId])
+
+  const confirmRename = (id: string, originalName: string) => {
+    const trimmed = renameValue.trim()
+    if (trimmed && trimmed !== originalName) {
+      rename.mutate({ id, name: trimmed })
+    } else {
+      setRenamingId(null)
+    }
+  }
 
   const archive = useMutation({
     mutationFn: (id: string) => api.patch(`/projects/${id}`, { status: 'archived' }),
@@ -102,10 +137,40 @@ export default function ProjectsTab() {
             {projects.map((p: Project) => (
               <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color ?? undefined }} />
-                    <span className="font-medium text-gray-800 dark:text-gray-200">{p.name}</span>
-                  </div>
+                  {renamingId === p.id ? (
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color ?? undefined }} />
+                      <input
+                        ref={renameInputRef}
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') confirmRename(p.id, p.name)
+                          if (e.key === 'Escape') setRenamingId(null)
+                        }}
+                        maxLength={255}
+                        className="font-medium text-sm text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-800 border border-indigo-400 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <button onClick={() => confirmRename(p.id, p.name)} disabled={rename.isPending} className="p-0.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded" title="確定">
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => setRenamingId(null)} className="p-0.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title="キャンセル">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 group">
+                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: p.color ?? undefined }} />
+                      <span className="font-medium text-gray-800 dark:text-gray-200">{p.name}</span>
+                      <button
+                        onClick={() => startRename(p)}
+                        className="p-0.5 text-gray-300 dark:text-gray-600 opacity-0 group-hover:opacity-100 hover:text-indigo-500 dark:hover:text-indigo-400 transition-opacity rounded"
+                        title="リネーム"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-gray-500 dark:text-gray-400 truncate max-w-xs">{p.description || '—'}</td>
                 <td className="px-4 py-3 text-center text-gray-500 dark:text-gray-400">{p.members?.length ?? 0}</td>

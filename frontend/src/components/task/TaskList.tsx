@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react'
 import clsx from 'clsx'
-import { Archive, ArchiveRestore, Calendar, CornerDownRight, HelpCircle } from 'lucide-react'
+import { Archive, ArchiveRestore, Calendar, CornerDownRight, HelpCircle, Copy } from 'lucide-react'
+import { showSuccessToast } from '../common/Toast'
 import type { Task } from '../../types'
 import { STATUS_LABELS, STATUS_COLORS, PRIORITY_DOT_COLORS } from '../../constants/task'
 
@@ -46,6 +47,17 @@ const TaskRow = React.memo(function TaskRow({
           className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
         />
       </label>
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          navigator.clipboard.writeText(task.id)
+          showSuccessToast('タスクIDをコピーしました')
+        }}
+        className="text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 p-0.5 rounded transition-colors flex-shrink-0"
+        title={`ID: ${task.id}`}
+      >
+        <Copy className="w-3 h-3" />
+      </button>
       {isSubtask && (
         <CornerDownRight className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500 flex-shrink-0 -ml-2" />
       )}
