@@ -128,6 +128,7 @@ img, svg { max-width: 100%; height: auto; }
 
 /* Cover page */
 .doc-cover {
+    page-break-before: always;
     page-break-after: always;
     display: flex;
     flex-direction: column;
@@ -135,6 +136,9 @@ img, svg { max-width: 100%; height: auto; }
     align-items: center;
     min-height: 80vh;
     text-align: center;
+}
+.doc-cover:first-child {
+    page-break-before: auto;
 }
 .doc-cover-title {
     font-size: 32pt;
@@ -179,9 +183,6 @@ img, svg { max-width: 100%; height: auto; }
 
 /* Content page */
 .doc-content {
-    page-break-before: always;
-}
-.doc-content:first-of-type {
     page-break-before: auto;
 }
 .doc-content-header {
