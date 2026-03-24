@@ -124,27 +124,21 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId }: { 
   // Detail view
   if (selectedId && selected) {
     return (
-      <div className="p-6">
-        <button
-          onClick={() => { selectDocument(null); setEditing(false) }}
-          className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-4"
-        >
-          <ArrowLeft className="w-4 h-4" /> 一覧に戻る
-        </button>
-
-        {editing ? (
-          <DocumentForm
-            form={form}
-            setForm={setForm}
-            onSubmit={handleUpdate}
-            onCancel={() => setEditing(false)}
-            submitLabel="更新"
-            loading={updateMutation.isPending}
-          />
-        ) : (
-          <div>
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">{selected.title}</h2>
+      <>
+        {/* Sticky header */}
+        <div className="sticky top-0 z-10 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                onClick={() => { selectDocument(null); setEditing(false) }}
+                className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex-shrink-0"
+              >
+                <ArrowLeft className="w-4 h-4" /> 一覧に戻る
+              </button>
+              <span className="text-gray-300 dark:text-gray-600 flex-shrink-0">|</span>
+              <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100 truncate">{selected.title}</h2>
+            </div>
+            {!editing && (
               <div className="flex gap-2 flex-shrink-0">
                 <button onClick={() => startEdit(selected)} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700">
                   <Pencil className="w-4 h-4" />
@@ -156,8 +150,23 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId }: { 
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
-            </div>
+            )}
+          </div>
+        </div>
 
+        {editing ? (
+          <div className="p-6">
+            <DocumentForm
+              form={form}
+              setForm={setForm}
+              onSubmit={handleUpdate}
+              onCancel={() => setEditing(false)}
+              submitLabel="更新"
+              loading={updateMutation.isPending}
+            />
+          </div>
+        ) : (
+          <div className="p-6">
             <div className="flex flex-wrap items-center gap-2 mb-4">
               <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${categoryStyle(selected.category)}`}>
                 {categoryLabel(selected.category)}
@@ -183,7 +192,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId }: { 
             <DocumentHistory projectId={projectId} documentId={selected.id} />
           </div>
         )}
-      </div>
+      </>
     )
   }
 
