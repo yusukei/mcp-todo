@@ -6,11 +6,14 @@ import type { Components } from 'react-markdown'
 
 mermaid.initialize({
   startOnLoad: false,
-  theme: 'default',
   securityLevel: 'strict',
 })
 
 let mermaidIdCounter = 0
+
+function isDarkMode() {
+  return document.documentElement.classList.contains('dark')
+}
 
 function MermaidBlock({ code }: { code: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -20,6 +23,11 @@ function MermaidBlock({ code }: { code: string }) {
   useEffect(() => {
     let cancelled = false
     const id = `mermaid-${++mermaidIdCounter}`
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: isDarkMode() ? 'dark' : 'default',
+      securityLevel: 'strict',
+    })
     mermaid
       .render(id, code)
       .then(({ svg: rendered }) => {
