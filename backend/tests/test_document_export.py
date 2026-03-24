@@ -1,7 +1,24 @@
 """Tests for document export (Markdown + PDF)."""
 
+import os
+from pathlib import Path
+
 import pytest
 import pytest_asyncio
+
+
+def _playwright_browsers_installed() -> bool:
+    """Check if Playwright Chromium browser is installed."""
+    browsers_path = os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or (
+        Path.home() / ".cache" / "ms-playwright"
+    )
+    return any(Path(browsers_path).glob("chromium*/"))
+
+
+requires_playwright = pytest.mark.skipif(
+    not _playwright_browsers_installed(),
+    reason="Playwright browsers not installed",
+)
 
 from app.models import Project, ProjectDocument, User
 from app.models.document import DocumentCategory
@@ -87,7 +104,7 @@ class TestExportMarkdown:
 
 
 class TestExportPdf:
-    @pytest.mark.slow
+    @requires_playwright
     async def test_generates_valid_pdf(self, sample_docs):
         """PDF generation with Playwright — may take a few seconds."""
         pdf_bytes = await export_pdf(sample_docs)
@@ -118,7 +135,7 @@ class TestExportEndpoint:
         assert "# 設計ドキュメント" in body
         assert "# API仕様書" in body
 
-    @pytest.mark.slow
+    @requires_playwright
     async def test_export_pdf_via_api(self, client, export_project, export_user, sample_docs):
         token = create_access_token(str(export_user.id))
         resp = await client.post(
