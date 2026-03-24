@@ -18,7 +18,14 @@ COPY patches/tantivy-py-lindera.patch /tmp/
 RUN git apply /tmp/tantivy-py-lindera.patch
 RUN maturin build --release --strip -o /dist
 
-# ── Stage 2: Install Python dependencies + Playwright ──────
+# ── Stage 2: Playwright browsers (cached independently) ────
+FROM python:3.12-slim AS playwright-builder
+
+RUN pip install --no-cache-dir playwright
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/.playwright
+RUN playwright install --with-deps chromium
+
+# ── Stage 3: Install Python dependencies ───────────────────
 FROM python:3.12-slim AS builder
 
 WORKDIR /app
@@ -30,11 +37,7 @@ RUN uv sync --no-dev --frozen 2>/dev/null || uv sync --no-dev
 COPY --from=tantivy-builder /dist/*.whl /tmp/
 RUN uv pip install --python /app/.venv/bin/python --no-cache /tmp/*.whl
 
-# Install Playwright Chromium (cached with dependencies, before app code)
-ENV PATH="/app/.venv/bin:$PATH" PLAYWRIGHT_BROWSERS_PATH=/app/.playwright
-RUN playwright install --with-deps chromium
-
-# ── Stage 3: Runtime ───────────────────────────────────────
+# ── Stage 4: Runtime ───────────────────────────────────────
 FROM python:3.12-slim
 RUN apt-get update && \
     apt-get install -y --no-install-recommends curl && \
@@ -48,14 +51,14 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 RUN groupadd --system app && useradd --system --gid app app
 WORKDIR /app
-COPY --from=builder /app/.venv /app/.venv
-COPY --from=builder /app/.playwright /app/.playwright
+COPY --from=builder --chown=app:app /app/.venv /app/.venv
+COPY --from=playwright-builder /app/.playwright /app/.playwright
 # Install only OS dependencies for Playwright Chromium (browser binaries already copied)
 ENV PATH="/app/.venv/bin:$PATH" TZ=Asia/Tokyo \
     PLAYWRIGHT_BROWSERS_PATH=/app/.playwright
 RUN playwright install-deps chromium && rm -rf /var/lib/apt/lists/*
 COPY app/ ./app/
-RUN mkdir -p /app/search_index && chown -R app:app /app/search_index /app/.playwright
+RUN mkdir -p /app/search_index && chown app:app /app/search_index
 USER app
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
