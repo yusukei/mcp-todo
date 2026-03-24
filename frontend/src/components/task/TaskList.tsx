@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react'
 import clsx from 'clsx'
-import { Archive, ArchiveRestore, Calendar, CornerDownRight, HelpCircle, Copy } from 'lucide-react'
+import { Archive, ArchiveRestore, Calendar, CornerDownRight, HelpCircle, Copy, FileDown } from 'lucide-react'
 import { showSuccessToast } from '../common/Toast'
 import type { Task } from '../../types'
 import { STATUS_LABELS, STATUS_COLORS, PRIORITY_DOT_COLORS } from '../../constants/task'
@@ -144,10 +144,11 @@ interface Props {
   onArchive: (taskId: string, archive: boolean) => void
   onBatchUpdateFlags: (taskIds: string[], flags: { needs_detail?: boolean; approved?: boolean }) => void
   onBatchArchive: (taskIds: string[]) => void
+  onExport: (taskIds: string[], format: 'markdown' | 'pdf') => void
   showArchived: boolean
 }
 
-export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags, onArchive, onBatchUpdateFlags, onBatchArchive, showArchived }: Props) {
+export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags, onArchive, onBatchUpdateFlags, onBatchArchive, onExport, showArchived }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const allSelected = tasks.length > 0 && selectedIds.size === tasks.length
@@ -259,6 +260,21 @@ export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags,
                     className="text-xs px-2 py-1 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-900/60 transition-colors"
                   >
                     アーカイブ
+                  </button>
+                  <span className="w-px h-4 bg-gray-300 dark:bg-gray-600" />
+                  <button
+                    onClick={() => onExport(Array.from(selectedIds), 'markdown')}
+                    className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                  >
+                    <FileDown className="w-3 h-3" />
+                    Markdown
+                  </button>
+                  <button
+                    onClick={() => onExport(Array.from(selectedIds), 'pdf')}
+                    className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                  >
+                    <FileDown className="w-3 h-3" />
+                    PDF
                   </button>
                 </div>
               </div>

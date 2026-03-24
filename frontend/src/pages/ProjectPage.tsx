@@ -8,7 +8,7 @@ import TaskList from '../components/task/TaskList'
 import TaskDetail from '../components/task/TaskDetail'
 import TaskCreateModal from '../components/task/TaskCreateModal'
 import ProjectDocumentsTab from '../components/project/ProjectDocumentsTab'
-import { LayoutGrid, List, Plus, Archive, Filter, Columns3, Pencil, Check, X, FileText, Lock, Unlock } from 'lucide-react'
+import { LayoutGrid, List, Plus, Archive, Filter, Columns3, Pencil, Check, X, FileText, Lock, Unlock, FileDown } from 'lucide-react'
 import { STATUS_OPTIONS, BOARD_COLUMNS } from '../constants/task'
 import { showErrorToast } from '../components/common/Toast'
 import type { Task, TaskStatus } from '../types'
@@ -169,6 +169,32 @@ export default function ProjectPage() {
 
   const handleBatchArchive = (taskIds: string[]) => {
     batchUpdateMutation.mutate(taskIds.map((task_id) => ({ task_id, archived: true })))
+  }
+
+  const [exporting, setExporting] = useState(false)
+  const handleExport = async (taskIds: string[], format: 'markdown' | 'pdf') => {
+    if (exporting) return
+    setExporting(true)
+    try {
+      const resp = await api.post(
+        `/projects/${projectId}/tasks/export`,
+        { task_ids: taskIds, format },
+        { responseType: 'blob', timeout: 120000 },
+      )
+      const blob = new Blob([resp.data])
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = format === 'markdown' ? 'tasks.md' : 'tasks.pdf'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      showErrorToast('エクスポートに失敗しました')
+    } finally {
+      setExporting(false)
+    }
   }
 
   const statusChangeMutation = useMutation({
@@ -358,9 +384,9 @@ export default function ProjectPage() {
             <ProjectDocumentsTab projectId={projectId!} />
           </div>
         ) : view === 'board' ? (
-          <TaskBoard tasks={filteredTasks} projectId={projectId!} onTaskClick={setSelectedTaskId} onUpdateFlags={handleUpdateFlags} onArchive={handleArchive} onStatusChange={handleStatusChange} showArchived={showArchived} visibleColumns={visibleColumns} />
+          <TaskBoard tasks={filteredTasks} projectId={projectId!} onTaskClick={setSelectedTaskId} onUpdateFlags={handleUpdateFlags} onArchive={handleArchive} onStatusChange={handleStatusChange} onExport={handleExport} showArchived={showArchived} visibleColumns={visibleColumns} />
         ) : (
-          <TaskList tasks={filteredTasks} projectId={projectId!} onTaskClick={setSelectedTaskId} onUpdateFlags={handleUpdateFlags} onArchive={handleArchive} onBatchUpdateFlags={handleBatchUpdateFlags} onBatchArchive={handleBatchArchive} showArchived={showArchived} />
+          <TaskList tasks={filteredTasks} projectId={projectId!} onTaskClick={setSelectedTaskId} onUpdateFlags={handleUpdateFlags} onArchive={handleArchive} onBatchUpdateFlags={handleBatchUpdateFlags} onBatchArchive={handleBatchArchive} onExport={handleExport} showArchived={showArchived} />
         )}
       </div>
 

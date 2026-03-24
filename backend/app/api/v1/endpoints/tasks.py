@@ -6,6 +6,7 @@ from pathlib import Path
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from ....core.config import settings
@@ -16,6 +17,7 @@ from ....models.task import Attachment, Comment, DecisionContext, DecisionOption
 from ....services.events import publish_event
 from ....services.search import deindex_task as _deindex_task, index_task as _index_task
 from ....services.serializers import task_to_dict as _task_dict
+from ....services.task_export import export_tasks_markdown, export_tasks_pdf
 
 UPLOADS_DIR = Path(settings.UPLOADS_DIR)
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
@@ -69,6 +71,11 @@ class CompleteTaskRequest(BaseModel):
     completion_report: str | None = Field(None, max_length=10000)
 
 
+class ExportTasksRequest(BaseModel):
+    task_ids: list[str] = Field(..., min_length=1, max_length=50)
+    format: str = Field("markdown", pattern=r"^(markdown|pdf)$")
+
+
 class AddCommentRequest(BaseModel):
     content: str = Field(..., max_length=10000)
 
@@ -89,6 +96,45 @@ def _check_not_locked(project: Project) -> None:
             status_code=status.HTTP_423_LOCKED,
             detail="Project is locked",
         )
+
+
+@router.post("/export")
+async def export_tasks(
+    project_id: str,
+    body: ExportTasksRequest,
+    user: User = Depends(get_current_user),
+):
+    """Export selected tasks as Markdown or PDF."""
+    await _check_project_access(project_id, user)
+
+    try:
+        oids = [ObjectId(tid) for tid in body.task_ids]
+    except Exception:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid task ID")
+
+    tasks = await Task.find(
+        {"_id": {"$in": oids}, "project_id": project_id, "is_deleted": False},
+    ).sort("updated_at").to_list()
+
+    if not tasks:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No tasks found")
+
+    if body.format == "markdown":
+        md_text = export_tasks_markdown(tasks)
+        filename = f"tasks_{project_id[:8]}.md"
+        return Response(
+            content=md_text.encode("utf-8"),
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    pdf_bytes = await export_tasks_pdf(tasks)
+    filename = f"tasks_{project_id[:8]}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("")

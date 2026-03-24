@@ -10,6 +10,7 @@ import {
   type DragEndEvent,
   type DragOverEvent,
 } from '@dnd-kit/core'
+import { FileDown, CheckSquare } from 'lucide-react'
 import TaskCard from './TaskCard'
 import DraggableTaskCard from './DraggableTaskCard'
 import type { Task, TaskStatus } from '../../types'
@@ -22,6 +23,7 @@ interface Props {
   onUpdateFlags: (taskId: string, flags: { needs_detail?: boolean; approved?: boolean }) => void
   onArchive: (taskId: string, archive: boolean) => void
   onStatusChange: (taskId: string, status: TaskStatus) => void
+  onExport: (taskIds: string[], format: 'markdown' | 'pdf') => void
   showArchived: boolean
   visibleColumns?: TaskStatus[]
 }
@@ -74,6 +76,7 @@ export default function TaskBoard({
   onUpdateFlags,
   onArchive,
   onStatusChange,
+  onExport,
   showArchived,
   visibleColumns,
 }: Props) {
@@ -82,6 +85,25 @@ export default function TaskBoard({
     : BOARD_COLUMNS
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [overColumnId, setOverColumnId] = useState<string | null>(null)
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  const toggleSelect = useCallback((taskId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(taskId)) {
+        next.delete(taskId)
+      } else {
+        next.add(taskId)
+      }
+      return next
+    })
+  }, [])
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false)
+    setSelectedIds(new Set())
+  }, [])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -150,51 +172,114 @@ export default function TaskBoard({
   }, [])
 
   return (
-    <DndContext
-      sensors={sensors}
-      onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
-      onDragEnd={handleDragEnd}
-      onDragCancel={handleDragCancel}
-    >
-      <div className={`flex gap-4 p-6 h-full ${activeTask ? 'overflow-x-hidden' : 'overflow-x-auto'}`}>
-        {columns.map((col) => {
-          const colTasks = tasksByStatus[col.key] ?? []
-          return (
-            <DroppableColumn
-              key={col.key}
-              columnKey={col.key}
-              label={col.label}
-              color={col.color}
-              colorDark={col.colorDark}
-              count={colTasks.length}
-              isOver={overColumnId === col.key}
-            >
-              {colTasks.map((task) => (
-                <DraggableTaskCard
-                  key={task.id}
-                  task={task}
-                  onClick={() => onTaskClick(task.id)}
-                  onUpdateFlags={onUpdateFlags}
-                  onArchive={onArchive}
-                />
-              ))}
-            </DroppableColumn>
-          )
-        })}
-      </div>
+    <div className="relative h-full">
+      {/* Select mode toggle */}
+      <button
+        onClick={() => selectMode ? exitSelectMode() : setSelectMode(true)}
+        className={`absolute top-2 right-4 z-10 flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+          selectMode
+            ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
+        }`}
+        title={selectMode ? '選択モード終了' : '選択モード'}
+      >
+        <CheckSquare className="w-3.5 h-3.5" />
+        {selectMode ? '選択終了' : '選択'}
+      </button>
 
-      <DragOverlay dropAnimation={null}>
-        {activeTask ? (
-          <div className="rotate-2 scale-105 opacity-90">
-            <TaskCard
-              task={activeTask}
-              onClick={() => {}}
-              onUpdateFlags={() => {}}
-            />
-          </div>
-        ) : null}
-      </DragOverlay>
-    </DndContext>
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
+        <div className={`flex gap-4 p-6 h-full ${activeTask ? 'overflow-x-hidden' : 'overflow-x-auto'}`}>
+          {columns.map((col) => {
+            const colTasks = tasksByStatus[col.key] ?? []
+            return (
+              <DroppableColumn
+                key={col.key}
+                columnKey={col.key}
+                label={col.label}
+                color={col.color}
+                colorDark={col.colorDark}
+                count={colTasks.length}
+                isOver={overColumnId === col.key}
+              >
+                {colTasks.map((task) => (
+                  selectMode ? (
+                    <div key={task.id} className="relative">
+                      <label
+                        className="absolute top-2 left-2 z-10 cursor-pointer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(task.id)}
+                          onChange={() => toggleSelect(task.id)}
+                          className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                        />
+                      </label>
+                      <div className={selectedIds.has(task.id) ? 'ring-2 ring-indigo-400 dark:ring-indigo-500 rounded-lg' : ''}>
+                        <TaskCard
+                          task={task}
+                          onClick={() => toggleSelect(task.id)}
+                          onUpdateFlags={onUpdateFlags}
+                          onArchive={onArchive}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <DraggableTaskCard
+                      key={task.id}
+                      task={task}
+                      onClick={() => onTaskClick(task.id)}
+                      onUpdateFlags={onUpdateFlags}
+                      onArchive={onArchive}
+                    />
+                  )
+                ))}
+              </DroppableColumn>
+            )
+          })}
+        </div>
+
+        <DragOverlay dropAnimation={null}>
+          {activeTask ? (
+            <div className="rotate-2 scale-105 opacity-90">
+              <TaskCard
+                task={activeTask}
+                onClick={() => {}}
+                onUpdateFlags={() => {}}
+              />
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+
+      {/* Floating export bar */}
+      {selectMode && selectedIds.size > 0 && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg rounded-xl px-4 py-2.5 z-20">
+          <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+            {selectedIds.size}件選択
+          </span>
+          <button
+            onClick={() => onExport(Array.from(selectedIds), 'markdown')}
+            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors font-medium"
+          >
+            <FileDown className="w-3.5 h-3.5" />
+            Markdown
+          </button>
+          <button
+            onClick={() => onExport(Array.from(selectedIds), 'pdf')}
+            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors font-medium"
+          >
+            <FileDown className="w-3.5 h-3.5" />
+            PDF
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
