@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from .core.config import settings
 from .core.database import close_db, connect, get_mongo_client
-from .core.redis import close_redis, get_redis
+from .core.redis import close_redis, get_redis, init_redis
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,6 +35,7 @@ class ORJSONResponse(JSONResponse):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect()
+    init_redis()
 
     # Warn about default DB passwords
     if "changeme" in settings.MONGO_URI.lower():

@@ -21,7 +21,7 @@ if TEST_MODE == "mock":
     _mock_mongo = _MockMongoClient()
     _fake_redis = _fakeredis_aioredis.FakeRedis(decode_responses=True)
 
-    # Redis グローバルクライアントを即時パッチ (get_redis() の lazy init を先取り)
+    # Redis グローバルクライアントを即時パッチ (init_redis() の代わりに fakeredis を注入)
     import app.core.redis as _redis_module
     _redis_module._client = _fake_redis
 

@@ -5,10 +5,23 @@ from .config import settings
 _client: aioredis.Redis | None = None
 
 
-def get_redis() -> aioredis.Redis:
+def init_redis() -> aioredis.Redis:
+    """Create and store the Redis client. Call once during startup (lifespan)."""
     global _client
+    _client = aioredis.from_url(settings.REDIS_URI, decode_responses=True)
+    return _client
+
+
+def get_redis() -> aioredis.Redis:
+    """Return the pre-initialized Redis client.
+
+    Raises RuntimeError if called before init_redis().
+    """
     if _client is None:
-        _client = aioredis.from_url(settings.REDIS_URI, decode_responses=True)
+        raise RuntimeError(
+            "Redis client is not initialized. "
+            "Ensure init_redis() is called during application startup."
+        )
     return _client
 
 
