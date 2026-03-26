@@ -19,6 +19,7 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive }: Pr
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } }}
       role="button"
+      aria-label={task.title}
       tabIndex={0}
       className={clsx(
         'relative bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 cursor-pointer hover:shadow-sm hover:border-indigo-300 dark:hover:border-indigo-600 transition-all group/card',
