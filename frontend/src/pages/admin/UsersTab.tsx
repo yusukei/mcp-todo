@@ -33,6 +33,12 @@ export default function UsersTab() {
     onError: () => showErrorToast('ユーザの有効/無効切り替えに失敗しました'),
   })
 
+  const toggleAdmin = useMutation({
+    mutationFn: (u: User) => api.patch(`/users/${u.id}`, { is_admin: !u.is_admin }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
+    onError: () => showErrorToast('管理者権限の切り替えに失敗しました'),
+  })
+
   const del = useMutation({
     mutationFn: (id: string) => api.delete(`/users/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
@@ -110,7 +116,12 @@ export default function UsersTab() {
                 <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{u.email}</td>
                 <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{u.auth_type}</td>
                 <td className="px-4 py-3 text-center">
-                  {u.is_admin ? <span className="text-indigo-600 dark:text-indigo-400 font-medium">●</span> : <span className="text-gray-300 dark:text-gray-600">○</span>}
+                  <button
+                    onClick={() => toggleAdmin.mutate(u)}
+                    className={`px-2 py-0.5 text-xs rounded-full font-medium ${u.is_admin ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}
+                  >
+                    {u.is_admin ? '管理者' : '一般'}
+                  </button>
                 </td>
                 <td className="px-4 py-3 text-center">
                   <button
