@@ -85,9 +85,11 @@ class AddCommentRequest(BaseModel):
 
 
 async def _check_project_access(project_id: str, user: User) -> Project:
+    from ....models.project import ProjectStatus as _ProjectStatus
+
     valid_object_id(project_id)
     project = await Project.get(project_id)
-    if not project:
+    if not project or project.status == _ProjectStatus.archived:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     if not user.is_admin and not project.has_member(str(user.id)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No access")

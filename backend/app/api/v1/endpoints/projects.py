@@ -36,7 +36,7 @@ async def _check_project_access(project_id: str, user: User) -> Project:
     """Return project if user is admin or member; raise 403 otherwise."""
     valid_object_id(project_id)
     project = await Project.get(project_id)
-    if not project:
+    if not project or project.status == ProjectStatus.archived:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     if not user.is_admin and not project.has_member(str(user.id)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No access")
@@ -47,7 +47,7 @@ async def _check_owner_or_admin(project_id: str, user: User) -> Project:
     """Return project if user is admin or project owner; raise 403 otherwise."""
     valid_object_id(project_id)
     project = await Project.get(project_id)
-    if not project:
+    if not project or project.status == ProjectStatus.archived:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     if not user.is_admin and not project.is_owner(str(user.id)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Owner or admin required")

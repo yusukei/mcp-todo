@@ -38,7 +38,7 @@ async def get_project(project_id: str) -> dict:
     check_project_access(project_id, key_info["project_scopes"])
 
     project = await Project.get(project_id)
-    if not project:
+    if not project or project.status == ProjectStatus.archived:
         raise ToolError("Project not found")
     return _project_dict(project)
 
@@ -98,7 +98,7 @@ async def update_project(
     check_project_access(project_id, key_info["project_scopes"])
 
     project = await Project.get(project_id)
-    if not project:
+    if not project or project.status == ProjectStatus.archived:
         raise ToolError("Project not found")
 
     VALID_STATUSES = {"active", "archived"}
@@ -133,7 +133,7 @@ async def delete_project(project_id: str) -> dict:
     check_project_access(project_id, key_info["project_scopes"])
 
     project = await Project.get(project_id)
-    if not project:
+    if not project or project.status == ProjectStatus.archived:
         raise ToolError("Project not found")
 
     project.status = ProjectStatus.archived
@@ -159,7 +159,7 @@ async def get_project_summary(project_id: str) -> dict:
     check_project_access(project_id, key_info["project_scopes"])
 
     project = await Project.get(project_id)
-    if not project:
+    if not project or project.status == ProjectStatus.archived:
         raise ToolError("Project not found")
 
     pipeline = [
@@ -197,9 +197,11 @@ _PROJECT_CACHE_TTL = 300  # 5 minutes
 
 
 async def _check_project_not_locked(project_id: str) -> None:
-    """Raise ToolError if the project is locked."""
+    """Raise ToolError if the project is locked or archived."""
     project = await Project.get(project_id)
-    if project and project.is_locked:
+    if not project or project.status == ProjectStatus.archived:
+        raise ToolError("Project not found")
+    if project.is_locked:
         raise ToolError("Project is locked. Unlock it before making changes.")
 
 

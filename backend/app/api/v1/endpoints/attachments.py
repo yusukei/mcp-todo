@@ -25,8 +25,10 @@ async def serve_attachment(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
     # Project-level access control
+    from ....models.project import ProjectStatus as _ProjectStatus
+
     project = await Project.get(task.project_id)
-    if not project:
+    if not project or project.status == _ProjectStatus.archived:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     if not user.is_admin and not project.has_member(str(user.id)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No access")
