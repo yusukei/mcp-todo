@@ -3,6 +3,7 @@
 Validates X-API-Key header directly against the database.
 """
 
+import asyncio
 import logging
 import time
 from collections import OrderedDict
@@ -22,11 +23,23 @@ AUTH_CACHE_MAX_SIZE = 1000
 
 
 class _BoundedTTLCache(OrderedDict):
-    """OrderedDict-based cache with TTL and max size (LRU eviction)."""
+    """OrderedDict-based cache with TTL and max size (LRU eviction).
+
+    Provides both sync (get_valid/put) and async (aget_valid/aput) interfaces.
+    The async methods use an internal asyncio.Lock for thread safety in
+    concurrent async contexts.
+    """
 
     def __init__(self, max_size: int = AUTH_CACHE_MAX_SIZE):
         super().__init__()
         self.max_size = max_size
+        self._lock: asyncio.Lock | None = None
+
+    def _get_lock(self) -> asyncio.Lock:
+        """Lazily create the asyncio.Lock (must be called within a running loop)."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     def get_valid(self, key: str) -> tuple[dict, float] | None:
         """Return cached value if present and not expired, else None."""
@@ -48,6 +61,16 @@ class _BoundedTTLCache(OrderedDict):
         self[key] = value
         while len(self) > self.max_size:
             self.popitem(last=False)
+
+    async def aget_valid(self, key: str) -> tuple[dict, float] | None:
+        """Async-safe version of get_valid, protected by asyncio.Lock."""
+        async with self._get_lock():
+            return self.get_valid(key)
+
+    async def aput(self, key: str, value: tuple[dict, float]) -> None:
+        """Async-safe version of put, protected by asyncio.Lock."""
+        async with self._get_lock():
+            self.put(key, value)
 
 
 _auth_cache = _BoundedTTLCache()
@@ -74,8 +97,8 @@ async def authenticate() -> dict:
 
     cache_key = hash_api_key(api_key)
 
-    # Check cache
-    cached = _auth_cache.get_valid(cache_key)
+    # Check cache (async-safe)
+    cached = await _auth_cache.aget_valid(cache_key)
     if cached is not None:
         result, _expiry = cached
         return result
@@ -109,7 +132,7 @@ async def authenticate() -> dict:
         "key_name": api_key_doc.name,
         "project_scopes": api_key_doc.project_scopes,
     }
-    _auth_cache.put(cache_key, (result, time.monotonic() + AUTH_CACHE_TTL))
+    await _auth_cache.aput(cache_key, (result, time.monotonic() + AUTH_CACHE_TTL))
     return result
 
 
