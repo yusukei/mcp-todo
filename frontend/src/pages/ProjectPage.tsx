@@ -230,17 +230,33 @@ export default function ProjectPage() {
           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: project.color }} />
           <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">{project.name}</h1>
           {project.is_locked && <Lock className="w-4 h-4 text-amber-500" />}
+          {/* View switcher — anchored to left so position stays fixed */}
+          <div className="flex items-center bg-gray-100 dark:bg-gray-700/60 rounded-lg p-0.5 ml-2">
+            <button
+              onClick={() => { setView('board'); setSelectMode(false) }}
+              className={`p-1.5 rounded-md transition-colors ${view === 'board' ? 'bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
+              title="カンバン"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => { setView('list'); setSelectMode(false) }}
+              className={`p-1.5 rounded-md transition-colors ${view === 'list' ? 'bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
+              title="リスト"
+            >
+              <List className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => { setView('docs'); setSelectMode(false) }}
+              className={`p-1.5 rounded-md transition-colors ${view === 'docs' ? 'bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
+              title="ドキュメント"
+            >
+              <FileText className="w-4 h-4" />
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          {!project.is_locked && (
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              タスク追加
-            </button>
-          )}
+          {/* Display controls */}
           <div className="flex items-center gap-1">
             <Filter className="w-4 h-4 text-gray-400 dark:text-gray-500" />
             <select
@@ -299,27 +315,20 @@ export default function ProjectPage() {
           >
             <Archive className="w-5 h-5" />
           </button>
-          <button
-            onClick={() => { setView('board'); setSelectMode(false) }}
-            className={`p-2 rounded-lg transition-colors ${view === 'board' ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-            title="カンバン"
-          >
-            <LayoutGrid className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => { setView('list'); setSelectMode(false) }}
-            className={`p-2 rounded-lg transition-colors ${view === 'list' ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-            title="リスト"
-          >
-            <List className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => { setView('docs'); setSelectMode(false) }}
-            className={`p-2 rounded-lg transition-colors ${view === 'docs' ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-            title="ドキュメント"
-          >
-            <FileText className="w-5 h-5" />
-          </button>
+
+          {/* Primary action */}
+          {!project.is_locked && (
+            <>
+              <span className="w-px h-5 bg-gray-200 dark:bg-gray-600" />
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                タスク追加
+              </button>
+            </>
+          )}
         </div>
       </div>
 
