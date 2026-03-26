@@ -233,21 +233,21 @@ export default function ProjectPage() {
           {/* View switcher — anchored to left so position stays fixed */}
           <div className="flex items-center bg-gray-100 dark:bg-gray-700/60 rounded-lg p-0.5 ml-2">
             <button
-              onClick={() => { setView('board'); setSelectMode(false) }}
+              onClick={() => setView('board')}
               className={`p-1.5 rounded-md transition-colors ${view === 'board' ? 'bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
               title="カンバン"
             >
               <LayoutGrid className="w-4 h-4" />
             </button>
             <button
-              onClick={() => { setView('list'); setSelectMode(false) }}
+              onClick={() => setView('list')}
               className={`p-1.5 rounded-md transition-colors ${view === 'list' ? 'bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
               title="リスト"
             >
               <List className="w-4 h-4" />
             </button>
             <button
-              onClick={() => { setView('docs'); setSelectMode(false) }}
+              onClick={() => setView('docs')}
               className={`p-1.5 rounded-md transition-colors ${view === 'docs' ? 'bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
               title="ドキュメント"
             >
@@ -299,15 +299,13 @@ export default function ProjectPage() {
               )}
             </div>
           )}
-          {(view === 'board' || view === 'list') && (
-            <button
-              onClick={() => selectMode ? exitSelectMode() : setSelectMode(true)}
-              className={`p-2 rounded-lg transition-colors ${selectMode ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-              title={selectMode ? '選択モード終了' : '選択モード'}
-            >
-              <CheckSquare className="w-5 h-5" />
-            </button>
-          )}
+          <button
+            onClick={() => selectMode ? exitSelectMode() : setSelectMode(true)}
+            className={`p-2 rounded-lg transition-colors ${selectMode ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+            title={selectMode ? '選択モード終了' : '選択モード'}
+          >
+            <CheckSquare className="w-5 h-5" />
+          </button>
           <button
             onClick={() => setShowArchived(!showArchived)}
             className={`p-2 rounded-lg transition-colors ${showArchived ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
@@ -336,12 +334,12 @@ export default function ProjectPage() {
       <div className="flex-1 overflow-hidden">
         {view === 'docs' ? (
           <div className="h-full overflow-y-auto">
-            <ProjectDocumentsTab projectId={projectId!} />
+            <ProjectDocumentsTab projectId={projectId!} selectMode={selectMode} />
           </div>
         ) : view === 'board' ? (
           <TaskBoard tasks={filteredTasks} projectId={projectId!} onTaskClick={setSelectedTaskId} onUpdateFlags={handleUpdateFlags} onArchive={handleArchive} onStatusChange={handleStatusChange} onExport={handleExport} onReorder={handleReorder} showArchived={showArchived} visibleColumns={visibleColumns} selectMode={selectMode} onExitSelectMode={exitSelectMode} />
         ) : (
-          <TaskList tasks={filteredTasks} projectId={projectId!} onTaskClick={setSelectedTaskId} onUpdateFlags={handleUpdateFlags} onArchive={handleArchive} onBatchUpdateFlags={handleBatchUpdateFlags} onBatchArchive={handleBatchArchive} onExport={handleExport} onReorder={handleReorder} showArchived={showArchived} />
+          <TaskList tasks={filteredTasks} projectId={projectId!} selectMode={selectMode} onTaskClick={setSelectedTaskId} onUpdateFlags={handleUpdateFlags} onArchive={handleArchive} onBatchUpdateFlags={handleBatchUpdateFlags} onBatchArchive={handleBatchArchive} onExport={handleExport} onReorder={handleReorder} showArchived={showArchived} />
         )}
       </div>
 

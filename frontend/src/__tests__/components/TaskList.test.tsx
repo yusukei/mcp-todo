@@ -53,11 +53,14 @@ const baseTasks: Task[] = [
 
 const defaultProps = {
   projectId: 'project-1',
+  selectMode: true,
   onTaskClick: vi.fn(),
   onUpdateFlags: vi.fn(),
   onArchive: vi.fn(),
   onBatchUpdateFlags: vi.fn(),
   onBatchArchive: vi.fn(),
+  onExport: vi.fn(),
+  onReorder: vi.fn(),
   showArchived: false,
 }
 
@@ -115,9 +118,14 @@ describe('TaskList', () => {
   })
 
   describe('一括操作', () => {
-    it('タスクがある場合に一括操作ヘッダーが表示される', () => {
-      render(<TaskList tasks={baseTasks} {...defaultProps} />)
+    it('selectMode=true の場合に一括操作ヘッダーが表示される', () => {
+      render(<TaskList tasks={baseTasks} {...defaultProps} selectMode={true} />)
       expect(screen.getByText('一括操作')).toBeInTheDocument()
+    })
+
+    it('selectMode=false の場合に一括操作ヘッダーが表示されない', () => {
+      render(<TaskList tasks={baseTasks} {...defaultProps} selectMode={false} />)
+      expect(screen.queryByText('一括操作')).not.toBeInTheDocument()
     })
 
     it('タスクがない場合に一括操作ヘッダーが表示されない', () => {
@@ -135,7 +143,7 @@ describe('TaskList', () => {
     })
 
     it('全選択後に再度クリックで選択解除される', async () => {
-      render(<TaskList tasks={baseTasks} {...defaultProps} />)
+      render(<TaskList tasks={baseTasks} {...defaultProps} selectMode={true} />)
       const checkboxes = screen.getAllByRole('checkbox')
       const selectAllCheckbox = checkboxes[0]
       await userEvent.click(selectAllCheckbox)
@@ -144,10 +152,8 @@ describe('TaskList', () => {
       expect(screen.getByText('一括操作')).toBeInTheDocument()
     })
 
-    it('選択時に一括操作ボタンが表示される', async () => {
-      render(<TaskList tasks={baseTasks} {...defaultProps} />)
-      const checkboxes = screen.getAllByRole('checkbox')
-      await userEvent.click(checkboxes[0]) // select all
+    it('selectMode=true で一括操作ボタンが常に表示される', () => {
+      render(<TaskList tasks={baseTasks} {...defaultProps} selectMode={true} />)
       expect(screen.getByText('実行許可 ON')).toBeInTheDocument()
       expect(screen.getByText('実行許可 OFF')).toBeInTheDocument()
     })
@@ -164,7 +170,7 @@ describe('TaskList', () => {
 
     it('一括操作後に選択がクリアされる', async () => {
       const onBatchUpdateFlags = vi.fn()
-      render(<TaskList tasks={baseTasks} {...defaultProps} onBatchUpdateFlags={onBatchUpdateFlags} />)
+      render(<TaskList tasks={baseTasks} {...defaultProps} selectMode={true} onBatchUpdateFlags={onBatchUpdateFlags} />)
       const checkboxes = screen.getAllByRole('checkbox')
       await userEvent.click(checkboxes[0]) // select all
       expect(screen.getByText('2件選択')).toBeInTheDocument()

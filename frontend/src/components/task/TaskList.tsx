@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, type DOMAttributes } from 'react'
+import React, { useState, useMemo, useCallback, useEffect, type DOMAttributes } from 'react'
 import clsx from 'clsx'
 import { Archive, ArchiveRestore, Calendar, CornerDownRight, HelpCircle, Copy, FileDown, GripVertical, ShieldCheck, ShieldOff } from 'lucide-react'
 import {
@@ -22,6 +22,7 @@ interface TaskRowProps {
   task: Task
   isSubtask: boolean
   isSelected: boolean
+  selectMode: boolean
   sortable: boolean
   onTaskClick: (id: string) => void
   onToggleSelect: (id: string) => void
@@ -55,6 +56,7 @@ function TaskRowInner({
   task,
   isSubtask,
   isSelected,
+  selectMode,
   onTaskClick,
   onToggleSelect,
   onUpdateFlags,
@@ -88,14 +90,16 @@ function TaskRowInner({
         </div>
       )}
       {!dragListeners && !isSubtask && <div className="w-4 flex-shrink-0" />}
-      <label className="flex items-center flex-shrink-0 cursor-pointer" onClick={(e) => e.stopPropagation()}>
-        <input
-          type="checkbox"
-          checked={isSelected}
-          onChange={() => onToggleSelect(task.id)}
-          className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
-        />
-      </label>
+      {selectMode && (
+        <label className="flex items-center flex-shrink-0 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => onToggleSelect(task.id)}
+            className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+          />
+        </label>
+      )}
       <button
         onClick={(e) => {
           e.stopPropagation()
@@ -177,6 +181,7 @@ function TaskRowInner({
 interface Props {
   tasks: Task[]
   projectId: string
+  selectMode: boolean
   onTaskClick: (id: string) => void
   onUpdateFlags: (taskId: string, flags: { needs_detail?: boolean; approved?: boolean }) => void
   onArchive: (taskId: string, archive: boolean) => void
@@ -187,9 +192,13 @@ interface Props {
   showArchived: boolean
 }
 
-export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags, onArchive, onBatchUpdateFlags, onBatchArchive, onExport, onReorder, showArchived }: Props) {
+export default function TaskList({ tasks, projectId, selectMode, onTaskClick, onUpdateFlags, onArchive, onBatchUpdateFlags, onBatchArchive, onExport, onReorder, showArchived }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [activeTask, setActiveTask] = useState<Task | null>(null)
+
+  useEffect(() => {
+    if (!selectMode) setSelectedIds(new Set())
+  }, [selectMode])
 
   const allSelected = tasks.length > 0 && selectedIds.size === tasks.length
   const someSelected = selectedIds.size > 0 && selectedIds.size < tasks.length
@@ -289,7 +298,7 @@ export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags,
     <div className="p-6 overflow-y-auto h-full">
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700">
         {/* Header with select-all and bulk actions */}
-        {tasks.length > 0 && (
+        {selectMode && tasks.length > 0 && (
           <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 dark:bg-gray-800/80">
             <div className="w-4 flex-shrink-0" /> {/* spacer for drag handle column */}
             <label className="flex items-center cursor-pointer" onClick={(e) => e.stopPropagation()}>
@@ -301,53 +310,54 @@ export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags,
                 className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
               />
             </label>
-            {selectedIds.size > 0 ? (
-              <div className="flex items-center gap-2 flex-1">
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {selectedIds.size}件選択
-                </span>
-                <div className="flex flex-wrap items-center gap-2 ml-2">
-                  <button
-                    onClick={() => bulkUpdateFlags({ approved: true })}
-                    className="text-xs px-2 py-1 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 transition-colors"
-                  >
-                    実行許可 ON
-                  </button>
-                  <button
-                    onClick={() => bulkUpdateFlags({ approved: false })}
-                    className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                  >
-                    実行許可 OFF
-                  </button>
-                  <button
-                    onClick={() => {
-                      onBatchArchive(Array.from(selectedIds))
-                      setSelectedIds(new Set())
-                    }}
-                    className="text-xs px-2 py-1 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-900/60 transition-colors"
-                  >
-                    アーカイブ
-                  </button>
-                  <span className="w-px h-4 bg-gray-300 dark:bg-gray-600" />
-                  <button
-                    onClick={() => onExport(Array.from(selectedIds), 'markdown')}
-                    className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
-                  >
-                    <FileDown className="w-3 h-3" />
-                    Markdown
-                  </button>
-                  <button
-                    onClick={() => onExport(Array.from(selectedIds), 'pdf')}
-                    className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
-                  >
-                    <FileDown className="w-3 h-3" />
-                    PDF
-                  </button>
-                </div>
+            <div className="flex items-center gap-2 flex-1">
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                {selectedIds.size > 0 ? `${selectedIds.size}件選択` : '一括操作'}
+              </span>
+              <div className="flex flex-wrap items-center gap-2 ml-2">
+                <button
+                  onClick={() => bulkUpdateFlags({ approved: true })}
+                  disabled={selectedIds.size === 0}
+                  className="text-xs px-2 py-1 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  実行許可 ON
+                </button>
+                <button
+                  onClick={() => bulkUpdateFlags({ approved: false })}
+                  disabled={selectedIds.size === 0}
+                  className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  実行許可 OFF
+                </button>
+                <button
+                  onClick={() => {
+                    onBatchArchive(Array.from(selectedIds))
+                    setSelectedIds(new Set())
+                  }}
+                  disabled={selectedIds.size === 0}
+                  className="text-xs px-2 py-1 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-900/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  アーカイブ
+                </button>
+                <span className="w-px h-4 bg-gray-300 dark:bg-gray-600" />
+                <button
+                  onClick={() => onExport(Array.from(selectedIds), 'markdown')}
+                  disabled={selectedIds.size === 0}
+                  className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <FileDown className="w-3 h-3" />
+                  Markdown
+                </button>
+                <button
+                  onClick={() => onExport(Array.from(selectedIds), 'pdf')}
+                  disabled={selectedIds.size === 0}
+                  className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <FileDown className="w-3 h-3" />
+                  PDF
+                </button>
               </div>
-            ) : (
-              <span className="text-xs text-gray-400 dark:text-gray-500">一括操作</span>
-            )}
+            </div>
           </div>
         )}
         {tasks.length === 0 && (
@@ -366,6 +376,7 @@ export default function TaskList({ tasks, projectId, onTaskClick, onUpdateFlags,
                 task={task}
                 isSubtask={isSubtask}
                 isSelected={selectedIds.has(task.id)}
+                selectMode={selectMode}
                 sortable={!isSubtask}
                 onTaskClick={onTaskClick}
                 onToggleSelect={toggleSelect}

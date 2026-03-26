@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -44,7 +44,7 @@ interface DocFormData {
 
 const emptyForm: DocFormData = { title: '', content: '', tags: '', category: 'spec' }
 
-export default function ProjectDocumentsTab({ projectId, initialDocumentId }: { projectId: string; initialDocumentId?: string }) {
+export default function ProjectDocumentsTab({ projectId, initialDocumentId, selectMode = false }: { projectId: string; initialDocumentId?: string; selectMode?: boolean }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
@@ -74,6 +74,11 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId }: { 
       return next
     })
   }, [])
+
+  // Clear selection when selectMode is turned off
+  useEffect(() => {
+    if (!selectMode) setCheckedIds(new Set())
+  }, [selectMode])
 
 
   const handleExport = useCallback(async (format: 'markdown' | 'pdf') => {
@@ -329,31 +334,25 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId }: { 
       </div>
 
       {/* Export bar */}
-      {checkedIds.size > 0 && (
+      {selectMode && (
         <div className="flex items-center gap-3 mb-4 p-3 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-lg">
           <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
-            {checkedIds.size}件選択中
+            {checkedIds.size > 0 ? `${checkedIds.size}件選択中` : 'エクスポート'}
           </span>
           <div className="flex items-center gap-2 ml-auto">
             <button
               onClick={() => handleExport('markdown')}
-              disabled={exporting}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+              disabled={exporting || checkedIds.size === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <FileText className="w-4 h-4" /> Markdown
             </button>
             <button
               onClick={() => handleExport('pdf')}
-              disabled={exporting}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+              disabled={exporting || checkedIds.size === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <FileDown className="w-4 h-4" /> {exporting ? 'エクスポート中...' : 'PDF'}
-            </button>
-            <button
-              onClick={() => setCheckedIds(new Set())}
-              className="px-2 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-            >
-              解除
             </button>
           </div>
         </div>
@@ -403,7 +402,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId }: { 
       ) : (
         <div className="grid gap-3">
           {/* Select all */}
-          {items.length > 1 && (
+          {selectMode && items.length > 1 && (
             <label className="flex items-center gap-2 px-1 text-sm text-gray-500 dark:text-gray-400 cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -429,6 +428,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId }: { 
                   onToggleCheck={toggleCheck}
                   onSelect={selectDocument}
                   sortDisabled={isFiltered}
+                  selectMode={selectMode}
                 />
               ))}
             </SortableContext>
@@ -453,12 +453,14 @@ function SortableDocumentCard({
   onToggleCheck,
   onSelect,
   sortDisabled,
+  selectMode,
 }: {
   doc: ProjectDocument
   isChecked: boolean
   onToggleCheck: (id: string) => void
   onSelect: (id: string) => void
   sortDisabled: boolean
+  selectMode: boolean
 }) {
   const {
     attributes,
@@ -495,13 +497,15 @@ function SortableDocumentCard({
           <GripVertical className="w-4 h-4" />
         </div>
       )}
-      <input
-        type="checkbox"
-        checked={isChecked}
-        onChange={() => onToggleCheck(doc.id)}
-        onClick={(e) => e.stopPropagation()}
-        className="w-4 h-4 mt-1 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 flex-shrink-0 cursor-pointer"
-      />
+      {selectMode && (
+        <input
+          type="checkbox"
+          checked={isChecked}
+          onChange={() => onToggleCheck(doc.id)}
+          onClick={(e) => e.stopPropagation()}
+          className="w-4 h-4 mt-1 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 flex-shrink-0 cursor-pointer"
+        />
+      )}
       <button
         onClick={() => onSelect(doc.id)}
         className="text-left flex-1 min-w-0"
