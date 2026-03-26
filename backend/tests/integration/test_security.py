@@ -2,9 +2,12 @@
 
 Tests for:
 - Path traversal attack prevention on attachments endpoint
+- File upload path traversal, size limits, and content type validation
 - Comment content size validation
 - MCP API key authentication (missing key, invalid key)
 """
+
+import io
 
 import pytest
 import pytest_asyncio
@@ -83,6 +86,211 @@ class TestPathTraversalAttachments:
             headers=admin_headers,
         )
         assert resp.status_code in (400, 404)
+
+
+class TestUploadPathTraversal:
+    """Verify that path traversal filenames are sanitized during upload."""
+
+    def _upload_url(self, project_id: str, task_id: str) -> str:
+        return f"/api/v1/projects/{project_id}/tasks/{task_id}/attachments"
+
+    def _make_file(self, filename: str, content: bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100,
+                   content_type: str = "image/png"):
+        return {"file": (filename, io.BytesIO(content), content_type)}
+
+    async def test_dotdot_slash_stripped_from_filename(
+        self, client, admin_user, test_project, admin_headers, tmp_path, monkeypatch
+    ):
+        """Upload with ../../etc/passwd filename should have directory components stripped."""
+        monkeypatch.setattr("app.api.v1.endpoints.tasks.UPLOADS_DIR", tmp_path)
+        task = await make_task(str(test_project.id), admin_user)
+
+        resp = await client.post(
+            self._upload_url(str(test_project.id), str(task.id)),
+            files=self._make_file("../../etc/passwd"),
+            headers=admin_headers,
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        # The stored filename must not contain path traversal sequences
+        assert ".." not in data["filename"]
+        assert "/" not in data["filename"]
+        assert "etc" not in data["filename"] or "passwd" in data["filename"]
+        # The final component "passwd" should be preserved (after uuid prefix)
+        assert data["filename"].endswith("_passwd")
+
+    async def test_backslash_traversal_stripped(
+        self, client, admin_user, test_project, admin_headers, tmp_path, monkeypatch
+    ):
+        r"""Upload with ..\\..\\windows\\system32 filename should be sanitized."""
+        monkeypatch.setattr("app.api.v1.endpoints.tasks.UPLOADS_DIR", tmp_path)
+        task = await make_task(str(test_project.id), admin_user)
+
+        resp = await client.post(
+            self._upload_url(str(test_project.id), str(task.id)),
+            files=self._make_file("..\\..\\windows\\system32\\config.png"),
+            headers=admin_headers,
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert ".." not in data["filename"]
+        assert "\\" not in data["filename"]
+
+    async def test_nested_traversal_stripped(
+        self, client, admin_user, test_project, admin_headers, tmp_path, monkeypatch
+    ):
+        """Upload with foo/../../../bar.txt should have traversal stripped."""
+        monkeypatch.setattr("app.api.v1.endpoints.tasks.UPLOADS_DIR", tmp_path)
+        task = await make_task(str(test_project.id), admin_user)
+
+        resp = await client.post(
+            self._upload_url(str(test_project.id), str(task.id)),
+            files=self._make_file("foo/../../../bar.png"),
+            headers=admin_headers,
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert ".." not in data["filename"]
+        # Should keep only the final filename component
+        assert data["filename"].endswith("_bar.png")
+
+    async def test_null_byte_in_upload_filename(
+        self, client, admin_user, test_project, admin_headers, tmp_path, monkeypatch
+    ):
+        """Null bytes in upload filename should be handled safely."""
+        monkeypatch.setattr("app.api.v1.endpoints.tasks.UPLOADS_DIR", tmp_path)
+        task = await make_task(str(test_project.id), admin_user)
+
+        resp = await client.post(
+            self._upload_url(str(test_project.id), str(task.id)),
+            files=self._make_file("image\x00.png"),
+            headers=admin_headers,
+        )
+        # Should either succeed with sanitized name or reject; must not crash
+        assert resp.status_code in (201, 400, 422)
+        if resp.status_code == 201:
+            assert "\x00" not in resp.json()["filename"]
+
+    async def test_file_saved_inside_uploads_dir(
+        self, client, admin_user, test_project, admin_headers, tmp_path, monkeypatch
+    ):
+        """Regardless of filename tricks, uploaded file must land inside UPLOADS_DIR."""
+        monkeypatch.setattr("app.api.v1.endpoints.tasks.UPLOADS_DIR", tmp_path)
+        task = await make_task(str(test_project.id), admin_user)
+
+        resp = await client.post(
+            self._upload_url(str(test_project.id), str(task.id)),
+            files=self._make_file("../../escape.png"),
+            headers=admin_headers,
+        )
+        assert resp.status_code == 201
+        saved_name = resp.json()["filename"]
+        saved_path = tmp_path / str(task.id) / saved_name
+        assert saved_path.exists()
+        # Verify the file is under the expected uploads directory
+        assert str(saved_path.resolve()).startswith(str(tmp_path.resolve()))
+
+
+class TestUploadSizeLimits:
+    """Verify that file size limits are enforced on upload."""
+
+    def _upload_url(self, project_id: str, task_id: str) -> str:
+        return f"/api/v1/projects/{project_id}/tasks/{task_id}/attachments"
+
+    async def test_file_within_size_limit_accepted(
+        self, client, admin_user, test_project, admin_headers, tmp_path, monkeypatch
+    ):
+        """A file under 5MB should be accepted."""
+        monkeypatch.setattr("app.api.v1.endpoints.tasks.UPLOADS_DIR", tmp_path)
+        task = await make_task(str(test_project.id), admin_user)
+
+        small_content = b"\x89PNG\r\n\x1a\n" + b"\x00" * 1024  # ~1KB
+        resp = await client.post(
+            self._upload_url(str(test_project.id), str(task.id)),
+            files={"file": ("small.png", io.BytesIO(small_content), "image/png")},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 201
+        assert resp.json()["size"] == len(small_content)
+
+    async def test_file_exceeding_size_limit_rejected(
+        self, client, admin_user, test_project, admin_headers, tmp_path, monkeypatch
+    ):
+        """A file over 5MB should be rejected with 400."""
+        monkeypatch.setattr("app.api.v1.endpoints.tasks.UPLOADS_DIR", tmp_path)
+        task = await make_task(str(test_project.id), admin_user)
+
+        over_limit = b"\x89PNG\r\n\x1a\n" + b"\x00" * (5 * 1024 * 1024 + 1)  # 5MB + 9 bytes
+        resp = await client.post(
+            self._upload_url(str(test_project.id), str(task.id)),
+            files={"file": ("huge.png", io.BytesIO(over_limit), "image/png")},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 400
+        assert "too large" in resp.json()["detail"].lower()
+
+    async def test_file_exactly_at_size_limit_accepted(
+        self, client, admin_user, test_project, admin_headers, tmp_path, monkeypatch
+    ):
+        """A file exactly at 5MB should be accepted."""
+        monkeypatch.setattr("app.api.v1.endpoints.tasks.UPLOADS_DIR", tmp_path)
+        task = await make_task(str(test_project.id), admin_user)
+
+        exact_limit = b"\x00" * (5 * 1024 * 1024)  # exactly 5MB
+        resp = await client.post(
+            self._upload_url(str(test_project.id), str(task.id)),
+            files={"file": ("exact.png", io.BytesIO(exact_limit), "image/png")},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 201
+
+
+class TestUploadContentTypeValidation:
+    """Verify that only allowed content types are accepted."""
+
+    def _upload_url(self, project_id: str, task_id: str) -> str:
+        return f"/api/v1/projects/{project_id}/tasks/{task_id}/attachments"
+
+    @pytest.mark.parametrize("content_type", ["image/jpeg", "image/png", "image/gif", "image/webp"])
+    async def test_allowed_image_types_accepted(
+        self, client, admin_user, test_project, admin_headers, tmp_path, monkeypatch,
+        content_type
+    ):
+        """All allowed image types should be accepted."""
+        monkeypatch.setattr("app.api.v1.endpoints.tasks.UPLOADS_DIR", tmp_path)
+        task = await make_task(str(test_project.id), admin_user)
+
+        resp = await client.post(
+            self._upload_url(str(test_project.id), str(task.id)),
+            files={"file": ("test.img", io.BytesIO(b"\x00" * 100), content_type)},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 201
+
+    @pytest.mark.parametrize("content_type", [
+        "application/pdf",
+        "text/html",
+        "application/javascript",
+        "text/plain",
+        "application/x-executable",
+        "application/octet-stream",
+        "image/svg+xml",
+    ])
+    async def test_disallowed_content_types_rejected(
+        self, client, admin_user, test_project, admin_headers, tmp_path, monkeypatch,
+        content_type
+    ):
+        """Non-image file types should be rejected with 400."""
+        monkeypatch.setattr("app.api.v1.endpoints.tasks.UPLOADS_DIR", tmp_path)
+        task = await make_task(str(test_project.id), admin_user)
+
+        resp = await client.post(
+            self._upload_url(str(test_project.id), str(task.id)),
+            files={"file": ("test.file", io.BytesIO(b"\x00" * 100), content_type)},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 400
+        assert "not allowed" in resp.json()["detail"].lower()
 
 
 class TestCommentContentValidation:

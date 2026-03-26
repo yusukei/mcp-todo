@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { api } from './api/client'
 import { useAuthStore } from './store/auth'
 import ErrorBoundary from './components/common/ErrorBoundary'
+import { useGlobalErrorHandler } from './hooks/useGlobalErrorHandler'
 import Layout from './components/common/Layout'
 import ToastContainer from './components/common/Toast'
 import ProtectedRoute from './components/common/ProtectedRoute'
@@ -51,6 +52,7 @@ function AppInit({ children }: { children: React.ReactNode }) {
 
 function AppRoutes() {
   const location = useLocation()
+  useGlobalErrorHandler()
   return (
     <ErrorBoundary key={location.pathname}>
       <AppInit>
