@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { useAuthStore } from '../store/auth'
 
 export const api = axios.create({
   baseURL: '/api/v1',
@@ -29,9 +30,7 @@ api.interceptors.response.use(
               localStorage.setItem('refresh_token', data.refresh_token)
               return data.access_token
             } catch {
-              localStorage.removeItem('access_token')
-              localStorage.removeItem('refresh_token')
-              window.location.href = '/login'
+              useAuthStore.getState().logout()
               throw new Error('Refresh failed')
             } finally {
               refreshPromise = null
