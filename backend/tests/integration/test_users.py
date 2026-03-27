@@ -200,6 +200,87 @@ class TestDeleteUser:
         assert resp.status_code == 403
 
 
+class TestResetPassword:
+    async def test_admin_can_reset_password(
+        self, client, admin_user, admin_headers
+    ):
+        # admin_user は auth_type=admin
+        resp = await client.post(
+            f"/api/v1/users/{admin_user.id}/reset-password",
+            headers=admin_headers,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "new_password" in data
+        assert len(data["new_password"]) > 0
+
+    async def test_admin_can_reset_with_custom_password(
+        self, client, admin_user, admin_headers
+    ):
+        resp = await client.post(
+            f"/api/v1/users/{admin_user.id}/reset-password",
+            json={"password": "CustomPass123!"},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["new_password"] == "CustomPass123!"
+
+    async def test_cannot_reset_google_user_password(
+        self, client, admin_user, regular_user, admin_headers
+    ):
+        # regular_user は auth_type=google
+        resp = await client.post(
+            f"/api/v1/users/{regular_user.id}/reset-password",
+            headers=admin_headers,
+        )
+        assert resp.status_code == 400
+
+    async def test_reset_nonexistent_user_returns_404(
+        self, client, admin_user, admin_headers
+    ):
+        resp = await client.post(
+            "/api/v1/users/000000000000000000000000/reset-password",
+            headers=admin_headers,
+        )
+        assert resp.status_code == 404
+
+    async def test_non_admin_cannot_reset_password(
+        self, client, admin_user, regular_user, user_headers
+    ):
+        resp = await client.post(
+            f"/api/v1/users/{admin_user.id}/reset-password",
+            headers=user_headers,
+        )
+        assert resp.status_code == 403
+
+    async def test_short_password_returns_422(
+        self, client, admin_user, admin_headers
+    ):
+        resp = await client.post(
+            f"/api/v1/users/{admin_user.id}/reset-password",
+            json={"password": "short"},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 422
+
+    async def test_reset_clears_password_disabled(
+        self, client, admin_user, admin_headers
+    ):
+        # password_disabled を True に設定
+        admin_user.password_disabled = True
+        await admin_user.save_updated()
+
+        resp = await client.post(
+            f"/api/v1/users/{admin_user.id}/reset-password",
+            headers=admin_headers,
+        )
+        assert resp.status_code == 200
+
+        # password_disabled が False にリセットされている
+        db_user = await User.get(admin_user.id)
+        assert db_user.password_disabled is False
+
+
 class TestAllowedEmails:
     async def test_admin_can_list_allowed_emails(
         self, client, admin_user, admin_headers

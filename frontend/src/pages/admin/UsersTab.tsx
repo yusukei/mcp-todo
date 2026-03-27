@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Trash2, Plus } from 'lucide-react'
+import { Trash2, Plus, KeyRound } from 'lucide-react'
 import { api } from '../../api/client'
 import { showErrorToast } from '../../components/common/Toast'
 import type { User } from '../../types'
@@ -37,6 +37,14 @@ export default function UsersTab() {
     mutationFn: (u: User) => api.patch(`/users/${u.id}`, { is_admin: !u.is_admin }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
     onError: () => showErrorToast('管理者権限の切り替えに失敗しました'),
+  })
+
+  const [resetResult, setResetResult] = useState<{ name: string; password: string } | null>(null)
+
+  const resetPassword = useMutation({
+    mutationFn: (u: User) => api.post(`/users/${u.id}/reset-password`).then((r) => ({ name: u.name, password: r.data.new_password })),
+    onSuccess: (data) => setResetResult(data),
+    onError: () => showErrorToast('パスワードリセットに失敗しました'),
   })
 
   const del = useMutation({
@@ -131,7 +139,17 @@ export default function UsersTab() {
                     {u.is_active ? '有効' : '無効'}
                   </button>
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right flex items-center justify-end gap-2">
+                  {u.auth_type === 'admin' && (
+                    <button
+                      onClick={() => { if (confirm(`"${u.name}" のパスワードをリセットしますか？`)) resetPassword.mutate(u) }}
+                      className="text-gray-400 hover:text-indigo-500 dark:text-gray-500 dark:hover:text-indigo-400"
+                      aria-label="パスワードリセット"
+                      title="パスワードリセット"
+                    >
+                      <KeyRound className="w-4 h-4" />
+                    </button>
+                  )}
                   <button
                     onClick={() => { if (confirm(`"${u.name}" を無効化しますか？`)) del.mutate(u.id) }}
                     className="text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400"
@@ -145,6 +163,38 @@ export default function UsersTab() {
           </tbody>
         </table>
       </div>
+      {resetResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 w-full max-w-sm space-y-4">
+            <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">パスワードリセット完了</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              <span className="font-medium">{resetResult.name}</span> の新しいパスワード:
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg text-sm font-mono text-gray-800 dark:text-gray-200 select-all break-all">
+                {resetResult.password}
+              </code>
+              <button
+                onClick={() => navigator.clipboard.writeText(resetResult.password)}
+                className="px-3 py-2 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shrink-0"
+              >
+                コピー
+              </button>
+            </div>
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              このパスワードは再表示できません。必ずコピーしてください。
+            </p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setResetResult(null)}
+                className="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

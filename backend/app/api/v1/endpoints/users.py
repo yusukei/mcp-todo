@@ -97,6 +97,31 @@ async def update_user(user_id: str, body: UpdateUserRequest, _: User = Depends(g
     return _user_dict(user)
 
 
+class ResetPasswordRequest(BaseModel):
+    password: str | None = Field(None, min_length=8)
+
+
+@router.post("/{user_id}/reset-password")
+async def reset_password(
+    user_id: str, body: ResetPasswordRequest | None = None, _: User = Depends(get_admin_user)
+) -> dict:
+    """Reset a user's password. If password is provided, use it; otherwise generate a random one."""
+    valid_object_id(user_id)
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user.auth_type != AuthType.admin:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot reset password for non-admin auth type users",
+        )
+    new_password = body.password if body and body.password else secrets.token_urlsafe(12)
+    user.password_hash = hash_password(new_password)
+    user.password_disabled = False
+    await user.save_updated()
+    return {"new_password": new_password}
+
+
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(user_id: str, admin: User = Depends(get_admin_user)) -> None:
     valid_object_id(user_id)
