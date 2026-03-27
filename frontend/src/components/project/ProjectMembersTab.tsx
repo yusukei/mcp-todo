@@ -57,6 +57,19 @@ export default function ProjectMembersTab({ project }: { project: Project }) {
     },
   })
 
+  const updateMemberRole = useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: MemberRole }) =>
+      api.patch(`/projects/${project.id}/members/${userId}`, { role }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project', project.id] })
+      showSuccessToast('ロールを変更しました')
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      showErrorToast(msg || 'ロールの変更に失敗しました')
+    },
+  })
+
   const removeMember = useMutation({
     mutationFn: (userId: string) => api.delete(`/projects/${project.id}/members/${userId}`),
     onSuccess: () => {
@@ -186,7 +199,29 @@ export default function ProjectMembersTab({ project }: { project: Project }) {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    {m.role === 'owner' ? (
+                    {isOwnerOrAdmin && m.user_id !== user?.id ? (
+                      <button
+                        onClick={() => {
+                          const newRole: MemberRole = m.role === 'owner' ? 'member' : 'owner'
+                          if (confirm(`${u?.name || m.user_id} のロールを「${newRole === 'owner' ? 'オーナー' : 'メンバー'}」に変更しますか？`))
+                            updateMemberRole.mutate({ userId: m.user_id, role: newRole })
+                        }}
+                        disabled={updateMemberRole.isPending}
+                        title="クリックでロールを変更"
+                        className="cursor-pointer disabled:opacity-50"
+                      >
+                        {m.role === 'owner' ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 rounded-full hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors">
+                            <Crown className="w-3 h-3" />
+                            オーナー
+                          </span>
+                        ) : (
+                          <span className="text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                            メンバー
+                          </span>
+                        )}
+                      </button>
+                    ) : m.role === 'owner' ? (
                       <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 rounded-full">
                         <Crown className="w-3 h-3" />
                         オーナー

@@ -29,6 +29,10 @@ class AddMemberRequest(BaseModel):
     role: MemberRole = MemberRole.member
 
 
+class UpdateMemberRequest(BaseModel):
+    role: MemberRole
+
+
 # ── Helpers ──────────────────────────────────────────────────
 
 
@@ -141,6 +145,29 @@ async def add_member(
     if project.has_member(body.user_id):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already a member")
     project.members.append(ProjectMember(user_id=body.user_id, role=body.role))
+    await project.save_updated()
+    return _project_dict(project)
+
+
+@router.patch("/{project_id}/members/{user_id}")
+async def update_member_role(
+    project_id: str, user_id: str, body: UpdateMemberRequest, user: User = Depends(get_current_user)
+) -> dict:
+    project = await _check_owner_or_admin(project_id, user)
+    valid_object_id(user_id)
+    member = project.get_member(user_id)
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    if member.role == body.role:
+        return _project_dict(project)
+    # Prevent demoting the last owner
+    if member.role == MemberRole.owner and body.role != MemberRole.owner:
+        owner_count = sum(1 for m in project.members if m.role == MemberRole.owner)
+        if owner_count <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="Cannot demote the last owner"
+            )
+    member.role = body.role
     await project.save_updated()
     return _project_dict(project)
 

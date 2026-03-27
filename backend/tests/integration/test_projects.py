@@ -322,6 +322,86 @@ class TestMemberManagement:
         assert resp.status_code == 403
 
 
+class TestUpdateMemberRole:
+    async def test_admin_can_change_member_to_owner(
+        self, client, regular_user, test_project, admin_headers
+    ):
+        resp = await client.patch(
+            f"/api/v1/projects/{test_project.id}/members/{regular_user.id}",
+            json={"role": "owner"},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 200
+        member = next(m for m in resp.json()["members"] if m["user_id"] == str(regular_user.id))
+        assert member["role"] == "owner"
+
+    async def test_admin_can_demote_owner_to_member(
+        self, client, admin_user, admin_headers
+    ):
+        """オーナーが複数いる場合、降格できる"""
+        second_owner = User(
+            email="owner2@test.com", name="Owner2", auth_type="google", is_active=True
+        )
+        await second_owner.insert()
+        project = Project(
+            name="Multi Owner",
+            created_by=admin_user,
+            members=[
+                ProjectMember(user_id=str(admin_user.id), role=MemberRole.owner),
+                ProjectMember(user_id=str(second_owner.id), role=MemberRole.owner),
+            ],
+        )
+        await project.insert()
+
+        resp = await client.patch(
+            f"/api/v1/projects/{project.id}/members/{second_owner.id}",
+            json={"role": "member"},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 200
+        member = next(m for m in resp.json()["members"] if m["user_id"] == str(second_owner.id))
+        assert member["role"] == "member"
+
+    async def test_cannot_demote_last_owner(
+        self, client, admin_user, admin_headers
+    ):
+        """最後のオーナーは降格できない"""
+        project = Project(
+            name="Solo Owner",
+            created_by=admin_user,
+            members=[ProjectMember(user_id=str(admin_user.id), role=MemberRole.owner)],
+        )
+        await project.insert()
+
+        resp = await client.patch(
+            f"/api/v1/projects/{project.id}/members/{admin_user.id}",
+            json={"role": "member"},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 409
+        assert "last owner" in resp.json()["detail"].lower()
+
+    async def test_nonexistent_member_returns_404(
+        self, client, test_project, admin_headers
+    ):
+        resp = await client.patch(
+            f"/api/v1/projects/{test_project.id}/members/000000000000000000000000",
+            json={"role": "owner"},
+            headers=admin_headers,
+        )
+        assert resp.status_code == 404
+
+    async def test_regular_user_cannot_change_role(
+        self, client, regular_user, test_project, user_headers
+    ):
+        resp = await client.patch(
+            f"/api/v1/projects/{test_project.id}/members/{regular_user.id}",
+            json={"role": "owner"},
+            headers=user_headers,
+        )
+        assert resp.status_code == 403
+
+
 class TestProjectSummary:
     async def test_summary_empty_project(
         self, client, test_project, admin_headers
