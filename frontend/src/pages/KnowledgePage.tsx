@@ -1,9 +1,9 @@
 import { useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { BookOpen, Plus, Search, Tag, ArrowLeft, Pencil, Trash2, ExternalLink } from 'lucide-react'
+import { BookOpen, Plus, Search, Tag, ArrowLeft, Pencil, Trash2, ExternalLink, Copy, Check } from 'lucide-react'
 import { api } from '../api/client'
-import { showErrorToast } from '../components/common/Toast'
+import { showErrorToast, showSuccessToast } from '../components/common/Toast'
 import MarkdownRenderer from '../components/common/MarkdownRenderer'
 import type { Knowledge, KnowledgeCategory } from '../types'
 
@@ -44,6 +44,7 @@ export default function KnowledgePage() {
   const [editing, setEditing] = useState(false)
   const [creating, setCreating] = useState(false)
   const [form, setForm] = useState<KnowledgeFormData>(emptyForm)
+  const [copied, setCopied] = useState(false)
 
   const queryParams = new URLSearchParams()
   if (search) queryParams.set('search', search)
@@ -157,6 +158,19 @@ export default function KnowledgePage() {
             <div className="flex items-start justify-between gap-4 mb-4">
               <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">{selected.title}</h1>
               <div className="flex gap-2 flex-shrink-0">
+                <button
+                  onClick={() => {
+                    const text = `# ${selected.title}\n\n${selected.content}`
+                    navigator.clipboard.writeText(text)
+                    setCopied(true)
+                    showSuccessToast('コピーしました')
+                    setTimeout(() => setCopied(false), 2000)
+                  }}
+                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  title="内容をコピー"
+                >
+                  {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                </button>
                 <button onClick={() => startEdit(selected)} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700">
                   <Pencil className="w-4 h-4" />
                 </button>

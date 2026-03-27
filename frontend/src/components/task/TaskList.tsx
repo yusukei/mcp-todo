@@ -64,7 +64,7 @@ function TaskRowInner({
   dragListeners,
   dragAttributes,
 }: TaskRowProps & { dragListeners?: DOMAttributes<HTMLDivElement>; dragAttributes?: DraggableAttributes }) {
-  const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done' && task.status !== 'on_hold'
+  const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done' && task.status !== 'cancelled' && task.status !== 'on_hold'
 
   return (
     <div
@@ -341,7 +341,7 @@ export default function TaskList({ tasks, projectId, selectMode, onTaskClick, on
                 </button>
                 <span className="w-px h-4 bg-gray-300 dark:bg-gray-600" />
                 <button
-                  onClick={() => onExport(Array.from(selectedIds), 'markdown')}
+                  onClick={() => onExport(orderedTasks.map(e => e.task.id).filter(id => selectedIds.has(id)), 'markdown')}
                   disabled={selectedIds.size === 0}
                   className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
@@ -349,7 +349,7 @@ export default function TaskList({ tasks, projectId, selectMode, onTaskClick, on
                   Markdown
                 </button>
                 <button
-                  onClick={() => onExport(Array.from(selectedIds), 'pdf')}
+                  onClick={() => onExport(orderedTasks.map(e => e.task.id).filter(id => selectedIds.has(id)), 'pdf')}
                   disabled={selectedIds.size === 0}
                   className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >

@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useRef } from 'react'
+import { useMemo, useState, useCallback, useEffect } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -15,8 +15,15 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import { FileDown } from 'lucide-react'
 import TaskCard from './TaskCard'
 import SortableTaskCard from './SortableTaskCard'
-import type { Task, TaskStatus } from '../../types'
+import type { Task, TaskStatus, TaskPriority } from '../../types'
 import { BOARD_COLUMNS } from '../../constants/task'
+
+const PRIORITY_WEIGHT: Record<TaskPriority, number> = {
+  urgent: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+}
 
 interface Props {
   tasks: Task[]
@@ -112,11 +119,9 @@ export default function TaskBoard({
   }, [])
 
   // Clear selections when exiting select mode
-  const prevSelectMode = useRef(selectMode)
-  if (prevSelectMode.current && !selectMode) {
-    setSelectedIds(new Set())
-  }
-  prevSelectMode.current = selectMode
+  useEffect(() => {
+    if (!selectMode) setSelectedIds(new Set())
+  }, [selectMode])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -132,9 +137,13 @@ export default function TaskBoard({
     for (const t of tasks) {
       if (map[t.status]) map[t.status].push(t)
     }
-    // Sort by sort_order (which already reflects priority-based initial ordering from backend)
+    // Sort by priority first, then by sort_order within same priority
     for (const key of Object.keys(map)) {
-      map[key].sort((a, b) => a.sort_order - b.sort_order)
+      map[key].sort((a, b) => {
+        const pw = PRIORITY_WEIGHT[a.priority] - PRIORITY_WEIGHT[b.priority]
+        if (pw !== 0) return pw
+        return a.sort_order - b.sort_order
+      })
     }
     return map
   }, [tasks, columns])
@@ -285,14 +294,14 @@ export default function TaskBoard({
             {selectedIds.size}件選択
           </span>
           <button
-            onClick={() => onExport(Array.from(selectedIds), 'markdown')}
+            onClick={() => onExport(tasks.slice().sort((a, b) => a.sort_order - b.sort_order).map(t => t.id).filter(id => selectedIds.has(id)), 'markdown')}
             className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors font-medium"
           >
             <FileDown className="w-3.5 h-3.5" />
             Markdown
           </button>
           <button
-            onClick={() => onExport(Array.from(selectedIds), 'pdf')}
+            onClick={() => onExport(tasks.slice().sort((a, b) => a.sort_order - b.sort_order).map(t => t.id).filter(id => selectedIds.has(id)), 'pdf')}
             className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors font-medium"
           >
             <FileDown className="w-3.5 h-3.5" />
