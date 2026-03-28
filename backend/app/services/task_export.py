@@ -158,13 +158,13 @@ img, svg { max-width: 100%; height: auto; }
 """
 
 
-def _task_to_markdown(task: Task, index: int) -> str:
+def _task_to_markdown(task: Task, index: int, heading: str = "#") -> str:
     """Convert a single Task to Markdown."""
     parts: list[str] = []
-    if index > 0:
+    if index > 0 and heading == "#":
         parts.append("\n\n---\n\n")
 
-    parts.append(f"# {task.title}\n\n")
+    parts.append(f"{heading} {task.title}\n\n")
 
     # Metadata line
     meta_parts = []
@@ -214,11 +214,18 @@ def _task_to_markdown(task: Task, index: int) -> str:
     return "".join(parts)
 
 
-def export_tasks_markdown(tasks: list[Task]) -> str:
+def export_tasks_markdown(
+    tasks: list[Task],
+    subtasks_by_parent: dict[str, list[Task]] | None = None,
+) -> str:
     """Concatenate tasks into a single Markdown string."""
+    subtasks_by_parent = subtasks_by_parent or {}
     parts: list[str] = []
     for i, task in enumerate(tasks):
         parts.append(_task_to_markdown(task, i))
+        children = subtasks_by_parent.get(str(task.id), [])
+        for j, child in enumerate(children):
+            parts.append(_task_to_markdown(child, j, heading="##"))
     return "".join(parts)
 
 
@@ -230,72 +237,83 @@ def _md_to_html(content: str) -> str:
     return md.convert(content)
 
 
-def _build_tasks_html(tasks: list[Task]) -> str:
+def _build_task_html(task: Task, heading: str = "h1", separator: bool = False) -> str:
+    """Build HTML for a single task."""
+    separator_cls = ' class="task-separator"' if separator else ""
+
+    # Meta badges
+    status_label = _STATUS_LABELS.get(task.status, task.status)
+    priority_label = _PRIORITY_LABELS.get(task.priority, task.priority)
+    priority_class = f"badge-priority-{task.priority}"
+
+    meta = (
+        f'<div class="task-meta">'
+        f'<span class="task-badge badge-status">{status_label}</span> '
+        f'<span class="task-badge {priority_class}">{priority_label}</span>'
+    )
+    if task.tags:
+        meta += f' <span>タグ: {", ".join(task.tags)}</span>'
+    if task.due_date:
+        meta += f' <span>期日: {task.due_date.strftime("%Y-%m-%d")}</span>'
+    meta += "</div>"
+
+    # Body: description as markdown
+    body_parts: list[str] = []
+    if task.description:
+        body_parts.append(_md_to_html(task.description))
+
+    if task.decision_context:
+        dc = task.decision_context
+        if dc.background:
+            body_parts.append(f"<h3>背景</h3>{_md_to_html(dc.background)}")
+        if dc.decision_point:
+            body_parts.append(f"<h3>判断ポイント</h3>{_md_to_html(dc.decision_point)}")
+        if dc.options:
+            opts_html = "<h3>選択肢</h3><ul>"
+            for opt in dc.options:
+                desc = f": {opt.description}" if opt.description else ""
+                opts_html += f"<li><strong>{opt.label}</strong>{desc}</li>"
+            opts_html += "</ul>"
+            body_parts.append(opts_html)
+
+    if task.completion_report:
+        body_parts.append(f"<h3>完了レポート</h3>{_md_to_html(task.completion_report)}")
+
+    if task.comments:
+        comments_html = f'<div class="comment-section"><h3>コメント ({len(task.comments)})</h3>'
+        for c in task.comments:
+            date_str = c.created_at.strftime("%Y-%m-%d %H:%M")
+            comment_body = _md_to_html(c.content)
+            comments_html += (
+                f'<div class="comment">'
+                f'<div class="comment-author">{c.author_name} — {date_str}</div>'
+                f'{comment_body}</div>'
+            )
+        comments_html += "</div>"
+        body_parts.append(comments_html)
+
+    body = "\n".join(body_parts)
+
+    return (
+        f'<article{separator_cls}>'
+        f'<{heading}>{task.title}</{heading}>'
+        f'{meta}'
+        f'{body}'
+        f'</article>'
+    )
+
+
+def _build_tasks_html(
+    tasks: list[Task],
+    subtasks_by_parent: dict[str, list[Task]] | None = None,
+) -> str:
     """Build full HTML page from tasks for PDF rendering."""
+    subtasks_by_parent = subtasks_by_parent or {}
     sections: list[str] = []
     for i, task in enumerate(tasks):
-        separator_cls = ' class="task-separator"' if i > 0 else ""
-
-        # Meta badges
-        status_label = _STATUS_LABELS.get(task.status, task.status)
-        priority_label = _PRIORITY_LABELS.get(task.priority, task.priority)
-        priority_class = f"badge-priority-{task.priority}"
-
-        meta = (
-            f'<div class="task-meta">'
-            f'<span class="task-badge badge-status">{status_label}</span> '
-            f'<span class="task-badge {priority_class}">{priority_label}</span>'
-        )
-        if task.tags:
-            meta += f' <span>タグ: {", ".join(task.tags)}</span>'
-        if task.due_date:
-            meta += f' <span>期日: {task.due_date.strftime("%Y-%m-%d")}</span>'
-        meta += "</div>"
-
-        # Body: description as markdown
-        body_parts: list[str] = []
-        if task.description:
-            body_parts.append(_md_to_html(task.description))
-
-        if task.decision_context:
-            dc = task.decision_context
-            if dc.background:
-                body_parts.append(f"<h3>背景</h3>{_md_to_html(dc.background)}")
-            if dc.decision_point:
-                body_parts.append(f"<h3>判断ポイント</h3>{_md_to_html(dc.decision_point)}")
-            if dc.options:
-                opts_html = "<h3>選択肢</h3><ul>"
-                for opt in dc.options:
-                    desc = f": {opt.description}" if opt.description else ""
-                    opts_html += f"<li><strong>{opt.label}</strong>{desc}</li>"
-                opts_html += "</ul>"
-                body_parts.append(opts_html)
-
-        if task.completion_report:
-            body_parts.append(f"<h3>完了レポート</h3>{_md_to_html(task.completion_report)}")
-
-        if task.comments:
-            comments_html = f'<div class="comment-section"><h3>コメント ({len(task.comments)})</h3>'
-            for c in task.comments:
-                date_str = c.created_at.strftime("%Y-%m-%d %H:%M")
-                comment_body = _md_to_html(c.content)
-                comments_html += (
-                    f'<div class="comment">'
-                    f'<div class="comment-author">{c.author_name} — {date_str}</div>'
-                    f'{comment_body}</div>'
-                )
-            comments_html += "</div>"
-            body_parts.append(comments_html)
-
-        body = "\n".join(body_parts)
-
-        sections.append(
-            f'<article{separator_cls}>'
-            f'<h1>{task.title}</h1>'
-            f'{meta}'
-            f'{body}'
-            f'</article>'
-        )
+        sections.append(_build_task_html(task, heading="h1", separator=i > 0))
+        for child in subtasks_by_parent.get(str(task.id), []):
+            sections.append(_build_task_html(child, heading="h2"))
 
     body = "\n".join(sections)
 
@@ -315,11 +333,14 @@ mermaid.initialize({{ startOnLoad: true, theme: 'neutral', securityLevel: 'loose
 </html>"""
 
 
-async def export_tasks_pdf(tasks: list[Task]) -> bytes:
+async def export_tasks_pdf(
+    tasks: list[Task],
+    subtasks_by_parent: dict[str, list[Task]] | None = None,
+) -> bytes:
     """Render tasks to a single PDF via Playwright."""
     from playwright.async_api import async_playwright
 
-    html = _build_tasks_html(tasks)
+    html = _build_tasks_html(tasks, subtasks_by_parent)
 
     with tempfile.NamedTemporaryFile(
         suffix=".html", delete=False, mode="w", encoding="utf-8"

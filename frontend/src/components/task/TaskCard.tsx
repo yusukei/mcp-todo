@@ -68,7 +68,7 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive, sele
         <p className="text-sm font-medium text-gray-800 dark:text-gray-100 line-clamp-2">{task.title}</p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5 mb-1" onClick={(e) => e.stopPropagation()}>
+      <div className="flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
         <button
           onClick={() => onUpdateFlags(task.id, { approved: !task.approved })}
           className={clsx(
@@ -93,39 +93,34 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive, sele
             {tag}
           </span>
         ))}
-      </div>
-
-      <div className="flex items-center justify-end mt-1">
-        <div className="flex items-center gap-2">
-          {task.due_date && (
-            <span className={clsx('flex items-center gap-1 text-xs', isOverdue ? 'text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-gray-500')}>
-              <Calendar className="w-3 h-3" />
-              {new Date(task.due_date).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
-            </span>
-          )}
-          {task.assignee_id && (
-            <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
-              <User className="w-3 h-3" />
-            </span>
-          )}
-          {onArchive && (task.status === 'done' || task.status === 'cancelled') && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onArchive(task.id, !task.archived)
-              }}
-              className={clsx(
-                'p-1 rounded transition-colors',
-                task.archived
-                  ? 'text-indigo-500 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30'
-                  : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700',
-              )}
-              title={task.archived ? 'アーカイブ解除' : 'アーカイブ'}
-            >
-              {task.archived ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
-            </button>
-          )}
-        </div>
+        {task.due_date && (
+          <span className={clsx('flex items-center gap-1 text-xs', isOverdue ? 'text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-gray-500')}>
+            <Calendar className="w-3 h-3" />
+            {new Date(task.due_date).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
+          </span>
+        )}
+        {task.assignee_id && (
+          <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+            <User className="w-3 h-3" />
+          </span>
+        )}
+        {onArchive && (task.status === 'done' || task.status === 'cancelled') && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onArchive(task.id, !task.archived)
+            }}
+            className={clsx(
+              'ml-auto p-0.5 rounded transition-colors',
+              task.archived
+                ? 'text-indigo-500 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30'
+                : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700',
+            )}
+            title={task.archived ? 'アーカイブ解除' : 'アーカイブ'}
+          >
+            {task.archived ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
+          </button>
+        )}
       </div>
     </div>
   )

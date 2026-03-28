@@ -218,7 +218,9 @@ export default function ProjectPage() {
     enabled: !!projectId,
   })
 
-  const filteredTasks = statusFilter === 'all' ? tasks : tasks.filter((t: Task) => t.status === statusFilter)
+  // Exclude subtasks from kanban/list views (shown only in task detail panel)
+  const topLevelTasks = tasks.filter((t: Task) => !t.parent_task_id)
+  const filteredTasks = statusFilter === 'all' ? topLevelTasks : topLevelTasks.filter((t: Task) => t.status === statusFilter)
 
   if (!project) return <div className="p-8 text-gray-500 dark:text-gray-400" role="status" aria-live="polite">読み込み中...</div>
 

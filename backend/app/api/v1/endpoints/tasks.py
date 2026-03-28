@@ -149,15 +149,28 @@ async def export_tasks(
     except Exception:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid task ID")
 
-    tasks = await Task.find(
+    fetched = await Task.find(
         {"_id": {"$in": oids}, "project_id": project_id, "is_deleted": False},
-    ).sort("+sort_order", "updated_at").to_list()
+    ).to_list()
+
+    # Preserve the order from the request (reflects UI sort_order)
+    task_map = {str(t.id): t for t in fetched}
+    tasks = [task_map[tid] for tid in body.task_ids if tid in task_map]
 
     if not tasks:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No tasks found")
 
+    # Fetch subtasks for each task
+    parent_ids = [str(t.id) for t in tasks]
+    subtasks = await Task.find(
+        {"project_id": project_id, "parent_task_id": {"$in": parent_ids}, "is_deleted": False},
+    ).sort("+sort_order", "+created_at").to_list()
+    subtasks_by_parent: dict[str, list[Task]] = {}
+    for st in subtasks:
+        subtasks_by_parent.setdefault(st.parent_task_id, []).append(st)
+
     if body.format == "markdown":
-        md_text = export_tasks_markdown(tasks)
+        md_text = export_tasks_markdown(tasks, subtasks_by_parent)
         filename = f"tasks_{project_id[:8]}.md"
         return Response(
             content=md_text.encode("utf-8"),
@@ -165,7 +178,7 @@ async def export_tasks(
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
-    pdf_bytes = await export_tasks_pdf(tasks)
+    pdf_bytes = await export_tasks_pdf(tasks, subtasks_by_parent)
     filename = f"tasks_{project_id[:8]}.pdf"
     return Response(
         content=pdf_bytes,
