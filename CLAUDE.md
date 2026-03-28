@@ -20,6 +20,7 @@ uv run pytest                    # Run all tests (mock mode, no external deps)
 uv run pytest tests/test_auth.py # Run single test file
 uv run pytest -k "test_login"    # Run tests matching pattern
 uv run pytest --cov              # Run with coverage (70% minimum)
+uv run pytest tests/test_audit.py # Run pip-audit vulnerability check
 TEST_MODE=real uv run pytest     # Run against real MongoDB/Redis (requires docker-compose.test.yml)
 ```
 
