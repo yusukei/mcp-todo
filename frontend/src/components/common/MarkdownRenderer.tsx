@@ -117,7 +117,7 @@ export default function MarkdownRenderer({ children, className }: Props) {
           code: codeComponent,
         }}
       >
-        {children}
+        {children.replace(/\\n/g, '\n')}
       </Markdown>
     </div>
   )

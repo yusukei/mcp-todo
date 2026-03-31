@@ -120,7 +120,8 @@ li { margin: 4px 0; }
 hr { border: none; border-top: 1px solid #e2e8f0; margin: 24px 0; }
 img, svg { max-width: 100%; height: auto; }
 .mermaid { text-align: center; margin: 16px 0; }
-.task-separator { page-break-before: always; }
+article { page-break-after: always; }
+article:last-child { page-break-after: auto; }
 .task-meta {
     font-size: 9pt;
     color: #64748b;
@@ -237,9 +238,8 @@ def _md_to_html(content: str) -> str:
     return md.convert(content)
 
 
-def _build_task_html(task: Task, heading: str = "h1", separator: bool = False) -> str:
+def _build_task_html(task: Task, heading: str = "h1") -> str:
     """Build HTML for a single task."""
-    separator_cls = ' class="task-separator"' if separator else ""
 
     # Meta badges
     status_label = _STATUS_LABELS.get(task.status, task.status)
@@ -295,7 +295,7 @@ def _build_task_html(task: Task, heading: str = "h1", separator: bool = False) -
     body = "\n".join(body_parts)
 
     return (
-        f'<article{separator_cls}>'
+        f'<article>'
         f'<{heading}>{task.title}</{heading}>'
         f'{meta}'
         f'{body}'
@@ -311,7 +311,7 @@ def _build_tasks_html(
     subtasks_by_parent = subtasks_by_parent or {}
     sections: list[str] = []
     for i, task in enumerate(tasks):
-        sections.append(_build_task_html(task, heading="h1", separator=i > 0))
+        sections.append(_build_task_html(task, heading="h1"))
         for child in subtasks_by_parent.get(str(task.id), []):
             sections.append(_build_task_html(child, heading="h2"))
 
