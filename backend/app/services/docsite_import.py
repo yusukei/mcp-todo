@@ -155,7 +155,7 @@ def _build_top_sections(docs_dir: Path) -> list[DocSiteSection]:
 # ── Content preprocessing ────────────────────────────────────
 
 _TABLE_START_RE = re.compile(r"^\|")
-_LIST_LINE_RE = re.compile(r"^(\s*[-*])\s")
+_LIST_LINE_RE = re.compile(r"^(\s*[-*])\s|^(\s*\d+\.)\s")
 
 
 def preprocess_markdown(content: str) -> str:

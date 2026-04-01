@@ -61,29 +61,33 @@ interface TreeNodeProps {
   section: DocSiteSection
   siteId: string
   activePath: string | null
-  onSelect: (path: string) => void
+  activeNodeKey: string | null
+  nodeKey: string
+  onSelect: (path: string, nodeKey: string) => void
   depth?: number
   defaultExpanded?: boolean
 }
 
-function TreeNode({ section, siteId, activePath, onSelect, depth = 0, defaultExpanded = false }: TreeNodeProps) {
+function TreeNode({ section, siteId, activePath, activeNodeKey, nodeKey, onSelect, depth = 0, defaultExpanded = false }: TreeNodeProps) {
   const hasChildren = section.children.length > 0
-  const isActive = section.path !== null && section.path === activePath
+  const isActive = activeNodeKey === nodeKey
 
   // Expand if this node or any descendant is active
   const isDescendantActive = useMemo(() => {
-    function check(s: DocSiteSection): boolean {
-      if (s.path === activePath) return true
-      return s.children.some(check)
-    }
-    return check(section)
-  }, [section, activePath])
+    if (!activeNodeKey) return false
+    return activeNodeKey.startsWith(nodeKey + '/')
+  }, [activeNodeKey, nodeKey])
 
   const [expanded, setExpanded] = useState(defaultExpanded || isDescendantActive)
 
+  // Auto-expand when a descendant becomes active
+  useEffect(() => {
+    if (isDescendantActive && !expanded) setExpanded(true)
+  }, [isDescendantActive]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleClick = () => {
     if (section.path) {
-      onSelect(section.path)
+      onSelect(section.path, nodeKey)
     }
     if (hasChildren) {
       setExpanded(!expanded)
@@ -116,16 +120,21 @@ function TreeNode({ section, siteId, activePath, onSelect, depth = 0, defaultExp
       </button>
       {hasChildren && expanded && (
         <div>
-          {section.children.map((child, i) => (
-            <TreeNode
-              key={child.path ?? `${child.title}-${i}`}
-              section={child}
-              siteId={siteId}
-              activePath={activePath}
-              onSelect={onSelect}
-              depth={depth + 1}
-            />
-          ))}
+          {section.children.map((child, i) => {
+            const childKey = `${nodeKey}/${child.path ?? `${child.title}-${i}`}`
+            return (
+              <TreeNode
+                key={childKey}
+                section={child}
+                siteId={siteId}
+                activePath={activePath}
+                activeNodeKey={activeNodeKey}
+                nodeKey={childKey}
+                onSelect={onSelect}
+                depth={depth + 1}
+              />
+            )
+          })}
         </div>
       )}
     </div>
@@ -203,6 +212,7 @@ export default function DocSiteViewerPage() {
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
   const [mobileShowContent, setMobileShowContent] = useState(!!pagePath)
+  const [activeNodeKey, setActiveNodeKey] = useState<string | null>(null)
   const DocSiteLink = useDocSiteLink(siteId!, pagePath)
 
   const { data: site, isLoading: siteLoading } = useQuery<DocSite>({
@@ -235,8 +245,9 @@ export default function DocSiteViewerPage() {
   })
 
   const handleSelectPage = useCallback(
-    (path: string) => {
+    (path: string, nodeKey: string) => {
       navigate(`/docsites/${siteId}/${path}`)
+      setActiveNodeKey(nodeKey)
       setMobileShowContent(true)
     },
     [siteId, navigate],
@@ -308,16 +319,21 @@ export default function DocSiteViewerPage() {
 
         {/* Tree */}
         <nav className="flex-1 overflow-y-auto py-2 px-1">
-          {filteredSections.map((section, i) => (
-            <TreeNode
-              key={section.path ?? `${section.title}-${i}`}
-              section={section}
-              siteId={siteId!}
-              activePath={pagePath ?? null}
-              onSelect={handleSelectPage}
-              defaultExpanded={i === 0 && !pagePath}
-            />
-          ))}
+          {filteredSections.map((section, i) => {
+            const rootKey = section.path ?? `${section.title}-${i}`
+            return (
+              <TreeNode
+                key={rootKey}
+                section={section}
+                siteId={siteId!}
+                activePath={pagePath ?? null}
+                activeNodeKey={activeNodeKey}
+                nodeKey={rootKey}
+                onSelect={handleSelectPage}
+                defaultExpanded={i === 0 && !pagePath}
+              />
+            )
+          })}
         </nav>
       </div>
 
