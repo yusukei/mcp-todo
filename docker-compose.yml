@@ -41,8 +41,12 @@ services:
       - WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME:-MCP Todo}
       - WEBAUTHN_ORIGIN=${WEBAUTHN_ORIGIN:-http://localhost:3000}
       - SEARCH_INDEX_DIR=/app/search_index
+      - DOCSITE_ASSETS_DIR=/app/docsite_assets
+      - DOCSITE_INDEX_DIR=/app/search_index_docsites
     volumes:
       - search_index:/app/search_index
+      - docsite_assets:/app/docsite_assets
+      - docsite_index:/app/search_index_docsites
     depends_on:
       mongo:
         condition: service_healthy
@@ -129,6 +133,8 @@ volumes:
   mongo_data:
   redis_data:
   search_index:
+  docsite_assets:
+  docsite_index:
 
 networks:
   todo-net:

@@ -15,6 +15,8 @@ import ProjectPage from './pages/ProjectPage'
 import ProjectSettingsPage from './pages/ProjectSettingsPage'
 import DocumentPage from './pages/DocumentPage'
 import KnowledgePage from './pages/KnowledgePage'
+import DocSitesPage from './pages/DocSitesPage'
+import DocSiteViewerPage from './pages/DocSiteViewerPage'
 import SettingsPage from './pages/SettingsPage'
 
 const GoogleCallbackPage = React.lazy(() => import('./pages/GoogleCallbackPage'))
@@ -80,6 +82,8 @@ function AppRoutes() {
             <Route path="projects/:projectId/documents/:documentId" element={<DocumentPage />} />
             <Route path="knowledge" element={<KnowledgePage />} />
             <Route path="knowledge/:knowledgeId" element={<KnowledgePage />} />
+            <Route path="docsites" element={<DocSitesPage />} />
+            <Route path="docsites/:siteId/*" element={<DocSiteViewerPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route
               path="admin"

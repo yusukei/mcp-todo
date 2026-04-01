@@ -7,6 +7,8 @@ import subprocess
 import sys
 from datetime import datetime
 
+from pathlib import Path
+
 from .core.config import settings
 from .core.database import connect, close_db
 from .core.security import hash_password
@@ -74,6 +76,49 @@ async def _restore(input_path: str) -> None:
     print("Restore completed")
 
 
+async def _import_docsite(
+    name: str,
+    docs_dir_str: str,
+    source_url: str,
+    description: str,
+) -> None:
+    """Import a documentation site from a local directory."""
+    await connect()
+    try:
+        docs_dir = Path(docs_dir_str).resolve()
+        if not docs_dir.is_dir():
+            print(f"Error: directory not found: {docs_dir}", file=sys.stderr)
+            sys.exit(1)
+
+        assets_dir = Path(settings.DOCSITE_ASSETS_DIR)
+        assets_dir.mkdir(parents=True, exist_ok=True)
+
+        # Initialize search index if available
+        from .services.docsite_search import TANTIVY_AVAILABLE
+        if TANTIVY_AVAILABLE:
+            from .services.docsite_search import (
+                DocSiteSearchIndex,
+                DocSiteSearchIndexer,
+                DocSiteSearchService,
+            )
+            index = DocSiteSearchIndex(Path(settings.DOCSITE_INDEX_DIR))
+            indexer = DocSiteSearchIndexer(index)
+            DocSiteSearchIndexer.set_instance(indexer)
+            DocSiteSearchService.set_instance(DocSiteSearchService(index))
+
+        from .services.docsite_import import import_docsite
+        site = await import_docsite(
+            name=name,
+            docs_dir=docs_dir,
+            assets_dir=assets_dir,
+            source_url=source_url,
+            description=description,
+        )
+        print(f"DocSite imported: {site.name} (id={site.id}, pages={site.page_count})")
+    finally:
+        await close_db()
+
+
 def _resolve_value(args_val: str | None, env_val: str, prompt_msg: str, *, secret: bool = False) -> str:
     """Resolve value from: CLI arg > env var > interactive prompt."""
     if args_val:
@@ -107,6 +152,12 @@ def main() -> None:
         help="Confirm data replacement",
     )
 
+    import_ds_cmd = sub.add_parser("import-docsite", help="Import a documentation site from a local directory")
+    import_ds_cmd.add_argument("docs_dir", help="Path to docs directory (e.g. ./tmp/PICO/docs_ja)")
+    import_ds_cmd.add_argument("--name", required=True, help="Display name for the doc site")
+    import_ds_cmd.add_argument("--source-url", default="", help="Original source URL")
+    import_ds_cmd.add_argument("--description", default="", help="Site description")
+
     args = parser.parse_args()
 
     if args.command == "init-admin":
@@ -125,6 +176,14 @@ def main() -> None:
 
     elif args.command == "restore":
         asyncio.run(_restore(args.input))
+
+    elif args.command == "import-docsite":
+        asyncio.run(_import_docsite(
+            name=args.name,
+            docs_dir_str=args.docs_dir,
+            source_url=args.source_url,
+            description=args.description,
+        ))
 
     else:
         parser.print_help()

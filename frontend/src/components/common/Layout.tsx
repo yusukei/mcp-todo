@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, Outlet, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { FolderOpen, LogOut, Settings, UserCog, CheckSquare, Menu, X, BookOpen } from 'lucide-react'
+import { FolderOpen, LogOut, Settings, UserCog, CheckSquare, Menu, X, BookOpen, Library } from 'lucide-react'
 import { api } from '../../api/client'
 import { useAuthStore } from '../../store/auth'
 import { useSSE } from '../../hooks/useSSE'
@@ -84,6 +84,14 @@ export default function Layout() {
         >
           <BookOpen className="w-4 h-4" />
           ナレッジベース
+        </Link>
+        <Link
+          to="/docsites"
+          onClick={closeSidebar}
+          className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+        >
+          <Library className="w-4 h-4" />
+          ドキュメントサイト
         </Link>
       </nav>
 

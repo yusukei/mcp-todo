@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..models import Project, Task
+    from ..models.docsite import DocPage, DocSite, DocSiteSection
     from ..models.document import DocumentVersion, ProjectDocument
     from ..models.knowledge import Knowledge
 
@@ -152,4 +153,52 @@ def knowledge_to_dict(k: Knowledge) -> dict:
         "created_by": k.created_by,
         "created_at": k.created_at.isoformat(),
         "updated_at": k.updated_at.isoformat(),
+    }
+
+
+def _section_to_dict(s: DocSiteSection) -> dict:
+    return {
+        "title": s.title,
+        "path": s.path,
+        "children": [_section_to_dict(c) for c in s.children],
+    }
+
+
+def docsite_to_dict(s: DocSite) -> dict:
+    """Convert a DocSite document to a plain dict for API/MCP responses."""
+    return {
+        "id": str(s.id),
+        "name": s.name,
+        "description": s.description,
+        "source_url": s.source_url,
+        "page_count": s.page_count,
+        "sections": [_section_to_dict(sec) for sec in s.sections],
+        "created_at": s.created_at.isoformat(),
+        "updated_at": s.updated_at.isoformat(),
+    }
+
+
+def docsite_summary(s: DocSite) -> dict:
+    """Convert a DocSite to a summary dict (without sections tree)."""
+    return {
+        "id": str(s.id),
+        "name": s.name,
+        "description": s.description,
+        "source_url": s.source_url,
+        "page_count": s.page_count,
+        "created_at": s.created_at.isoformat(),
+        "updated_at": s.updated_at.isoformat(),
+    }
+
+
+def docpage_to_dict(p: DocPage) -> dict:
+    """Convert a DocPage document to a plain dict for API/MCP responses."""
+    return {
+        "id": str(p.id),
+        "site_id": p.site_id,
+        "path": p.path,
+        "title": p.title,
+        "content": p.content,
+        "sort_order": p.sort_order,
+        "created_at": p.created_at.isoformat(),
     }

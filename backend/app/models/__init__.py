@@ -1,4 +1,5 @@
 from .allowed_email import AllowedEmail
+from .docsite import DocPage, DocSite, DocSiteSection
 from .document import DocumentCategory, DocumentVersion, ProjectDocument
 from .knowledge import Knowledge
 from .mcp_api_key import McpApiKey
@@ -20,4 +21,7 @@ __all__ = [
     "ProjectDocument",
     "DocumentCategory",
     "DocumentVersion",
+    "DocSite",
+    "DocPage",
+    "DocSiteSection",
 ]

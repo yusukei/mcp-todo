@@ -148,6 +148,37 @@ export interface DocumentVersionSummary {
   created_at: string
 }
 
+// ── DocSite ─────────────────────────────────────────────
+
+export interface DocSiteSection {
+  title: string
+  path: string | null
+  children: DocSiteSection[]
+}
+
+export interface DocSite {
+  id: string
+  name: string
+  description: string
+  source_url: string
+  page_count: number
+  sections?: DocSiteSection[]
+  created_at: string
+  updated_at: string
+}
+
+export interface DocPage {
+  id: string
+  site_id: string
+  path: string
+  title: string
+  content: string
+  sort_order: number
+  created_at: string
+}
+
+// ── Knowledge ───────────────────────────────────────────
+
 export type KnowledgeCategory = 'recipe' | 'reference' | 'tip' | 'troubleshooting' | 'architecture'
 
 export interface Knowledge {

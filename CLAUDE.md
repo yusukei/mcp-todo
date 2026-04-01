@@ -62,6 +62,20 @@ API endpoints (admin-only):
 - `POST /api/v1/backup/export` — download .agz backup file
 - `POST /api/v1/backup/import` — upload .agz file to restore (multipart form, field: `file`)
 
+### DocSite Import (external documentation)
+```bash
+cd backend
+# Import a documentation site from a local directory
+uv run python -m app.cli import-docsite ./tmp/PICO/docs_ja \
+  --name "PICO Developer Docs" \
+  --source-url "https://developer.picoxr.com" \
+  --description "PICO XR developer documentation (Japanese)"
+
+# Docker
+docker compose exec backend uv run python -m app.cli import-docsite /path/to/docs \
+  --name "Site Name"
+```
+
 ### Docker Compose (full stack)
 ```bash
 cp .env.example .env             # Configure SECRET_KEY, Google OAuth
@@ -81,6 +95,8 @@ docker compose down              # Stop
 - `/api/v1/users/`, `/projects/`, `/tasks/`, `/mcp_keys/` — CRUD
 - `POST /api/v1/events/ticket` — Issue short-lived SSE ticket (JWT Bearer auth)
 - `/api/v1/events?ticket=<ticket>` — SSE (uses one-time ticket to avoid JWT exposure in URLs)
+- `/api/v1/docsites/` — DocSite listing/detail, page content, search
+- `/api/v1/docsites/{id}/assets/{path}` — DocSite static assets (images)
 - `/mcp` — MCP stateful HTTP endpoint (embedded in backend, proxied by nginx)
 - `/.well-known/oauth-*` — MCP OAuth discovery metadata (manually registered)
 
@@ -110,7 +126,7 @@ docker compose down              # Stop
 - **PROHIBITED**: `stateless_http=True` を使用しないこと。stateful モード + RedisEventStore を維持する
 
 ### Database Collections
-`users`, `projects` (with embedded `members`), `tasks` (with embedded `comments`), `allowed_emails`, `mcp_api_keys`
+`users`, `projects` (with embedded `members`), `tasks` (with embedded `comments`), `allowed_emails`, `mcp_api_keys`, `doc_sites` (with embedded `sections` tree), `doc_pages`
 
 ### Task Management
 - Task management uses the mcp-todo MCP server (see MCP instructions for tool usage details)

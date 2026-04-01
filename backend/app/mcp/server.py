@@ -49,6 +49,11 @@ mcp = FastMCP(
         "Document content supports Markdown with Mermaid diagrams — "
         "use ```mermaid code blocks for sequence diagrams, flowcharts, ER diagrams, etc. "
         "The frontend renders them automatically.\n\n"
+        "## Documentation sites\n"
+        "Imported external documentation sites (e.g. SDK docs, API references). "
+        "Use list_docsites to see available sites, get_docsite to browse the navigation tree, "
+        "get_docpage to read a specific page, and search_docpages for full-text search "
+        "(Japanese supported via Lindera).\n\n"
         "## Development workflow\n"
         "IMPORTANT: Follow this workflow whenever you are about to modify code or configuration files.\n\n"
         "### 1. Task registration\n"
@@ -97,4 +102,4 @@ mcp = FastMCP(
 
 
 def register_tools() -> None:
-    from .tools import documents, knowledge, projects, setup, tasks  # noqa: F401
+    from .tools import documents, docsites, knowledge, projects, setup, tasks  # noqa: F401
