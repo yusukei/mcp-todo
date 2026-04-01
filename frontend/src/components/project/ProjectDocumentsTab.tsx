@@ -13,7 +13,7 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Plus, Search, Tag, ArrowLeft, Pencil, Trash2, History, FileText, FileDown, GripVertical } from 'lucide-react'
+import { Plus, Search, Tag, Pencil, Trash2, History, FileText, FileDown, GripVertical, FileQuestion, CheckSquare } from 'lucide-react'
 import { api } from '../../api/client'
 import { showErrorToast, showSuccessToast } from '../common/Toast'
 import MarkdownRenderer from '../common/MarkdownRenderer'
@@ -44,16 +44,20 @@ interface DocFormData {
 
 const emptyForm: DocFormData = { title: '', content: '', tags: '', category: 'spec' }
 
-export default function ProjectDocumentsTab({ projectId, initialDocumentId, selectMode = false }: { projectId: string; initialDocumentId?: string; selectMode?: boolean }) {
+export default function ProjectDocumentsTab({ projectId, initialDocumentId }: { projectId: string; initialDocumentId?: string }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [filterCategory, setFilterCategory] = useState<string>('')
   const [filterTag, setFilterTag] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(initialDocumentId ?? null)
+  // Mobile: track whether detail panel is shown
+  const [mobileShowDetail, setMobileShowDetail] = useState(!!initialDocumentId)
+  const [selectMode, setSelectMode] = useState(false)
 
   const selectDocument = useCallback((id: string | null) => {
     setSelectedId(id)
+    setMobileShowDetail(!!id)
     if (id) {
       navigate(`/projects/${projectId}/documents/${id}`, { replace: true })
     } else {
@@ -75,10 +79,10 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, sele
     })
   }, [])
 
-  // Clear selection when selectMode is turned off
-  useEffect(() => {
-    if (!selectMode) setCheckedIds(new Set())
-  }, [selectMode])
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false)
+    setCheckedIds(new Set())
+  }, [])
 
 
   const handleExport = useCallback(async (format: 'markdown' | 'pdf') => {
@@ -222,21 +226,179 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, sele
 
   const allTags = [...new Set(items.flatMap((d) => d.tags))].sort()
 
-  // Detail view
-  if (selectedId && selected) {
-    return (
-      <>
-        {/* Sticky header */}
-        <div className="sticky top-0 z-10 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-3">
-          <div className="flex items-center justify-between gap-4">
+  // --- Sidebar (left panel) ---
+  const sidebar = (
+    <div className={`flex flex-col h-full border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 ${mobileShowDetail ? 'hidden md:flex' : 'flex'} w-full md:w-80 lg:w-96 flex-shrink-0`}>
+      {/* Header */}
+      <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-bold text-gray-700 dark:text-gray-200">ドキュメント</h2>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => selectMode ? exitSelectMode() : setSelectMode(true)}
+              className={`p-1.5 rounded-md transition-colors ${selectMode ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300'}`}
+              title={selectMode ? '選択モード終了' : 'エクスポート用に選択'}
+            >
+              <CheckSquare className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => { setCreating(true); setMobileShowDetail(true) }}
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+            >
+              <Plus className="w-3.5 h-3.5" /> 追加
+            </button>
+          </div>
+        </div>
+
+        {/* Export bar */}
+        {selectMode && (
+          <div className="flex items-center gap-2 mb-2 p-2 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-md text-xs">
+            <span className="font-medium text-indigo-700 dark:text-indigo-300">
+              {checkedIds.size > 0 ? `${checkedIds.size}件選択` : 'エクスポート'}
+            </span>
+            <div className="flex items-center gap-1 ml-auto">
+              <button
+                onClick={() => handleExport('markdown')}
+                disabled={exporting || checkedIds.size === 0}
+                className="flex items-center gap-1 px-2 py-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <FileText className="w-3.5 h-3.5" /> MD
+              </button>
+              <button
+                onClick={() => handleExport('pdf')}
+                disabled={exporting || checkedIds.size === 0}
+                className="flex items-center gap-1 px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <FileDown className="w-3.5 h-3.5" /> {exporting ? '...' : 'PDF'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Filters */}
+        <div className="space-y-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="検索..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <div className="flex gap-2">
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="flex-1 px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">全カテゴリ</option>
+              {CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+            {allTags.length > 0 && (
+              <select
+                value={filterTag}
+                onChange={(e) => setFilterTag(e.target.value)}
+                className="flex-1 px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">全タグ</option>
+                {allTags.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* List */}
+      <div className="flex-1 overflow-y-auto">
+        {isLoading ? (
+          <p className="p-3 text-xs text-gray-500 dark:text-gray-400">読み込み中...</p>
+        ) : items.length === 0 ? (
+          <p className="p-3 text-xs text-gray-500 dark:text-gray-400">ドキュメントがありません</p>
+        ) : (
+          <div className="py-1">
+            {selectMode && items.length > 1 && (
+              <label className="flex items-center gap-2 px-3 py-1 text-xs text-gray-500 dark:text-gray-400 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={checkedIds.size === items.length}
+                  onChange={toggleAll}
+                  className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+                />
+                すべて選択
+              </label>
+            )}
+            <DndContext
+              sensors={dndSensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext items={docIds} strategy={verticalListSortingStrategy}>
+                {items.map((d) => (
+                  <SortableDocumentItem
+                    key={d.id}
+                    doc={d}
+                    isSelected={d.id === selectedId}
+                    isChecked={checkedIds.has(d.id)}
+                    onToggleCheck={toggleCheck}
+                    onSelect={selectDocument}
+                    sortDisabled={isFiltered}
+                    selectMode={selectMode}
+                  />
+                ))}
+              </SortableContext>
+              <DragOverlay dropAnimation={null}>
+                {activeDragDoc ? (
+                  <div className="bg-white dark:bg-gray-800 shadow-lg rounded-md border border-indigo-300 dark:border-indigo-600 px-3 py-2 opacity-90 text-sm">
+                    {activeDragDoc.title}
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  // --- Content (right panel) ---
+  const content = (
+    <div className={`flex-1 flex flex-col min-w-0 h-full ${!mobileShowDetail ? 'hidden md:flex' : 'flex'}`}>
+      {creating ? (
+        <div className="flex-1 overflow-y-auto p-6">
+          <button
+            onClick={() => { setCreating(false); setForm(emptyForm); setMobileShowDetail(false) }}
+            className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-4 md:hidden"
+          >
+            &larr; 一覧に戻る
+          </button>
+          <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-6">ドキュメントを追加</h2>
+          <DocumentForm
+            form={form}
+            setForm={setForm}
+            onSubmit={handleCreate}
+            onCancel={() => { setCreating(false); setForm(emptyForm); setMobileShowDetail(false) }}
+            submitLabel="作成"
+            loading={createMutation.isPending}
+          />
+        </div>
+      ) : selectedId && selected ? (
+        <>
+          {/* Sticky header */}
+          <div className="border-b border-gray-200 dark:border-gray-700 px-6 py-3 bg-white dark:bg-gray-900 flex items-center justify-between gap-4 flex-shrink-0">
             <div className="flex items-center gap-3 min-w-0">
               <button
-                onClick={() => { selectDocument(null); setEditing(false) }}
-                className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex-shrink-0"
+                onClick={() => { selectDocument(null); setEditing(false); setMobileShowDetail(false) }}
+                className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex-shrink-0 md:hidden"
               >
-                <ArrowLeft className="w-4 h-4" /> 一覧に戻る
+                &larr; 一覧
               </button>
-              <span className="text-gray-300 dark:text-gray-600 flex-shrink-0">|</span>
               <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100 truncate">{selected.title}</h2>
             </div>
             {!editing && (
@@ -253,202 +415,69 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, sele
               </div>
             )}
           </div>
-        </div>
 
-        {editing ? (
-          <div className="p-6">
-            <DocumentForm
-              form={form}
-              setForm={setForm}
-              onSubmit={handleUpdate}
-              onCancel={() => setEditing(false)}
-              submitLabel="更新"
-              loading={updateMutation.isPending}
-            />
-          </div>
-        ) : (
-          <div className="p-6">
-            <div className="flex flex-wrap items-center gap-2 mb-4">
-              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${categoryStyle(selected.category)}`}>
-                {categoryLabel(selected.category)}
-              </span>
-              {selected.tags.map((tag) => (
-                <span key={tag} className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                  {tag}
-                </span>
-              ))}
-            </div>
-
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-              <MarkdownRenderer>{selected.content}</MarkdownRenderer>
-            </div>
-
-            <div className="flex items-center justify-between mt-4">
-              <p className="text-xs text-gray-400 dark:text-gray-500">
-                v{selected.version} / 更新: {new Date(selected.updated_at).toLocaleString('ja-JP')}
-              </p>
-            </div>
-
-            {/* Version History */}
-            <DocumentHistory projectId={projectId} documentId={selected.id} />
-          </div>
-        )}
-      </>
-    )
-  }
-
-  // Create view
-  if (creating) {
-    return (
-      <div className="p-6">
-        <button
-          onClick={() => { setCreating(false); setForm(emptyForm) }}
-          className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-4"
-        >
-          <ArrowLeft className="w-4 h-4" /> 一覧に戻る
-        </button>
-        <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-6">ドキュメントを追加</h2>
-        <DocumentForm
-          form={form}
-          setForm={setForm}
-          onSubmit={handleCreate}
-          onCancel={() => { setCreating(false); setForm(emptyForm) }}
-          submitLabel="作成"
-          loading={createMutation.isPending}
-        />
-      </div>
-    )
-  }
-
-  // List view
-  return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">ドキュメント</h2>
-        <button
-          onClick={() => setCreating(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-        >
-          <Plus className="w-4 h-4" /> 追加
-        </button>
-      </div>
-
-      {/* Export bar */}
-      {selectMode && (
-        <div className="flex items-center gap-3 mb-4 p-3 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-lg">
-          <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
-            {checkedIds.size > 0 ? `${checkedIds.size}件選択中` : 'エクスポート'}
-          </span>
-          <div className="flex items-center gap-2 ml-auto">
-            <button
-              onClick={() => handleExport('markdown')}
-              disabled={exporting || checkedIds.size === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <FileText className="w-4 h-4" /> Markdown
-            </button>
-            <button
-              onClick={() => handleExport('pdf')}
-              disabled={exporting || checkedIds.size === 0}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <FileDown className="w-4 h-4" /> {exporting ? 'エクスポート中...' : 'PDF'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-4">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="検索..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
-        <select
-          value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value)}
-          className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        >
-          <option value="">全カテゴリ</option>
-          {CATEGORIES.map((c) => (
-            <option key={c.value} value={c.value}>{c.label}</option>
-          ))}
-        </select>
-        {allTags.length > 0 && (
-          <select
-            value={filterTag}
-            onChange={(e) => setFilterTag(e.target.value)}
-            className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="">全タグ</option>
-            {allTags.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        )}
-      </div>
-
-      {/* List */}
-      {isLoading ? (
-        <p className="text-gray-500 dark:text-gray-400">読み込み中...</p>
-      ) : items.length === 0 ? (
-        <p className="text-gray-500 dark:text-gray-400">ドキュメントがありません</p>
-      ) : (
-        <div className="grid gap-3">
-          {/* Select all */}
-          {selectMode && items.length > 1 && (
-            <label className="flex items-center gap-2 px-1 text-sm text-gray-500 dark:text-gray-400 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={checkedIds.size === items.length}
-                onChange={toggleAll}
-                className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+          {editing ? (
+            <div className="flex-1 overflow-y-auto p-6">
+              <DocumentForm
+                form={form}
+                setForm={setForm}
+                onSubmit={handleUpdate}
+                onCancel={() => setEditing(false)}
+                submitLabel="更新"
+                loading={updateMutation.isPending}
               />
-              すべて選択
-            </label>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${categoryStyle(selected.category)}`}>
+                  {categoryLabel(selected.category)}
+                </span>
+                {selected.tags.map((tag) => (
+                  <span key={tag} className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+                <MarkdownRenderer>{selected.content}</MarkdownRenderer>
+              </div>
+
+              <div className="flex items-center justify-between mt-4">
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  v{selected.version} / 更新: {new Date(selected.updated_at).toLocaleString('ja-JP')}
+                </p>
+              </div>
+
+              <DocumentHistory projectId={projectId} documentId={selected.id} />
+            </div>
           )}
-          <DndContext
-            sensors={dndSensors}
-            collisionDetection={closestCenter}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext items={docIds} strategy={verticalListSortingStrategy}>
-              {items.map((d) => (
-                <SortableDocumentCard
-                  key={d.id}
-                  doc={d}
-                  isChecked={checkedIds.has(d.id)}
-                  onToggleCheck={toggleCheck}
-                  onSelect={selectDocument}
-                  sortDisabled={isFiltered}
-                  selectMode={selectMode}
-                />
-              ))}
-            </SortableContext>
-            <DragOverlay dropAnimation={null}>
-              {activeDragDoc ? (
-                <div className="bg-white dark:bg-gray-800 shadow-lg rounded-xl border border-indigo-300 dark:border-indigo-600 p-4 opacity-90">
-                  <h3 className="font-semibold text-gray-800 dark:text-gray-100">{activeDragDoc.title}</h3>
-                </div>
-              ) : null}
-            </DragOverlay>
-          </DndContext>
+        </>
+      ) : (
+        /* Empty state */
+        <div className="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-500">
+          <div className="text-center">
+            <FileQuestion className="w-12 h-12 mx-auto mb-3 opacity-40" />
+            <p className="text-sm">ドキュメントを選択してください</p>
+          </div>
         </div>
       )}
+    </div>
+  )
+
+  return (
+    <div className="flex h-full">
+      {sidebar}
+      {content}
     </div>
   )
 }
 
 
-function SortableDocumentCard({
+function SortableDocumentItem({
   doc,
+  isSelected,
   isChecked,
   onToggleCheck,
   onSelect,
@@ -456,6 +485,7 @@ function SortableDocumentCard({
   selectMode,
 }: {
   doc: ProjectDocument
+  isSelected: boolean
   isChecked: boolean
   onToggleCheck: (id: string) => void
   onSelect: (id: string) => void
@@ -480,21 +510,23 @@ function SortableDocumentCard({
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-start gap-3 bg-white dark:bg-gray-800 rounded-xl border p-4 transition-colors ${
+      className={`flex items-center gap-2 px-3 py-2 mx-1 my-0.5 rounded-md cursor-pointer text-sm transition-colors ${
         isDragging ? 'opacity-30' : ''
       } ${
-        isChecked
-          ? 'border-indigo-400 dark:border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/20'
-          : 'border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-600'
+        isSelected
+          ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300'
+          : isChecked
+            ? 'bg-indigo-50 dark:bg-indigo-950/30'
+            : 'hover:bg-gray-100 dark:hover:bg-gray-800'
       }`}
     >
       {!sortDisabled && (
         <div
-          className="flex-shrink-0 mt-1 cursor-grab active:cursor-grabbing text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 touch-none"
+          className="flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 touch-none"
           {...listeners}
           {...attributes}
         >
-          <GripVertical className="w-4 h-4" />
+          <GripVertical className="w-3.5 h-3.5" />
         </div>
       )}
       {selectMode && (
@@ -503,31 +535,29 @@ function SortableDocumentCard({
           checked={isChecked}
           onChange={() => onToggleCheck(doc.id)}
           onClick={(e) => e.stopPropagation()}
-          className="w-4 h-4 mt-1 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 flex-shrink-0 cursor-pointer"
+          className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 flex-shrink-0 cursor-pointer"
         />
       )}
       <button
         onClick={() => onSelect(doc.id)}
         className="text-left flex-1 min-w-0"
       >
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="font-semibold text-gray-800 dark:text-gray-100">{doc.title}</h3>
-          <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${categoryStyle(doc.category)}`}>
+        <div className="flex items-center gap-2">
+          <span className="truncate font-medium text-gray-800 dark:text-gray-100">{doc.title}</span>
+          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0 ${categoryStyle(doc.category)}`}>
             {categoryLabel(doc.category)}
           </span>
         </div>
-        {doc.content && (
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
-            {doc.content.slice(0, 150)}
-          </p>
-        )}
-        <div className="flex items-center gap-2 mt-2">
-          {doc.tags.map((tag) => (
-            <span key={tag} className="inline-flex items-center gap-0.5 text-xs text-gray-500 dark:text-gray-400">
-              <Tag className="w-3 h-3" />{tag}
+        <div className="flex items-center gap-1.5 mt-0.5">
+          {doc.tags.slice(0, 2).map((tag) => (
+            <span key={tag} className="inline-flex items-center gap-0.5 text-[10px] text-gray-400 dark:text-gray-500">
+              <Tag className="w-2.5 h-2.5" />{tag}
             </span>
           ))}
-          <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">
+          {doc.tags.length > 2 && (
+            <span className="text-[10px] text-gray-400 dark:text-gray-500">+{doc.tags.length - 2}</span>
+          )}
+          <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-500">
             {new Date(doc.updated_at).toLocaleDateString('ja-JP')}
           </span>
         </div>

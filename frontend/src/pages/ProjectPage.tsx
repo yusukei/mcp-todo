@@ -336,7 +336,7 @@ export default function ProjectPage() {
       <div className="flex-1 overflow-hidden">
         {view === 'docs' ? (
           <div className="h-full overflow-y-auto">
-            <ProjectDocumentsTab projectId={projectId!} selectMode={selectMode} />
+            <ProjectDocumentsTab projectId={projectId!} />
           </div>
         ) : view === 'board' ? (
           <TaskBoard tasks={filteredTasks} projectId={projectId!} onTaskClick={setSelectedTaskId} onUpdateFlags={handleUpdateFlags} onArchive={handleArchive} onStatusChange={handleStatusChange} onExport={handleExport} onReorder={handleReorder} showArchived={showArchived} visibleColumns={visibleColumns} selectMode={selectMode} onExitSelectMode={exitSelectMode} />

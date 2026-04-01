@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { BookOpen, Plus, Search, Tag, ArrowLeft, Pencil, Trash2, ExternalLink, Copy, Check } from 'lucide-react'
+import { BookOpen, Plus, Search, Tag, Pencil, Trash2, ExternalLink, Copy, Check, FileQuestion } from 'lucide-react'
 import { api } from '../api/client'
 import { showErrorToast, showSuccessToast } from '../components/common/Toast'
 import MarkdownRenderer from '../components/common/MarkdownRenderer'
@@ -45,6 +45,8 @@ export default function KnowledgePage() {
   const [creating, setCreating] = useState(false)
   const [form, setForm] = useState<KnowledgeFormData>(emptyForm)
   const [copied, setCopied] = useState(false)
+  // Mobile: track whether detail panel is shown
+  const [mobileShowDetail, setMobileShowDetail] = useState(!!knowledgeId)
 
   const queryParams = new URLSearchParams()
   if (search) queryParams.set('search', search)
@@ -92,6 +94,7 @@ export default function KnowledgePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['knowledge'] })
       navigate('/knowledge')
+      setMobileShowDetail(false)
     },
     onError: () => showErrorToast('削除に失敗しました'),
   })
@@ -131,32 +134,158 @@ export default function KnowledgePage() {
     setEditing(true)
   }, [])
 
+  const selectKnowledge = useCallback((id: string) => {
+    navigate(`/knowledge/${id}`)
+    setMobileShowDetail(true)
+    setEditing(false)
+  }, [navigate])
+
+  const backToList = useCallback(() => {
+    navigate('/knowledge')
+    setMobileShowDetail(false)
+    setEditing(false)
+  }, [navigate])
+
   const allTags = [...new Set(items.flatMap((k) => k.tags))].sort()
 
-  // Detail view
-  if (selectedId && selected) {
-    return (
-      <div className="flex-1 overflow-y-auto p-6 md:p-8">
-        <button
-          onClick={() => { navigate('/knowledge'); setEditing(false) }}
-          className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-4"
-        >
-          <ArrowLeft className="w-4 h-4" /> 一覧に戻る
-        </button>
+  // --- Sidebar (left panel) ---
+  const sidebar = (
+    <div className={`flex flex-col h-full border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 ${mobileShowDetail ? 'hidden md:flex' : 'flex'} w-full md:w-80 lg:w-96 flex-shrink-0`}>
+      {/* Header */}
+      <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1.5">
+            <BookOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <h2 className="text-sm font-bold text-gray-700 dark:text-gray-200">ナレッジベース</h2>
+          </div>
+          <button
+            onClick={() => { setCreating(true); setMobileShowDetail(true) }}
+            className="flex items-center gap-1 px-2 py-1 text-xs bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+          >
+            <Plus className="w-3.5 h-3.5" /> 追加
+          </button>
+        </div>
 
-        {editing ? (
+        {/* Filters */}
+        <div className="space-y-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="検索..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <div className="flex gap-2">
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+              className="flex-1 px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">全カテゴリ</option>
+              {CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+            {allTags.length > 0 && (
+              <select
+                value={filterTag}
+                onChange={(e) => setFilterTag(e.target.value)}
+                className="flex-1 px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">全タグ</option>
+                {allTags.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* List */}
+      <div className="flex-1 overflow-y-auto">
+        {isLoading ? (
+          <p className="p-3 text-xs text-gray-500 dark:text-gray-400">読み込み中...</p>
+        ) : items.length === 0 ? (
+          <p className="p-3 text-xs text-gray-500 dark:text-gray-400">ナレッジがありません</p>
+        ) : (
+          <div className="py-1">
+            {items.map((k) => (
+              <button
+                key={k.id}
+                onClick={() => selectKnowledge(k.id)}
+                className={`w-full text-left px-3 py-2 mx-1 my-0.5 rounded-md text-sm transition-colors ${
+                  k.id === selectedId
+                    ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300'
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                }`}
+                style={{ width: 'calc(100% - 0.5rem)' }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="truncate font-medium text-gray-800 dark:text-gray-100">{k.title}</span>
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0 ${categoryStyle(k.category)}`}>
+                    {categoryLabel(k.category)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  {k.tags.slice(0, 2).map((tag) => (
+                    <span key={tag} className="inline-flex items-center gap-0.5 text-[10px] text-gray-400 dark:text-gray-500">
+                      <Tag className="w-2.5 h-2.5" />{tag}
+                    </span>
+                  ))}
+                  {k.tags.length > 2 && (
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500">+{k.tags.length - 2}</span>
+                  )}
+                  <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-500">
+                    {new Date(k.updated_at).toLocaleDateString('ja-JP')}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  // --- Content (right panel) ---
+  const content = (
+    <div className={`flex-1 flex flex-col min-w-0 h-full ${!mobileShowDetail ? 'hidden md:flex' : 'flex'}`}>
+      {creating ? (
+        <div className="flex-1 overflow-y-auto p-6 md:p-8">
+          <button
+            onClick={() => { setCreating(false); setForm(emptyForm); setMobileShowDetail(false) }}
+            className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-4 md:hidden"
+          >
+            &larr; 一覧に戻る
+          </button>
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-6">ナレッジを追加</h1>
           <KnowledgeForm
             form={form}
             setForm={setForm}
-            onSubmit={handleUpdate}
-            onCancel={() => setEditing(false)}
-            submitLabel="更新"
-            loading={updateMutation.isPending}
+            onSubmit={handleCreate}
+            onCancel={() => { setCreating(false); setForm(emptyForm); setMobileShowDetail(false) }}
+            submitLabel="作成"
+            loading={createMutation.isPending}
           />
-        ) : (
-          <div>
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">{selected.title}</h1>
+        </div>
+      ) : selectedId && selected ? (
+        <>
+          {/* Sticky header */}
+          <div className="border-b border-gray-200 dark:border-gray-700 px-6 py-3 bg-white dark:bg-gray-900 flex items-center justify-between gap-4 flex-shrink-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <button
+                onClick={backToList}
+                className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex-shrink-0 md:hidden"
+              >
+                &larr; 一覧
+              </button>
+              <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100 truncate">{selected.title}</h1>
+            </div>
+            {!editing && (
               <div className="flex gap-2 flex-shrink-0">
                 <button
                   onClick={() => {
@@ -181,152 +310,66 @@ export default function KnowledgePage() {
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 mb-4">
-              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${categoryStyle(selected.category)}`}>
-                {categoryLabel(selected.category)}
-              </span>
-              {selected.tags.map((tag) => (
-                <span key={tag} className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                  {tag}
-                </span>
-              ))}
-            </div>
-
-            {selected.source && (
-              <div className="flex items-center gap-1 text-sm text-indigo-600 dark:text-indigo-400 mb-4">
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span className="truncate">{selected.source}</span>
-              </div>
             )}
-
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-              <MarkdownRenderer>{selected.content}</MarkdownRenderer>
-            </div>
-
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-4">
-              更新: {new Date(selected.updated_at).toLocaleString('ja-JP')}
-            </p>
           </div>
-        )}
-      </div>
-    )
-  }
 
-  // Create view
-  if (creating) {
-    return (
-      <div className="flex-1 overflow-y-auto p-6 md:p-8">
-        <button
-          onClick={() => { setCreating(false); setForm(emptyForm) }}
-          className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-4"
-        >
-          <ArrowLeft className="w-4 h-4" /> 一覧に戻る
-        </button>
-        <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-6">ナレッジを追加</h1>
-        <KnowledgeForm
-          form={form}
-          setForm={setForm}
-          onSubmit={handleCreate}
-          onCancel={() => { setCreating(false); setForm(emptyForm) }}
-          submitLabel="作成"
-          loading={createMutation.isPending}
-        />
-      </div>
-    )
-  }
-
-  // List view
-  return (
-    <div className="flex-1 overflow-y-auto p-6 md:p-8">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
-          <BookOpen className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">ナレッジベース</h1>
-        </div>
-        <button
-          onClick={() => setCreating(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
-        >
-          <Plus className="w-4 h-4" /> 追加
-        </button>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-6">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="検索..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
-        <select
-          value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value)}
-          className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        >
-          <option value="">全カテゴリ</option>
-          {CATEGORIES.map((c) => (
-            <option key={c.value} value={c.value}>{c.label}</option>
-          ))}
-        </select>
-        {allTags.length > 0 && (
-          <select
-            value={filterTag}
-            onChange={(e) => setFilterTag(e.target.value)}
-            className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="">全タグ</option>
-            {allTags.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        )}
-      </div>
-
-      {/* List */}
-      {isLoading ? (
-        <p className="text-gray-500 dark:text-gray-400">読み込み中...</p>
-      ) : items.length === 0 ? (
-        <p className="text-gray-500 dark:text-gray-400">ナレッジがありません</p>
-      ) : (
-        <div className="grid gap-3">
-          {items.map((k) => (
-            <button
-              key={k.id}
-              onClick={() => navigate(`/knowledge/${k.id}`)}
-              className="text-left bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 hover:border-indigo-300 dark:hover:border-indigo-600 transition-colors"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <h3 className="font-semibold text-gray-800 dark:text-gray-100">{k.title}</h3>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${categoryStyle(k.category)}`}>
-                  {categoryLabel(k.category)}
+          {editing ? (
+            <div className="flex-1 overflow-y-auto p-6 md:p-8">
+              <KnowledgeForm
+                form={form}
+                setForm={setForm}
+                onSubmit={handleUpdate}
+                onCancel={() => setEditing(false)}
+                submitLabel="更新"
+                loading={updateMutation.isPending}
+              />
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto p-6 md:p-8">
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${categoryStyle(selected.category)}`}>
+                  {categoryLabel(selected.category)}
                 </span>
-              </div>
-              {k.content && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
-                  {k.content.slice(0, 150)}
-                </p>
-              )}
-              <div className="flex items-center gap-2 mt-2">
-                {k.tags.map((tag) => (
-                  <span key={tag} className="inline-flex items-center gap-0.5 text-xs text-gray-500 dark:text-gray-400">
-                    <Tag className="w-3 h-3" />{tag}
+                {selected.tags.map((tag) => (
+                  <span key={tag} className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                    {tag}
                   </span>
                 ))}
-                <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">
-                  {new Date(k.updated_at).toLocaleDateString('ja-JP')}
-                </span>
               </div>
-            </button>
-          ))}
+
+              {selected.source && (
+                <div className="flex items-center gap-1 text-sm text-indigo-600 dark:text-indigo-400 mb-4">
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span className="truncate">{selected.source}</span>
+                </div>
+              )}
+
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+                <MarkdownRenderer>{selected.content}</MarkdownRenderer>
+              </div>
+
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-4">
+                更新: {new Date(selected.updated_at).toLocaleString('ja-JP')}
+              </p>
+            </div>
+          )}
+        </>
+      ) : (
+        /* Empty state */
+        <div className="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-500">
+          <div className="text-center">
+            <FileQuestion className="w-12 h-12 mx-auto mb-3 opacity-40" />
+            <p className="text-sm">ナレッジを選択してください</p>
+          </div>
         </div>
       )}
+    </div>
+  )
+
+  return (
+    <div className="flex h-full">
+      {sidebar}
+      {content}
     </div>
   )
 }
