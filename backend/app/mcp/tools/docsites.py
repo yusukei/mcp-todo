@@ -10,6 +10,13 @@ from ..server import mcp
 logger = logging.getLogger(__name__)
 
 
+async def _get_site_or_error(site_id: str) -> DocSite:
+    site = await DocSite.get(site_id)
+    if not site:
+        raise ToolError(f"DocSite not found: {site_id}")
+    return site
+
+
 @mcp.tool()
 async def list_docsites() -> list[dict]:
     """List all imported documentation sites.
@@ -29,9 +36,7 @@ async def get_docsite(site_id: str) -> dict:
         site_id: DocSite ID
     """
     await authenticate()
-    site = await DocSite.get(site_id)
-    if not site:
-        raise ToolError(f"DocSite not found: {site_id}")
+    site = await _get_site_or_error(site_id)
     return docsite_to_dict(site)
 
 
@@ -136,3 +141,150 @@ async def search_docpages(
         "skip": skip,
         "_meta": {"search_engine": "regex"},
     }
+
+
+@mcp.tool()
+async def update_docpage(
+    site_id: str,
+    path: str,
+    title: str | None = None,
+    content: str | None = None,
+) -> dict:
+    """Update a documentation page's title or content.
+
+    Use this to fix translations, correct formatting issues, or update
+    page content. Only provided fields are changed.
+
+    Args:
+        site_id: DocSite ID
+        path: Page path (e.g. "document/unity/pico-building-blocks")
+        title: New title (optional)
+        content: New content in Markdown (optional, max 200000 chars)
+    """
+    if title is not None and len(title) > 255:
+        raise ToolError("Title exceeds maximum length of 255 characters")
+    if content is not None and len(content) > 200000:
+        raise ToolError("Content exceeds maximum length of 200000 characters")
+
+    await authenticate()
+    await _get_site_or_error(site_id)
+
+    page = await DocPage.find_one(DocPage.site_id == site_id, DocPage.path == path)
+    if not page:
+        raise ToolError(f"Page not found: {path} in site {site_id}")
+
+    if title is not None:
+        page.title = title.strip()
+    if content is not None:
+        page.content = content
+
+    await page.save()
+
+    # Update search index
+    from ...services.docsite_search import DocSiteSearchIndexer
+    indexer = DocSiteSearchIndexer.get_instance()
+    if indexer:
+        try:
+            await indexer.upsert_page(page)
+        except Exception as e:
+            logger.warning("Failed to update search index for page %s: %s", path, e)
+
+    return docpage_to_dict(page)
+
+
+@mcp.tool()
+async def create_docpage(
+    site_id: str,
+    path: str,
+    title: str,
+    content: str = "",
+) -> dict:
+    """Create a new documentation page in a site.
+
+    Use this to add missing pages (e.g. pages that were not crawled).
+
+    Args:
+        site_id: DocSite ID
+        path: Page path (e.g. "document/unity/spatial-audio")
+        title: Page title (max 255 chars)
+        content: Page content in Markdown (max 200000 chars)
+    """
+    if not title or not title.strip():
+        raise ToolError("Title is required")
+    if len(title) > 255:
+        raise ToolError("Title exceeds maximum length of 255 characters")
+    if len(content) > 200000:
+        raise ToolError("Content exceeds maximum length of 200000 characters")
+
+    await authenticate()
+    site = await _get_site_or_error(site_id)
+
+    existing = await DocPage.find_one(DocPage.site_id == site_id, DocPage.path == path)
+    if existing:
+        raise ToolError(f"Page already exists at path: {path}. Use update_docpage instead.")
+
+    # Determine sort_order (append at end)
+    last = await DocPage.find(DocPage.site_id == site_id).sort("-sort_order").limit(1).to_list()
+    sort_order = (last[0].sort_order + 1) if last else 0
+
+    page = DocPage(
+        site_id=site_id,
+        path=path,
+        title=title.strip(),
+        content=content,
+        sort_order=sort_order,
+    )
+    await page.insert()
+
+    # Update page count
+    site.page_count = await DocPage.find(DocPage.site_id == site_id).count()
+    await site.save_updated()
+
+    # Update search index
+    from ...services.docsite_search import DocSiteSearchIndexer
+    indexer = DocSiteSearchIndexer.get_instance()
+    if indexer:
+        try:
+            await indexer.upsert_page(page)
+        except Exception as e:
+            logger.warning("Failed to index new page %s: %s", path, e)
+
+    return docpage_to_dict(page)
+
+
+@mcp.tool()
+async def delete_docpage(
+    site_id: str,
+    path: str,
+) -> dict:
+    """Delete a documentation page from a site.
+
+    Args:
+        site_id: DocSite ID
+        path: Page path to delete
+    """
+    await authenticate()
+    await _get_site_or_error(site_id)
+
+    page = await DocPage.find_one(DocPage.site_id == site_id, DocPage.path == path)
+    if not page:
+        raise ToolError(f"Page not found: {path} in site {site_id}")
+
+    page_id = str(page.id)
+    await page.delete()
+
+    # Update page count
+    site = await _get_site_or_error(site_id)
+    site.page_count = await DocPage.find(DocPage.site_id == site_id).count()
+    await site.save_updated()
+
+    # Remove from search index
+    from ...services.docsite_search import DocSiteSearchIndexer
+    indexer = DocSiteSearchIndexer.get_instance()
+    if indexer:
+        try:
+            await indexer.delete_page(page_id)
+        except Exception as e:
+            logger.warning("Failed to deindex page %s: %s", path, e)
+
+    return {"success": True, "path": path}
