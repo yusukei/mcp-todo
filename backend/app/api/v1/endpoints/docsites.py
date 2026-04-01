@@ -97,9 +97,12 @@ async def get_page(
 async def get_asset(
     site_id: str,
     asset_path: str,
-    user: User = Depends(get_current_user),
 ) -> FileResponse:
-    """Serve a static asset (image, etc.) from a documentation site."""
+    """Serve a static asset (image, etc.) from a documentation site.
+
+    No authentication required — assets are served directly to <img> tags
+    which cannot attach Authorization headers.
+    """
     await _get_site(site_id)
 
     base_dir = Path(settings.DOCSITE_ASSETS_DIR) / site_id
