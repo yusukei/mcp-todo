@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight, ChevronDown, Search, ArrowLeft, Library, ExternalLink } from 'lucide-react'
@@ -6,6 +6,54 @@ import { api } from '../api/client'
 import MarkdownRenderer from '../components/common/MarkdownRenderer'
 import AuthImage from '../components/common/AuthImage'
 import type { DocSite, DocSiteSection, DocPage } from '../types'
+
+// ── Link path normalization ─────────────────────────────
+
+function normalizeDocPath(href: string, currentPagePath: string): { path: string; hash: string } {
+  const hashIndex = href.indexOf('#')
+  const hash = hashIndex >= 0 ? href.substring(hashIndex) : ''
+  let path = hashIndex >= 0 ? href.substring(0, hashIndex) : href
+
+  if (!path) return { path: '', hash }
+
+  const isAbsolute = path.startsWith('/')
+
+  // Strip leading slash
+  if (isAbsolute) {
+    path = path.substring(1)
+  }
+
+  // Strip .md extension
+  if (path.endsWith('.md')) {
+    path = path.slice(0, -3)
+  }
+
+  // Strip trailing slash
+  if (path.endsWith('/')) {
+    path = path.slice(0, -1)
+  }
+
+  // Resolve relative paths against current page's directory
+  if (!isAbsolute && currentPagePath) {
+    const dir = currentPagePath.includes('/')
+      ? currentPagePath.substring(0, currentPagePath.lastIndexOf('/'))
+      : ''
+    path = dir ? `${dir}/${path}` : path
+  }
+
+  // Resolve ../ and ./ segments
+  const segments = path.split('/')
+  const resolved: string[] = []
+  for (const seg of segments) {
+    if (seg === '..') {
+      resolved.pop()
+    } else if (seg !== '.' && seg !== '') {
+      resolved.push(seg)
+    }
+  }
+
+  return { path: resolved.join('/'), hash }
+}
 
 // ── Tree Node Component ──────────────────────────────────
 
@@ -103,6 +151,51 @@ function rewriteImageUrls(content: string, siteId: string, pagePath: string): st
   )
 }
 
+// ── Internal link component ──────────────────────────────
+
+function isExternalHref(href: string): boolean {
+  return /^https?:\/\//.test(href) || href.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(href)
+}
+
+function useDocSiteLink(siteId: string, pagePath: string | undefined) {
+  const navigate = useNavigate()
+
+  return useCallback(
+    ({ href, children: linkChildren }: { href?: string; children?: React.ReactNode }) => {
+      if (!href) return <span>{linkChildren}</span>
+
+      const linkClass = 'text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 underline'
+
+      // External links (http, https, mailto, tel, etc.) → new tab
+      if (isExternalHref(href)) {
+        return (
+          <a href={href} target="_blank" rel="noopener noreferrer" className={`${linkClass} inline-flex items-center gap-0.5`}>
+            {linkChildren}
+            <ExternalLink className="w-3 h-3 inline flex-shrink-0" />
+          </a>
+        )
+      }
+
+      // Anchor-only links → scroll within page
+      if (href.startsWith('#')) {
+        return <a href={href} className={linkClass}>{linkChildren}</a>
+      }
+
+      // Internal link → normalize path and navigate within the DocSite
+      const { path: targetPath, hash } = normalizeDocPath(href, pagePath ?? '')
+      const fullUrl = `/docsites/${siteId}/${targetPath}${hash}`
+
+      const handleClick = (e: React.MouseEvent) => {
+        e.preventDefault()
+        navigate(fullUrl)
+      }
+
+      return <a href={fullUrl} onClick={handleClick} className={linkClass}>{linkChildren}</a>
+    },
+    [siteId, pagePath, navigate],
+  )
+}
+
 // ── Main Page Component ──────────────────────────────────
 
 export default function DocSiteViewerPage() {
@@ -110,6 +203,7 @@ export default function DocSiteViewerPage() {
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
   const [mobileShowContent, setMobileShowContent] = useState(!!pagePath)
+  const DocSiteLink = useDocSiteLink(siteId!, pagePath)
 
   const { data: site, isLoading: siteLoading } = useQuery<DocSite>({
     queryKey: ['docsite', siteId],
@@ -122,6 +216,17 @@ export default function DocSiteViewerPage() {
     queryFn: () => api.get(`/docsites/${siteId}/pages/${pagePath}`).then((r) => r.data),
     enabled: !!siteId && !!pagePath,
   })
+
+  // Scroll to hash after page content loads
+  useEffect(() => {
+    if (page && window.location.hash) {
+      const id = window.location.hash.substring(1)
+      requestAnimationFrame(() => {
+        const el = document.getElementById(id)
+        el?.scrollIntoView({ behavior: 'smooth' })
+      })
+    }
+  }, [page])
 
   const { data: searchResults } = useQuery({
     queryKey: ['docsite-search', siteId, searchQuery],
@@ -235,7 +340,10 @@ export default function DocSiteViewerPage() {
                 <ArrowLeft className="w-4 h-4" />
                 目次に戻る
               </button>
-              <MarkdownRenderer componentOverrides={{ img: ({ src, alt, ...rest }) => <AuthImage src={src} alt={alt} {...rest} /> }}>{processedContent}</MarkdownRenderer>
+              <MarkdownRenderer componentOverrides={{
+                img: ({ src, alt, ...rest }) => <AuthImage src={src} alt={alt} {...rest} />,
+                a: DocSiteLink as any,
+              }}>{processedContent}</MarkdownRenderer>
             </div>
           ) : (
             <div className="p-8 text-gray-500 dark:text-gray-400">ページが見つかりません</div>
