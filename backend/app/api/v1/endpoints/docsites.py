@@ -1,8 +1,29 @@
 """DocSite API — browse imported documentation sites."""
 
 import logging
-import mimetypes
 from pathlib import Path
+
+_MEDIA_TYPES: dict[str, str] = {
+    ".webp": "image/webp",
+    ".avif": "image/avif",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".pdf": "application/pdf",
+    ".json": "application/json",
+    ".css": "text/css",
+    ".js": "application/javascript",
+    ".html": "text/html",
+    ".xml": "text/xml",
+    ".txt": "text/plain",
+    ".woff2": "font/woff2",
+    ".woff": "font/woff",
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+}
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
@@ -111,7 +132,7 @@ async def get_asset(
     if not file_path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
 
-    content_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+    content_type = _MEDIA_TYPES.get(file_path.suffix.lower(), "application/octet-stream")
     return FileResponse(
         path=str(file_path),
         media_type=content_type,
