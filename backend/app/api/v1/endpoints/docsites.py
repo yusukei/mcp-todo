@@ -25,7 +25,7 @@ _MEDIA_TYPES: dict[str, str] = {
     ".webm": "video/webm",
 }
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 
 from ....core.config import settings
@@ -138,6 +138,43 @@ async def get_asset(
         media_type=content_type,
         headers={"Cache-Control": "public, max-age=86400"},
     )
+
+
+_ALLOWED_ASSET_EXTENSIONS = frozenset(_MEDIA_TYPES.keys())
+
+
+@router.put("/{site_id}/assets/{asset_path:path}", status_code=status.HTTP_201_CREATED)
+async def upload_asset(
+    site_id: str,
+    asset_path: str,
+    file: UploadFile,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Upload or replace a static asset for a documentation site."""
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+    await _get_site(site_id)
+
+    # Validate extension
+    ext = Path(asset_path).suffix.lower()
+    if ext not in _ALLOWED_ASSET_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file type: {ext}",
+        )
+
+    base_dir = Path(settings.DOCSITE_ASSETS_DIR) / site_id
+    file_path = (base_dir / asset_path).resolve()
+
+    # Prevent path traversal
+    if not str(file_path).startswith(str(base_dir.resolve())):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path")
+
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    content = await file.read()
+    file_path.write_bytes(content)
+
+    return {"path": asset_path, "size": len(content)}
 
 
 # ── Search ───────────────────────────────────────────────────

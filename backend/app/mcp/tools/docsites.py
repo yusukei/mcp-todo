@@ -288,3 +288,59 @@ async def delete_docpage(
             logger.warning("Failed to deindex page %s: %s", path, e)
 
     return {"success": True, "path": path}
+
+
+@mcp.tool()
+async def upload_docsite_asset(
+    site_id: str,
+    asset_path: str,
+    data_base64: str,
+) -> dict:
+    """Upload a static asset (image, etc.) for a documentation site.
+
+    Use this to add images referenced by documentation pages.
+    The asset will be served at /api/v1/docsites/{site_id}/assets/{asset_path}.
+
+    Args:
+        site_id: DocSite ID
+        asset_path: Asset path relative to the site root (e.g. "document/unity/spatial-audio/images/img_001.webp")
+        data_base64: Base64-encoded file content
+    """
+    import base64
+    from pathlib import Path
+
+    from ...core.config import settings
+
+    await authenticate()
+    await _get_site_or_error(site_id)
+
+    # Validate extension
+    ext = Path(asset_path).suffix.lower()
+    allowed = {
+        ".webp", ".avif", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",
+        ".pdf", ".mp4", ".webm", ".woff2", ".woff",
+    }
+    if ext not in allowed:
+        raise ToolError(f"Unsupported file type: {ext}")
+
+    # Decode
+    try:
+        content = base64.b64decode(data_base64)
+    except Exception:
+        raise ToolError("Invalid base64 data")
+
+    if len(content) > 20 * 1024 * 1024:  # 20MB limit
+        raise ToolError("File too large (max 20MB)")
+
+    # Write file
+    base_dir = Path(settings.DOCSITE_ASSETS_DIR) / site_id
+    file_path = (base_dir / asset_path).resolve()
+
+    # Prevent path traversal
+    if not str(file_path).startswith(str(base_dir.resolve())):
+        raise ToolError("Invalid asset path")
+
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_bytes(content)
+
+    return {"path": asset_path, "size": len(content)}
