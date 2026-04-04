@@ -45,6 +45,9 @@ async def clip_bookmark(bookmark: Bookmark) -> None:
 
     page_ref = None
     try:
+        # Pre-fetch raw HTML (before JS execution) to preserve Twitter/YouTube embeds
+        raw_html = await _fetch_raw_html(bookmark.url)
+
         html, page_url, metadata, screenshot_bytes, page_ref = await _fetch_page(bookmark.url)
 
         # Update metadata if not already set
@@ -87,12 +90,23 @@ async def clip_bookmark(bookmark: Bookmark) -> None:
         page_ref = None
 
         # Default: trafilatura extraction → Markdown
-        extracted_html = await _extract_content(html, page_url)
+        # Use raw HTML (pre-JS) for trafilatura if available, as it preserves embeds
+        # Strip Twitter/YouTube embeds before trafilatura to avoid duplicates
+        import re as _re
+        source_html = raw_html or html
+        source_html = _re.sub(
+            r'<blockquote[^>]*class="twitter-tweet"[^>]*>.*?</blockquote>',
+            '', source_html, flags=_re.DOTALL | _re.IGNORECASE,
+        )
+        extracted_html = await _extract_content(source_html, page_url)
         if not extracted_html:
             bookmark.clip_status = ClipStatus.failed
             bookmark.clip_error = "No article content could be extracted"
             await bookmark.save_updated()
             return
+
+        # Restore Twitter/YouTube embeds from raw HTML (pre-JS, preserves original blockquotes)
+        extracted_html = _restore_embeds(extracted_html, raw_html or html)
 
         processed_html, local_images = await _process_images(
             extracted_html, page_url, str(bookmark.id), asset_dir,
@@ -117,6 +131,21 @@ async def clip_bookmark(bookmark: Bookmark) -> None:
         await bookmark.save_updated()
     finally:
         await _close_page_ref(page_ref)
+
+
+async def _fetch_raw_html(url: str) -> str | None:
+    """Fetch raw HTML via httpx (no JS execution). Used to preserve embeds."""
+    try:
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=15.0,
+            headers={"User-Agent": _USER_AGENT},
+        ) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            return resp.text
+    except Exception:
+        return None
 
 
 def _log_and_publish(bookmark: Bookmark) -> None:
@@ -190,6 +219,108 @@ async def _extract_zenn_scrap(page, url: str) -> str | None:
     except Exception:
         logger.warning("Zenn scrap extraction failed for %s", url, exc_info=True)
         return None
+
+
+def _restore_embeds(extracted_html: str, original_html: str) -> str:
+    """Restore Twitter and YouTube embeds that trafilatura stripped.
+
+    Twitter: Extract <blockquote class="twitter-tweet"> from original HTML,
+    convert to styled blockquote with tweet link, and insert into extracted HTML.
+
+    YouTube: Extract iframe src or video URLs from original HTML,
+    insert as embeddable iframe tags.
+
+    Since trafilatura completely removes tweet content, we use surrounding text
+    from the original HTML to find insertion positions in the extracted HTML.
+    """
+    import re
+
+    # ── Twitter embeds ──────────────────────────────────────
+    twitter_pattern = re.compile(
+        r'<blockquote[^>]*class="twitter-tweet"[^>]*>(.*?)</blockquote>',
+        re.DOTALL | re.IGNORECASE,
+    )
+
+    for match in twitter_pattern.finditer(original_html):
+        block = match.group(1)
+
+        # Extract tweet URL
+        tweet_url_match = re.search(
+            r'href="(https?://(?:twitter\.com|x\.com)/\w+/status/\d+)',
+            block,
+        )
+        tweet_url = tweet_url_match.group(1) if tweet_url_match else ""
+
+        # Extract tweet text
+        text_match = re.search(r'<p[^>]*>(.*?)</p>', block, re.DOTALL)
+        tweet_text = re.sub(r'<[^>]+>', '', text_match.group(1)).strip() if text_match else ""
+
+        # Extract author
+        author_match = re.search(r'(?:&mdash;|—)\s*(.+?)(?:<a|$)', block)
+        author = re.sub(r'<[^>]+>', '', author_match.group(1)).strip() if author_match else ""
+
+        if not tweet_text and not tweet_url:
+            continue
+
+        # Build embed HTML that markdownify converts to a clean blockquote
+        embed = '<blockquote>'
+        embed += f'<p><strong>🐦 {author or "Tweet"}</strong></p>'
+        embed += f'<p>{tweet_text}</p>'
+        if tweet_url:
+            embed += f'<p><a href="{tweet_url}">ツイートを見る</a></p>'
+        embed += '</blockquote>'
+
+        # Find insertion point: get text AFTER the tweet in original HTML
+        after_pos = match.end()
+        after_text = original_html[after_pos:after_pos + 500]
+        # Strip tags, take first meaningful text chunk
+        after_plain = re.sub(r'<[^>]+>', ' ', after_text).strip()
+        after_snippet = after_plain[:40].strip()
+
+        inserted = False
+        if after_snippet and len(after_snippet) > 5:
+            import html as html_mod
+            decoded_snippet = html_mod.unescape(after_snippet[:25])
+            escaped = re.escape(decoded_snippet)
+            snippet_match = re.search(escaped, extracted_html)
+            if snippet_match:
+                search_region = extracted_html[:snippet_match.start()]
+                last_tag = search_region.rfind('<')
+                insert_pos = last_tag if last_tag >= 0 else snippet_match.start()
+                extracted_html = extracted_html[:insert_pos] + f'\n{embed}\n' + extracted_html[insert_pos:]
+                inserted = True
+
+        if not inserted:
+            extracted_html += f'\n{embed}'
+
+    # ── YouTube embeds ──────────────────────────────────────
+    yt_iframes = re.findall(
+        r'<iframe[^>]*src=["\']([^"\']*(?:youtube\.com/embed|youtu\.be)[^"\']*)["\'][^>]*>',
+        original_html,
+        re.IGNORECASE,
+    )
+    yt_watch = re.findall(
+        r'https?://(?:www\.)?youtube\.com/watch\?v=([\w-]+)',
+        original_html,
+    )
+
+    yt_ids: list[str] = []
+    for iframe_src in yt_iframes:
+        vid_match = re.search(r'embed/([\w-]+)', iframe_src)
+        if vid_match and vid_match.group(1) not in yt_ids:
+            yt_ids.append(vid_match.group(1))
+    for vid in yt_watch:
+        if vid not in yt_ids:
+            yt_ids.append(vid)
+
+    for vid in yt_ids:
+        if vid in extracted_html:
+            continue
+        watch_url = f"https://www.youtube.com/watch?v={vid}"
+        yt_embed = f'<p><a href="{watch_url}">▶️ YouTube: {watch_url}</a></p>'
+        extracted_html += f'\n{yt_embed}'
+
+    return extracted_html
 
 
 def _sanitize_html(html: str) -> str:
@@ -421,8 +552,11 @@ def _xml_to_html(xml: str) -> str:
     body = body.replace('<cell>', '<td>').replace('</cell>', '</td>')
     body = re.sub(r'<table[^>]*>', '<table>', body)
 
+    # Convert <quote> → <blockquote>
+    body = body.replace('<quote>', '<blockquote>').replace('</quote>', '</blockquote>')
+
     # Remove remaining XML-only tags
-    body = re.sub(r'</?(?:main|comments|quote)[^>]*>', '', body)
+    body = re.sub(r'</?(?:main|comments)[^>]*>', '', body)
 
     return body.strip()
 

@@ -192,13 +192,44 @@ const clipHtmlStyles = `
   display: block !important;
 }
 
+/* ── Twitter/X embed cards ────────────────────── */
+.clip-tweet-embed {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0;
+  background: rgba(148, 163, 184, 0.03);
+}
+.clip-tweet-embed blockquote {
+  border-left: 3px solid #1d9bf0;
+  padding-left: 0.75rem;
+  margin: 0 0 0.5rem 0;
+  font-style: normal;
+}
+.clip-tweet-embed footer {
+  color: #94a3b8;
+  font-size: 0.8125rem;
+  margin-top: 0.25rem;
+}
+.clip-tweet-embed a {
+  color: #1d9bf0 !important;
+  text-decoration: none !important;
+  font-size: 0.8125rem;
+}
+.clip-tweet-embed a:hover {
+  text-decoration: underline !important;
+}
+
 /* ── YouTube embeds ──────────────────────────── */
+.clip-youtube-embed {
+  margin: 0.75rem 0;
+}
 .clip-html-content iframe[src*="youtube"],
-.clip-html-content iframe[src*="youtu.be"] {
+.clip-html-content iframe[src*="youtu.be"],
+.clip-youtube-embed iframe {
   width: 100%;
   aspect-ratio: 16/9;
   border: none;
   border-radius: 0.5rem;
-  margin: 0.75rem 0;
 }
 `
