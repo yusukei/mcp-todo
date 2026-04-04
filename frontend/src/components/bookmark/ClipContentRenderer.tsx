@@ -1,5 +1,6 @@
 import { useEffect, useRef, useMemo } from 'react'
 import DOMPurify from 'dompurify'
+import { Tweet } from 'react-tweet'
 import { api } from '../../api/client'
 import MarkdownRenderer from '../common/MarkdownRenderer'
 import AuthImage from '../common/AuthImage'
@@ -10,28 +11,12 @@ interface Props {
 
 // ── Embed detection helpers ─────────────────────────
 
-const TWEET_URL_RE = /^https?:\/\/(?:twitter\.com|x\.com)\/(\w+)\/status\/(\d+)/
 const YOUTUBE_URL_RE = /^https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/
-const TWEET_MARKER_RE = /<!--tweet:([^|]+)\|([^|]*)\|([^|]*)\|([^-]*)-->/g
 
-function TweetCard({ url, username, author, date, text }: {
-  url: string; username: string; author?: string; date?: string; text?: string
-}) {
+function TweetEmbed({ tweetId }: { tweetId: string }) {
   return (
-    <div className="clip-tweet-embed">
-      <div className="clip-tweet-header">
-        <span className="clip-tweet-author">{author || `@${username}`}</span>
-        <span className="clip-tweet-icon">𝕏</span>
-      </div>
-      {text && (
-        <div className="clip-tweet-body"><p>{text}</p></div>
-      )}
-      {date && (
-        <div className="clip-tweet-date">{date}</div>
-      )}
-      <div className="clip-tweet-link">
-        <a href={url} target="_blank" rel="noopener noreferrer">𝕏 で表示</a>
-      </div>
+    <div className="clip-tweet-wrapper">
+      <Tweet id={tweetId} />
     </div>
   )
 }
@@ -84,24 +69,21 @@ const mdComponentOverrides = {
 function MarkdownWithEmbeds({ content }: { content: string }) {
   // Split content by tweet markers and render each segment
   const segments = useMemo(() => {
-    const parts: Array<{ type: 'md'; text: string } | { type: 'tweet'; url: string; author: string; date: string; text: string }> = []
+    const parts: Array<{ type: 'md'; text: string } | { type: 'tweet'; tweetId: string }> = []
     let lastIndex = 0
 
-    const regex = /<!--tweet:([^|]+)\|([^|]*)\|([^|]*)\|([^-]*)-->/g
+    const regex = /<!--tweet:([^|]+)\|[^>]*-->/g
     let match: RegExpExecArray | null
     while ((match = regex.exec(content)) !== null) {
       if (match.index > lastIndex) {
         parts.push({ type: 'md', text: content.slice(lastIndex, match.index) })
       }
+      // Extract tweet ID from URL
       const url = match[1]
-      const usernameMatch = url.match(/\/(\w+)\/status\//)
-      parts.push({
-        type: 'tweet',
-        url,
-        author: match[2] || `@${usernameMatch?.[1] || ''}`,
-        date: match[3],
-        text: match[4].trim(),
-      })
+      const idMatch = url.match(/\/status\/(\d+)/)
+      if (idMatch) {
+        parts.push({ type: 'tweet', tweetId: idMatch[1] })
+      }
       lastIndex = match.index + match[0].length
     }
     if (lastIndex < content.length) {
@@ -114,14 +96,7 @@ function MarkdownWithEmbeds({ content }: { content: string }) {
     <>
       {segments.map((seg, i) =>
         seg.type === 'tweet' ? (
-          <TweetCard
-            key={i}
-            url={seg.url}
-            username={seg.url.match(/\/(\w+)\/status\//)?.[1] || ''}
-            author={seg.author}
-            date={seg.date}
-            text={seg.text}
-          />
+          <TweetEmbed key={i} tweetId={seg.tweetId} />
         ) : (
           <MarkdownRenderer key={i} componentOverrides={mdComponentOverrides}>
             {seg.text}
@@ -305,48 +280,12 @@ const clipStyles = `
   display: block !important;
 }
 
-/* ── Twitter/X embed cards ────────────────────── */
-.clip-tweet-embed {
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  border-radius: 0.75rem;
-  padding: 1rem;
+/* ── Twitter/X embed (react-tweet) ────────────── */
+.clip-tweet-wrapper {
   margin: 1rem 0;
-  background: rgba(148, 163, 184, 0.04);
 }
-.clip-tweet-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.5rem;
-}
-.clip-tweet-author {
-  font-weight: 600;
-  font-size: 0.875rem;
-}
-.clip-tweet-icon {
-  font-size: 1.25rem;
-  opacity: 0.5;
-}
-.clip-tweet-body {
-  font-size: 0.9375rem;
-  line-height: 1.5;
-  margin-bottom: 0.5rem;
-}
-.clip-tweet-body p {
+.clip-tweet-wrapper > div {
   margin: 0 !important;
-}
-.clip-tweet-date {
-  color: #94a3b8;
-  font-size: 0.75rem;
-  margin-bottom: 0.5rem;
-}
-.clip-tweet-link a {
-  color: #1d9bf0 !important;
-  text-decoration: none !important;
-  font-size: 0.8125rem;
-}
-.clip-tweet-link a:hover {
-  text-decoration: underline !important;
 }
 
 /* ── YouTube embeds ──────────────────────────── */
