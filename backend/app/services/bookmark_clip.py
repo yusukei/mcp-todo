@@ -106,18 +106,25 @@ async def clip_bookmark(bookmark: Bookmark) -> None:
             return
 
         # Restore Twitter/YouTube embeds from raw HTML (pre-JS, preserves original blockquotes)
-        extracted_html = _restore_embeds(extracted_html, raw_html or html)
+        extracted_html, has_embeds = _restore_embeds(extracted_html, raw_html or html)
 
         processed_html, local_images = await _process_images(
             extracted_html, page_url, str(bookmark.id), asset_dir,
         )
-        md_content = await _html_to_markdown(processed_html)
 
-        if len(md_content.encode("utf-8")) > _CLIP_CONTENT_MAX:
-            md_content = md_content[:_CLIP_CONTENT_MAX] + "\n\n...(truncated)"
-
-        bookmark.clip_content = md_content
-        bookmark.clip_markdown = md_content
+        if has_embeds:
+            # Keep HTML to preserve embed card styling
+            processed_html = _sanitize_html(processed_html)
+            if len(processed_html.encode("utf-8")) > _CLIP_CONTENT_MAX:
+                processed_html = processed_html[:_CLIP_CONTENT_MAX] + "\n<!-- truncated -->"
+            bookmark.clip_content = processed_html
+            bookmark.clip_markdown = await _html_to_markdown(processed_html)
+        else:
+            md_content = await _html_to_markdown(processed_html)
+            if len(md_content.encode("utf-8")) > _CLIP_CONTENT_MAX:
+                md_content = md_content[:_CLIP_CONTENT_MAX] + "\n\n...(truncated)"
+            bookmark.clip_content = md_content
+            bookmark.clip_markdown = md_content
         bookmark.local_images = local_images
         bookmark.clip_status = ClipStatus.done
         await bookmark.save_updated()
@@ -221,19 +228,16 @@ async def _extract_zenn_scrap(page, url: str) -> str | None:
         return None
 
 
-def _restore_embeds(extracted_html: str, original_html: str) -> str:
+def _restore_embeds(extracted_html: str, original_html: str) -> tuple[str, bool]:
     """Restore Twitter and YouTube embeds that trafilatura stripped.
 
-    Twitter: Extract <blockquote class="twitter-tweet"> from original HTML,
-    convert to styled blockquote with tweet link, and insert into extracted HTML.
-
-    YouTube: Extract iframe src or video URLs from original HTML,
-    insert as embeddable iframe tags.
-
-    Since trafilatura completely removes tweet content, we use surrounding text
-    from the original HTML to find insertion positions in the extracted HTML.
+    Returns (processed_html, has_embeds).
+    When has_embeds=True, the caller should store as HTML (not convert to Markdown)
+    to preserve the embed card styling.
     """
     import re
+
+    has_embeds = False
 
     # ── Twitter embeds ──────────────────────────────────────
     twitter_pattern = re.compile(
@@ -251,29 +255,42 @@ def _restore_embeds(extracted_html: str, original_html: str) -> str:
         )
         tweet_url = tweet_url_match.group(1) if tweet_url_match else ""
 
-        # Extract tweet text
-        text_match = re.search(r'<p[^>]*>(.*?)</p>', block, re.DOTALL)
-        tweet_text = re.sub(r'<[^>]+>', '', text_match.group(1)).strip() if text_match else ""
+        # Extract tweet text (all <p> tags)
+        text_parts = re.findall(r'<p[^>]*>(.*?)</p>', block, re.DOTALL)
+        tweet_text = '\n'.join(
+            re.sub(r'<[^>]+>', '', p).strip() for p in text_parts
+        ).strip()
 
-        # Extract author
+        # Extract author (after — or &mdash;)
         author_match = re.search(r'(?:&mdash;|—)\s*(.+?)(?:<a|$)', block)
         author = re.sub(r'<[^>]+>', '', author_match.group(1)).strip() if author_match else ""
+
+        # Extract date
+        date_match = re.search(r'<a[^>]*>([^<]*\d{4}[^<]*)</a>\s*$', block.strip())
+        date_str = date_match.group(1).strip() if date_match else ""
 
         if not tweet_text and not tweet_url:
             continue
 
-        # Build embed HTML that markdownify converts to a clean blockquote
-        embed = '<blockquote>'
-        embed += f'<p><strong>🐦 {author or "Tweet"}</strong></p>'
-        embed += f'<p>{tweet_text}</p>'
-        if tweet_url:
-            embed += f'<p><a href="{tweet_url}">ツイートを見る</a></p>'
-        embed += '</blockquote>'
+        has_embeds = True
 
-        # Find insertion point: get text AFTER the tweet in original HTML
+        # Build styled tweet card HTML
+        embed = '<div class="clip-tweet-embed">'
+        embed += '<div class="clip-tweet-header">'
+        if author:
+            embed += f'<span class="clip-tweet-author">{author}</span>'
+        embed += '<span class="clip-tweet-icon">𝕏</span>'
+        embed += '</div>'
+        embed += f'<div class="clip-tweet-body"><p>{tweet_text}</p></div>'
+        if date_str:
+            embed += f'<div class="clip-tweet-date">{date_str}</div>'
+        if tweet_url:
+            embed += f'<div class="clip-tweet-link"><a href="{tweet_url}" target="_blank" rel="noopener noreferrer">𝕏 で表示</a></div>'
+        embed += '</div>'
+
+        # Find insertion point using text AFTER the tweet in original HTML
         after_pos = match.end()
         after_text = original_html[after_pos:after_pos + 500]
-        # Strip tags, take first meaningful text chunk
         after_plain = re.sub(r'<[^>]+>', ' ', after_text).strip()
         after_snippet = after_plain[:40].strip()
 
@@ -316,11 +333,16 @@ def _restore_embeds(extracted_html: str, original_html: str) -> str:
     for vid in yt_ids:
         if vid in extracted_html:
             continue
-        watch_url = f"https://www.youtube.com/watch?v={vid}"
-        yt_embed = f'<p><a href="{watch_url}">▶️ YouTube: {watch_url}</a></p>'
+        has_embeds = True
+        embed_url = f"https://www.youtube.com/embed/{vid}"
+        yt_embed = (
+            f'<div class="clip-youtube-embed">'
+            f'<iframe src="{embed_url}" frameborder="0" allowfullscreen loading="lazy"></iframe>'
+            f'</div>'
+        )
         extracted_html += f'\n{yt_embed}'
 
-    return extracted_html
+    return extracted_html, has_embeds
 
 
 def _sanitize_html(html: str) -> str:

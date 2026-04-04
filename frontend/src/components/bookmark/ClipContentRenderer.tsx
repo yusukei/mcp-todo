@@ -194,29 +194,45 @@ const clipHtmlStyles = `
 
 /* ── Twitter/X embed cards ────────────────────── */
 .clip-tweet-embed {
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: 0.75rem;
-  padding: 0.75rem 1rem;
-  margin: 0.75rem 0;
-  background: rgba(148, 163, 184, 0.03);
+  padding: 1rem;
+  margin: 1rem 0;
+  background: rgba(148, 163, 184, 0.04);
 }
-.clip-tweet-embed blockquote {
-  border-left: 3px solid #1d9bf0;
-  padding-left: 0.75rem;
-  margin: 0 0 0.5rem 0;
-  font-style: normal;
+.clip-tweet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
 }
-.clip-tweet-embed footer {
+.clip-tweet-author {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+.clip-tweet-icon {
+  font-size: 1.25rem;
+  opacity: 0.5;
+}
+.clip-tweet-body {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  margin-bottom: 0.5rem;
+}
+.clip-tweet-body p {
+  margin: 0 !important;
+}
+.clip-tweet-date {
   color: #94a3b8;
-  font-size: 0.8125rem;
-  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  margin-bottom: 0.5rem;
 }
-.clip-tweet-embed a {
+.clip-tweet-link a {
   color: #1d9bf0 !important;
   text-decoration: none !important;
   font-size: 0.8125rem;
 }
-.clip-tweet-embed a:hover {
+.clip-tweet-link a:hover {
   text-decoration: underline !important;
 }
 
