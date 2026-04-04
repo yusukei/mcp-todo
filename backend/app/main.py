@@ -128,6 +128,24 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 logger.warning("Failed to initialize docsite search index: %s", e)
 
+    # ── Bookmark search index initialization ──────────────────
+    if not _is_testing:
+        from .services.bookmark_search import TANTIVY_AVAILABLE as BM_TANTIVY
+        if BM_TANTIVY:
+            try:
+                from pathlib import Path as _BMPath
+                from .services.bookmark_search import (
+                    BookmarkSearchIndex, BookmarkSearchIndexer, BookmarkSearchService,
+                )
+                bm_index = BookmarkSearchIndex(_BMPath(settings.BOOKMARK_INDEX_DIR))
+                bm_indexer = BookmarkSearchIndexer(bm_index)
+                BookmarkSearchIndexer.set_instance(bm_indexer)
+                BookmarkSearchService.set_instance(BookmarkSearchService(bm_index))
+                bm_count = await bm_indexer.rebuild()
+                logger.info("Bookmark search index ready: %d bookmarks indexed", bm_count)
+            except Exception as e:
+                logger.warning("Failed to initialize bookmark search index: %s", e)
+
     # ── MCP server integration ────────────────────────────────
     from .mcp.server import MCP_PATH, MOUNT_PREFIX, register_tools
     from .mcp.server import mcp as _mcp_server
@@ -198,7 +216,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # Routers
-from .api.v1.endpoints import attachments, auth, backup, docsites, documents, events, knowledge, mcp_keys, projects, tasks, users  # noqa: E402
+from .api.v1.endpoints import attachments, auth, backup, bookmark_assets, bookmarks, docsites, documents, events, knowledge, mcp_keys, projects, tasks, users  # noqa: E402
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
@@ -211,6 +229,9 @@ app.include_router(backup.router, prefix="/api/v1")
 app.include_router(knowledge.router, prefix="/api/v1")
 app.include_router(documents.router, prefix="/api/v1")
 app.include_router(docsites.router, prefix="/api/v1")
+app.include_router(bookmarks.coll_router, prefix="/api/v1")
+app.include_router(bookmarks.bm_router, prefix="/api/v1")
+app.include_router(bookmark_assets.router, prefix="/api/v1")
 
 
 @app.get("/health")

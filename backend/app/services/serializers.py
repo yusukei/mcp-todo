@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..models import Project, Task
+    from ..models.bookmark import Bookmark, BookmarkCollection
     from ..models.docsite import DocPage, DocSite, DocSiteSection
     from ..models.document import DocumentVersion, ProjectDocument
     from ..models.knowledge import Knowledge
@@ -188,6 +189,83 @@ def docsite_summary(s: DocSite) -> dict:
         "page_count": s.page_count,
         "created_at": s.created_at.isoformat(),
         "updated_at": s.updated_at.isoformat(),
+    }
+
+
+def bookmark_to_dict(b: Bookmark) -> dict:
+    """Convert a Bookmark document to a plain dict for API/MCP responses."""
+    return {
+        "id": str(b.id),
+        "project_id": b.project_id,
+        "url": b.url,
+        "title": b.title,
+        "description": b.description,
+        "tags": b.tags,
+        "collection_id": b.collection_id,
+        "metadata": {
+            "meta_title": b.metadata.meta_title,
+            "meta_description": b.metadata.meta_description,
+            "favicon_url": b.metadata.favicon_url,
+            "og_image_url": b.metadata.og_image_url,
+            "site_name": b.metadata.site_name,
+            "author": b.metadata.author,
+            "published_date": b.metadata.published_date,
+        },
+        "clip_status": b.clip_status,
+        "clip_content": b.clip_content,
+        "clip_error": b.clip_error,
+        "thumbnail_path": b.thumbnail_path,
+        "is_starred": b.is_starred,
+        "sort_order": b.sort_order,
+        "created_by": b.created_by,
+        "created_at": b.created_at.isoformat(),
+        "updated_at": b.updated_at.isoformat(),
+    }
+
+
+def bookmark_summary(b: Bookmark) -> dict:
+    """Convert a Bookmark to a summary dict (without clip_content)."""
+    return {
+        "id": str(b.id),
+        "project_id": b.project_id,
+        "url": b.url,
+        "title": b.title,
+        "description": b.description,
+        "tags": b.tags,
+        "collection_id": b.collection_id,
+        "metadata": {
+            "meta_title": b.metadata.meta_title,
+            "meta_description": b.metadata.meta_description,
+            "favicon_url": b.metadata.favicon_url,
+            "og_image_url": b.metadata.og_image_url,
+            "site_name": b.metadata.site_name,
+            "author": b.metadata.author,
+            "published_date": b.metadata.published_date,
+        },
+        "clip_status": b.clip_status,
+        "clip_error": b.clip_error,
+        "thumbnail_path": b.thumbnail_path,
+        "is_starred": b.is_starred,
+        "sort_order": b.sort_order,
+        "created_by": b.created_by,
+        "created_at": b.created_at.isoformat(),
+        "updated_at": b.updated_at.isoformat(),
+    }
+
+
+def bookmark_collection_to_dict(c: BookmarkCollection) -> dict:
+    """Convert a BookmarkCollection to a plain dict for API/MCP responses."""
+    return {
+        "id": str(c.id),
+        "project_id": c.project_id,
+        "name": c.name,
+        "description": c.description,
+        "icon": c.icon,
+        "color": c.color,
+        "sort_order": c.sort_order,
+        "created_by": c.created_by,
+        "created_at": c.created_at.isoformat(),
+        "updated_at": c.updated_at.isoformat(),
     }
 
 

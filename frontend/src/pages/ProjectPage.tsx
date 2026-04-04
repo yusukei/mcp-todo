@@ -7,18 +7,19 @@ import TaskList from '../components/task/TaskList'
 import TaskDetail from '../components/task/TaskDetail'
 import TaskCreateModal from '../components/task/TaskCreateModal'
 import ProjectDocumentsTab from '../components/project/ProjectDocumentsTab'
-import { LayoutGrid, List, Plus, Archive, Filter, Columns3, FileText, Lock, CheckSquare } from 'lucide-react'
+import ProjectBookmarksTab from '../components/project/ProjectBookmarksTab'
+import { LayoutGrid, List, Plus, Archive, Filter, Columns3, FileText, Lock, CheckSquare, Bookmark } from 'lucide-react'
 import { STATUS_OPTIONS, BOARD_COLUMNS } from '../constants/task'
 import { showErrorToast } from '../components/common/Toast'
 import type { Task, TaskStatus } from '../types'
 
-type ViewMode = 'board' | 'list' | 'docs'
+type ViewMode = 'board' | 'list' | 'docs' | 'bookmarks'
 
 export default function ProjectPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const initialView = (searchParams.get('view') as ViewMode) || 'board'
-  const [view, setView] = useState<ViewMode>(['board', 'list', 'docs'].includes(initialView) ? initialView as ViewMode : 'board')
+  const [view, setView] = useState<ViewMode>(['board', 'list', 'docs', 'bookmarks'].includes(initialView) ? initialView as ViewMode : 'board')
   const selectedTaskId = searchParams.get('task')
   const setSelectedTaskId = useCallback((taskId: string | null) => {
     setSearchParams(taskId ? { task: taskId } : {}, { replace: true })
@@ -255,6 +256,13 @@ export default function ProjectPage() {
             >
               <FileText className="w-4 h-4" />
             </button>
+            <button
+              onClick={() => setView('bookmarks')}
+              className={`p-1.5 rounded-md transition-colors ${view === 'bookmarks' ? 'bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
+              title="ブックマーク"
+            >
+              <Bookmark className="w-4 h-4" />
+            </button>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -334,7 +342,11 @@ export default function ProjectPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
-        {view === 'docs' ? (
+        {view === 'bookmarks' ? (
+          <div className="h-full overflow-hidden">
+            <ProjectBookmarksTab projectId={projectId!} />
+          </div>
+        ) : view === 'docs' ? (
           <div className="h-full overflow-y-auto">
             <ProjectDocumentsTab projectId={projectId!} />
           </div>

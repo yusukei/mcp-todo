@@ -177,6 +177,53 @@ export interface DocPage {
   created_at: string
 }
 
+// ── Bookmark ───────────────────────────────────────────
+
+export type ClipStatus = 'pending' | 'processing' | 'done' | 'failed'
+
+export interface BookmarkMetadata {
+  meta_title: string
+  meta_description: string
+  favicon_url: string
+  og_image_url: string
+  site_name: string
+  author: string
+  published_date: string | null
+}
+
+export interface Bookmark {
+  id: string
+  project_id: string
+  url: string
+  title: string
+  description: string
+  tags: string[]
+  collection_id: string | null
+  metadata: BookmarkMetadata
+  clip_status: ClipStatus
+  clip_content?: string
+  clip_error: string
+  thumbnail_path: string
+  is_starred: boolean
+  sort_order: number
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface BookmarkCollection {
+  id: string
+  project_id: string
+  name: string
+  description: string
+  icon: string
+  color: string
+  sort_order: number
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
 // ── Knowledge ───────────────────────────────────────────
 
 export type KnowledgeCategory = 'recipe' | 'reference' | 'tip' | 'troubleshooting' | 'architecture'

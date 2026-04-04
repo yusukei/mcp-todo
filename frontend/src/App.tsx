@@ -80,7 +80,7 @@ function AppRoutes() {
             <Route path="projects/:projectId" element={<ProjectPage />} />
             <Route path="projects/:projectId/settings" element={<ProjectSettingsPage />} />
             <Route path="projects/:projectId/documents/:documentId" element={<DocumentPage />} />
-            <Route path="knowledge" element={<KnowledgePage />} />
+<Route path="knowledge" element={<KnowledgePage />} />
             <Route path="knowledge/:knowledgeId" element={<KnowledgePage />} />
             <Route path="docsites" element={<DocSitesPage />} />
             <Route path="docsites/:siteId/*" element={<DocSiteViewerPage />} />

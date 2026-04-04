@@ -58,8 +58,8 @@ ENV PATH="/app/.venv/bin:$PATH" TZ=Asia/Tokyo \
     PLAYWRIGHT_BROWSERS_PATH=/app/.playwright
 RUN playwright install-deps chromium && rm -rf /var/lib/apt/lists/*
 COPY app/ ./app/
-RUN mkdir -p /app/search_index /app/docsite_assets /app/search_index_docsites && \
-    chown app:app /app/search_index /app/docsite_assets /app/search_index_docsites
+RUN mkdir -p /app/search_index /app/docsite_assets /app/search_index_docsites /app/bookmark_assets /app/search_index_bookmarks && \
+    chown app:app /app/search_index /app/docsite_assets /app/search_index_docsites /app/bookmark_assets /app/search_index_bookmarks
 USER app
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -54,6 +54,16 @@ mcp = FastMCP(
         "Use list_docsites to see available sites, get_docsite to browse the navigation tree, "
         "get_docpage to read a specific page, and search_docpages for full-text search "
         "(Japanese supported via Lindera).\n\n"
+        "## Bookmarks\n"
+        "Project-scoped bookmarks with web clipping. "
+        "Use create_bookmark to save a URL — clipping starts automatically in the background "
+        "(Playwright captures the page, extracts article content as Markdown, downloads images, "
+        "and takes a thumbnail screenshot). "
+        "Use list_bookmarks/search_bookmarks to find bookmarks, get_bookmark to read clipped content, "
+        "and clip_bookmark to re-trigger clipping. "
+        "Bookmarks can be organized into collections (create_bookmark_collection) and tagged. "
+        "Full-text search covers title, description, tags, URL, and clipped content "
+        "(Japanese supported via Lindera).\n\n"
         "## Development workflow\n"
         "IMPORTANT: Follow this workflow whenever you are about to modify code or configuration files.\n\n"
         "### 1. Task registration\n"
@@ -102,4 +112,4 @@ mcp = FastMCP(
 
 
 def register_tools() -> None:
-    from .tools import documents, docsites, knowledge, projects, setup, tasks  # noqa: F401
+    from .tools import bookmarks, documents, docsites, knowledge, projects, setup, tasks  # noqa: F401

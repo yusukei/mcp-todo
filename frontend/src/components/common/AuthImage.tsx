@@ -3,6 +3,7 @@ import { api } from '../../api/client'
 
 interface Props extends React.ImgHTMLAttributes<HTMLImageElement> {
   src?: string
+  onLoadError?: () => void
 }
 
 /**
@@ -12,7 +13,7 @@ interface Props extends React.ImgHTMLAttributes<HTMLImageElement> {
  *
  * Falls back to a regular <img> for external URLs.
  */
-export default function AuthImage({ src, alt, ...rest }: Props) {
+export default function AuthImage({ src, alt, onLoadError, ...rest }: Props) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
   const [error, setError] = useState(false)
 
@@ -36,7 +37,10 @@ export default function AuthImage({ src, alt, ...rest }: Props) {
         }
       })
       .catch(() => {
-        if (!cancelled) setError(true)
+        if (!cancelled) {
+          setError(true)
+          onLoadError?.()
+        }
       })
 
     return () => {
@@ -52,8 +56,8 @@ export default function AuthImage({ src, alt, ...rest }: Props) {
   // External URLs — render directly
   if (!isInternal) return <img src={src} alt={alt} {...rest} />
 
-  if (error) return <span className="text-xs text-gray-400">[画像を読み込めません]</span>
-  if (!blobUrl) return <span className="inline-block w-8 h-8 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+  if (error) return <span className="inline-block w-full max-w-xs h-24 bg-gray-100 dark:bg-gray-800 rounded flex items-center justify-center text-xs text-gray-400">[画像を読み込めません]</span>
+  if (!blobUrl) return <span className="inline-block w-full max-w-xs h-32 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
 
   return <img src={blobUrl} alt={alt} {...rest} />
 }

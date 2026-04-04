@@ -1,4 +1,5 @@
 from .allowed_email import AllowedEmail
+from .bookmark import Bookmark, BookmarkCollection, BookmarkMetadata, ClipStatus
 from .docsite import DocPage, DocSite, DocSiteSection
 from .document import DocumentCategory, DocumentVersion, ProjectDocument
 from .knowledge import Knowledge
@@ -24,4 +25,8 @@ __all__ = [
     "DocSite",
     "DocPage",
     "DocSiteSection",
+    "Bookmark",
+    "BookmarkCollection",
+    "BookmarkMetadata",
+    "ClipStatus",
 ]
