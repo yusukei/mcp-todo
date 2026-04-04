@@ -93,25 +93,34 @@ async def clip_bookmark(bookmark: Bookmark) -> None:
         import re as _re
         source_html = raw_html or html
 
-        # Extract tweet URLs before stripping blockquotes (so we can ensure they survive)
-        tweet_urls_raw = _re.findall(
-            r'href="(https?://(?:twitter\.com|x\.com)/\w+/status/\d+[^"]*)"',
-            source_html, flags=_re.IGNORECASE,
+        # Replace Twitter blockquotes with placeholders that trafilatura will preserve.
+        # This keeps tweet URLs at their original position in the article.
+        _tweet_placeholders: dict[str, str] = {}
+        _tweet_counter = [0]
+
+        def _replace_tweet(m: _re.Match) -> str:
+            block = m.group(1)
+            url_match = _re.search(
+                r'href="(https?://(?:twitter\.com|x\.com)/\w+/status/\d+)',
+                block,
+            )
+            if not url_match:
+                return ''
+            url = url_match.group(1)
+            _tweet_counter[0] += 1
+            placeholder = f'TWEETPLACEHOLDER{_tweet_counter[0]}'
+            _tweet_placeholders[placeholder] = url
+            return f'<p>{placeholder}</p>'
+
+        source_html = _re.sub(
+            r'<blockquote[^>]*class="twitter-tweet"[^>]*>(.*?)</blockquote>',
+            _replace_tweet, source_html, flags=_re.DOTALL | _re.IGNORECASE,
         )
-        # Normalize: strip query params to get clean tweet URLs
-        tweet_urls = [
-            _re.sub(r'\?.*$', '', u) for u in tweet_urls_raw
-        ]
+
         # Extract YouTube video IDs
         yt_ids = list(dict.fromkeys(
             _re.findall(r'(?:youtube\.com/(?:embed/|watch\?v=)|youtu\.be/)([\w-]+)', source_html)
         ))
-
-        # Strip Twitter blockquotes to prevent trafilatura from extracting garbled text
-        source_html = _re.sub(
-            r'<blockquote[^>]*class="twitter-tweet"[^>]*>.*?</blockquote>',
-            '', source_html, flags=_re.DOTALL | _re.IGNORECASE,
-        )
 
         extracted_html = await _extract_content(source_html, page_url)
         if not extracted_html:
@@ -125,10 +134,9 @@ async def clip_bookmark(bookmark: Bookmark) -> None:
         )
         md_content = await _html_to_markdown(processed_html)
 
-        # Append tweet URLs that are not already in the Markdown
-        for url in dict.fromkeys(tweet_urls):
-            if url not in md_content:
-                md_content += f'\n\n{url}\n'
+        # Replace placeholders with actual tweet URLs (at correct positions)
+        for placeholder, url in _tweet_placeholders.items():
+            md_content = md_content.replace(placeholder, url)
 
         # Append YouTube URLs that are not already in the Markdown
         for vid in yt_ids:
