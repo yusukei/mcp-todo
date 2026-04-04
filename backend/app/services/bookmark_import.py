@@ -178,12 +178,12 @@ async def import_bookmarks(
     # Batch insert
     BATCH_SIZE = 200
     imported = 0
+    imported_ids: list[str] = []
     for i in range(0, len(to_insert), BATCH_SIZE):
         batch = to_insert[i:i + BATCH_SIZE]
-        await Bookmark.insert_many(batch)
+        result = await Bookmark.insert_many(batch)
         imported += len(batch)
-
-    imported_ids = [str(bm.id) for bm in to_insert]
+        imported_ids.extend(str(oid) for oid in result.inserted_ids)
 
     logger.info(
         "Imported %d bookmarks (skipped %d duplicates, %d invalid) for project %s",
