@@ -87,6 +87,7 @@ async def clip_bookmark(bookmark: Bookmark) -> None:
             processed_html = processed_html[:_CLIP_CONTENT_MAX] + "\n\n<!-- truncated -->"
 
         bookmark.clip_content = processed_html
+        bookmark.clip_markdown = await _html_to_markdown(processed_html)
         bookmark.local_images = local_images
         bookmark.clip_status = ClipStatus.done
         await bookmark.save_updated()

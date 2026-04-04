@@ -387,7 +387,7 @@ async def search_bookmarks(
         {"url": {"$regex": pattern, "$options": "i"}},
         {"description": {"$regex": pattern, "$options": "i"}},
         {"tags": {"$regex": pattern, "$options": "i"}},
-        {"clip_content": {"$regex": pattern, "$options": "i"}},
+        {"clip_markdown": {"$regex": pattern, "$options": "i"}},
     ]
 
     total = await Bookmark.find(filters).count()

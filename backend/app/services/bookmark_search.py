@@ -117,7 +117,7 @@ class BookmarkSearchIndexer:
             description=getattr(b, "description", "") or "",
             url=getattr(b, "url", "") or "",
             tags=tags_text,
-            clip_content=getattr(b, "clip_content", "") or "",
+            clip_content=getattr(b, "clip_markdown", "") or getattr(b, "clip_content", "") or "",
             collection_id=getattr(b, "collection_id", "") or "",
         )
 

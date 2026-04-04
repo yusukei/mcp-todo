@@ -57,6 +57,7 @@ class Bookmark(Document):
     # Clipping
     clip_status: ClipStatus = ClipStatus.pending
     clip_content: str = ""
+    clip_markdown: str = ""
     clip_error: str = ""
     thumbnail_path: str = ""
     local_images: dict[str, str] = Field(default_factory=dict)
