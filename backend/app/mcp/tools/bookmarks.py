@@ -4,7 +4,8 @@ import logging
 from fastmcp.exceptions import ToolError
 
 from ...models.bookmark import Bookmark, BookmarkCollection, ClipStatus
-from ...services.bookmark_search import index_bookmark, deindex_bookmark
+from ...services.bookmark_cleanup import cleanup_bookmark_assets
+from ...services.bookmark_search import index_bookmark
 from ...services.serializers import (
     bookmark_collection_to_dict as _coll_dict,
     bookmark_summary as _bookmark_summary,
@@ -280,7 +281,7 @@ async def delete_bookmark(bookmark_id: str) -> dict:
 
     bm.is_deleted = True
     await bm.save_updated()
-    await deindex_bookmark(bookmark_id)
+    await cleanup_bookmark_assets(bookmark_id)
 
     return {"deleted": True, "id": bookmark_id}
 

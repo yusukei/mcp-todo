@@ -9,6 +9,7 @@ from ....core.deps import get_current_user
 from ....core.validators import valid_object_id
 from ....models import Bookmark, BookmarkCollection, Project, User
 from ....models.bookmark import BookmarkMetadata, ClipStatus
+from ....services.bookmark_cleanup import cleanup_bookmark_assets
 from ....services.serializers import (
     bookmark_collection_to_dict as _coll_dict,
     bookmark_summary as _bookmark_summary,
@@ -345,6 +346,7 @@ async def delete_bookmark(
 
     bm.is_deleted = True
     await bm.save_updated()
+    await cleanup_bookmark_assets(str(bm.id))
 
 
 @bm_router.post("/{bookmark_id}/clip")

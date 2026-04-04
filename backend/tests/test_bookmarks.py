@@ -4,6 +4,9 @@ Unit tests for bookmark_clip pipeline functions and
 integration tests for bookmark REST API endpoints.
 """
 
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
 import pytest
 import pytest_asyncio
 
@@ -711,3 +714,113 @@ class TestImportAPI:
         data = resp.json()
         assert data["imported"] == 0
         assert data["skipped_duplicate"] == 1
+
+
+# ═══════════════════════════════════════════════════════════
+# Unit tests: bookmark_cleanup
+# ═══════════════════════════════════════════════════════════
+
+
+class TestCleanupBookmarkAssets:
+    """Test cleanup_bookmark_assets removes asset dir and deindexes."""
+
+    @pytest.mark.asyncio
+    async def test_removes_asset_dir_and_deindexes(self, tmp_path):
+        bookmark_id = "abc123"
+        asset_dir = tmp_path / bookmark_id
+        asset_dir.mkdir()
+        (asset_dir / "thumb.jpg").write_bytes(b"\xff\xd8")
+        (asset_dir / "img_hash.png").write_bytes(b"\x89PNG")
+
+        with (
+            patch(
+                "app.services.bookmark_cleanup.settings"
+            ) as mock_settings,
+            patch(
+                "app.services.bookmark_cleanup.deindex_bookmark",
+                new_callable=AsyncMock,
+            ) as mock_deindex,
+        ):
+            mock_settings.BOOKMARK_ASSETS_DIR = str(tmp_path)
+            from app.services.bookmark_cleanup import cleanup_bookmark_assets
+
+            await cleanup_bookmark_assets(bookmark_id)
+
+        assert not asset_dir.exists()
+        mock_deindex.assert_awaited_once_with(bookmark_id)
+
+    @pytest.mark.asyncio
+    async def test_no_asset_dir_still_deindexes(self, tmp_path):
+        bookmark_id = "no_dir"
+
+        with (
+            patch(
+                "app.services.bookmark_cleanup.settings"
+            ) as mock_settings,
+            patch(
+                "app.services.bookmark_cleanup.deindex_bookmark",
+                new_callable=AsyncMock,
+            ) as mock_deindex,
+        ):
+            mock_settings.BOOKMARK_ASSETS_DIR = str(tmp_path)
+            from app.services.bookmark_cleanup import cleanup_bookmark_assets
+
+            await cleanup_bookmark_assets(bookmark_id)
+
+        mock_deindex.assert_awaited_once_with(bookmark_id)
+
+    @pytest.mark.asyncio
+    async def test_rmtree_failure_still_deindexes(self, tmp_path):
+        bookmark_id = "fail_rm"
+        asset_dir = tmp_path / bookmark_id
+        asset_dir.mkdir()
+
+        with (
+            patch(
+                "app.services.bookmark_cleanup.settings"
+            ) as mock_settings,
+            patch(
+                "app.services.bookmark_cleanup.deindex_bookmark",
+                new_callable=AsyncMock,
+            ) as mock_deindex,
+            patch("shutil.rmtree", side_effect=OSError("permission denied")),
+        ):
+            mock_settings.BOOKMARK_ASSETS_DIR = str(tmp_path)
+            from app.services.bookmark_cleanup import cleanup_bookmark_assets
+
+            await cleanup_bookmark_assets(bookmark_id)
+
+        mock_deindex.assert_awaited_once_with(bookmark_id)
+
+
+@pytest.mark.asyncio
+class TestDeleteBookmarkCleanup:
+    """Integration test: REST API delete calls cleanup."""
+
+    @pytest_asyncio.fixture(autouse=True)
+    async def _mock_clip(self, monkeypatch):
+        import app.api.v1.endpoints.bookmarks as bm_module
+
+        async def noop_clip(bookmark_id: str) -> None:
+            pass
+
+        monkeypatch.setattr(bm_module, '_run_clip', noop_clip)
+
+    async def test_delete_calls_cleanup(self, client, admin_headers, test_project):
+        create_resp = await client.post(
+            f"/api/v1/projects/{test_project.id}/bookmarks/",
+            json={"url": "https://example.com/cleanup-test"},
+            headers=admin_headers,
+        )
+        bm_id = create_resp.json()["id"]
+
+        with patch(
+            "app.api.v1.endpoints.bookmarks.cleanup_bookmark_assets",
+            new_callable=AsyncMock,
+        ) as mock_cleanup:
+            resp = await client.delete(
+                f"/api/v1/projects/{test_project.id}/bookmarks/{bm_id}",
+                headers=admin_headers,
+            )
+            assert resp.status_code == 204
+            mock_cleanup.assert_awaited_once_with(bm_id)
