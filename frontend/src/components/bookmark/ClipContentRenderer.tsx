@@ -8,14 +8,47 @@ interface Props {
   content: string
 }
 
+// ── Embed detection helpers ─────────────────────────
+
+const TWEET_URL_RE = /^https?:\/\/(?:twitter\.com|x\.com)\/(\w+)\/status\/(\d+)/
+const YOUTUBE_URL_RE = /^https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/
+
+function TweetCard({ url, username }: { url: string; username: string }) {
+  return (
+    <div className="clip-tweet-embed">
+      <div className="clip-tweet-header">
+        <span className="clip-tweet-author">@{username}</span>
+        <span className="clip-tweet-icon">𝕏</span>
+      </div>
+      <div className="clip-tweet-link">
+        <a href={url} target="_blank" rel="noopener noreferrer">𝕏 で表示</a>
+      </div>
+    </div>
+  )
+}
+
+function YouTubeEmbed({ videoId }: { videoId: string }) {
+  return (
+    <div className="clip-youtube-embed">
+      <iframe
+        src={`https://www.youtube.com/embed/${videoId}`}
+        frameBorder="0"
+        allowFullScreen
+        loading="lazy"
+      />
+    </div>
+  )
+}
+
+// ── Main component ──────────────────────────────────
+
 /**
  * Renders clipped bookmark content.
  * Auto-detects HTML vs Markdown:
- *   - If content starts with '<' or contains common HTML tags → render as sanitized HTML
- *   - Otherwise → render as Markdown
+ *   - HTML: rendered with DOMPurify sanitization
+ *   - Markdown: rendered with MarkdownRenderer + custom link handling
  *
- * For HTML content, images pointing to /api/v1/bookmark-assets/ are fetched
- * with JWT authentication and replaced with blob URLs.
+ * Twitter/X and YouTube URLs are automatically rendered as embed cards.
  */
 export default function ClipContentRenderer({ content }: Props) {
   const isHtml = useMemo(() => {
@@ -23,23 +56,63 @@ export default function ClipContentRenderer({ content }: Props) {
     return trimmed.startsWith('<') || /<(?:div|p|h[1-6]|article|section|img|ul|ol|table|blockquote)\b/i.test(trimmed)
   }, [content])
 
-  if (!isHtml) {
-    return (
-      <MarkdownRenderer
-        componentOverrides={{
-          img: ({ src, alt }) => (
-            <AuthImage src={src} alt={alt ?? ''} className="max-w-full rounded my-2" />
-          ),
-        }}
-      >
-        {content}
-      </MarkdownRenderer>
-    )
-  }
+  return (
+    <>
+      <style>{clipStyles}</style>
+      {isHtml ? (
+        <HtmlRenderer html={content} />
+      ) : (
+        <MarkdownRenderer
+          componentOverrides={{
+            img: ({ src, alt }) => (
+              <AuthImage src={src} alt={alt ?? ''} className="max-w-full rounded my-2" />
+            ),
+            a: ({ href, children: linkChildren }) => {
+              if (!href) return <a>{linkChildren}</a>
 
-  return <HtmlRenderer html={content} />
+              // Extract link text for bare URL detection
+              const linkText = typeof linkChildren === 'string'
+                ? linkChildren
+                : Array.isArray(linkChildren)
+                  ? linkChildren.map((c) => (typeof c === 'string' ? c : '')).join('')
+                  : ''
+              const isBareUrl = linkText.trim() === href ||
+                linkText.trim() === href.replace(/^https?:\/\//, '')
+
+              // Twitter/X tweet link → card
+              const tweetMatch = href.match(TWEET_URL_RE)
+              if (tweetMatch && isBareUrl) {
+                return <TweetCard url={href} username={tweetMatch[1]} />
+              }
+
+              // YouTube video → iframe embed
+              const ytMatch = href.match(YOUTUBE_URL_RE)
+              if (ytMatch && isBareUrl) {
+                return <YouTubeEmbed videoId={ytMatch[1]} />
+              }
+
+              // Default link
+              return (
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 underline"
+                >
+                  {linkChildren}
+                </a>
+              )
+            },
+          }}
+        >
+          {content}
+        </MarkdownRenderer>
+      )}
+    </>
+  )
 }
 
+// ── HTML Renderer ───────────────────────────────────
 
 function HtmlRenderer({ html }: { html: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -56,7 +129,6 @@ function HtmlRenderer({ html }: { html: string }) {
   useEffect(() => {
     if (!containerRef.current) return
 
-    // Find all internal images and replace with authenticated fetches
     const imgs = containerRef.current.querySelectorAll('img')
     const controllers: AbortController[] = []
 
@@ -67,7 +139,6 @@ function HtmlRenderer({ html }: { html: string }) {
       const controller = new AbortController()
       controllers.push(controller)
 
-      // Add loading placeholder style
       img.style.minHeight = '100px'
       img.style.background = 'var(--tw-gradient-from, #e5e7eb)'
       img.style.borderRadius = '0.375rem'
@@ -82,7 +153,6 @@ function HtmlRenderer({ html }: { html: string }) {
           img.src = blobUrl
           img.style.minHeight = ''
           img.style.background = ''
-          // Cleanup on unmount handled by effect return
           img.dataset.blobUrl = blobUrl
         })
         .catch(() => {
@@ -92,7 +162,6 @@ function HtmlRenderer({ html }: { html: string }) {
         })
     })
 
-    // Make all links open in new tab
     containerRef.current.querySelectorAll('a').forEach((a) => {
       if (a.href && !a.href.startsWith('#')) {
         a.target = '_blank'
@@ -102,7 +171,6 @@ function HtmlRenderer({ html }: { html: string }) {
 
     return () => {
       controllers.forEach((c) => c.abort())
-      // Revoke blob URLs
       if (containerRef.current) {
         containerRef.current.querySelectorAll('img[data-blob-url]').forEach((img) => {
           const blobUrl = (img as HTMLImageElement).dataset.blobUrl
@@ -113,20 +181,17 @@ function HtmlRenderer({ html }: { html: string }) {
   }, [sanitized])
 
   return (
-    <>
-      <style>{clipHtmlStyles}</style>
-      <div
-        ref={containerRef}
-        className="clip-html-content prose prose-sm prose-gray dark:prose-invert max-w-none"
-        dangerouslySetInnerHTML={{ __html: sanitized }}
-      />
-    </>
+    <div
+      ref={containerRef}
+      className="clip-html-content prose prose-sm prose-gray dark:prose-invert max-w-none"
+      dangerouslySetInnerHTML={{ __html: sanitized }}
+    />
   )
 }
 
+// ── Shared styles (applied to both HTML and Markdown modes) ──
 
-// CSS for site-specific HTML structures
-const clipHtmlStyles = `
+const clipStyles = `
 /* ── Zenn scrap comment cards ────────────────── */
 .clip-comment-card {
   border: 1px solid rgba(148, 163, 184, 0.2);
@@ -185,7 +250,6 @@ const clipHtmlStyles = `
   margin: 0.5rem 0;
 }
 .clip-html-content img[src^="http"]:not([src*="/api/"]) {
-  /* External images that might be blocked by CSP */
   display: none;
 }
 .clip-html-content img[data-blob-url] {
@@ -214,19 +278,6 @@ const clipHtmlStyles = `
   font-size: 1.25rem;
   opacity: 0.5;
 }
-.clip-tweet-body {
-  font-size: 0.9375rem;
-  line-height: 1.5;
-  margin-bottom: 0.5rem;
-}
-.clip-tweet-body p {
-  margin: 0 !important;
-}
-.clip-tweet-date {
-  color: #94a3b8;
-  font-size: 0.75rem;
-  margin-bottom: 0.5rem;
-}
 .clip-tweet-link a {
   color: #1d9bf0 !important;
   text-decoration: none !important;
@@ -240,9 +291,9 @@ const clipHtmlStyles = `
 .clip-youtube-embed {
   margin: 0.75rem 0;
 }
+.clip-youtube-embed iframe,
 .clip-html-content iframe[src*="youtube"],
-.clip-html-content iframe[src*="youtu.be"],
-.clip-youtube-embed iframe {
+.clip-html-content iframe[src*="youtu.be"] {
   width: 100%;
   aspect-ratio: 16/9;
   border: none;
