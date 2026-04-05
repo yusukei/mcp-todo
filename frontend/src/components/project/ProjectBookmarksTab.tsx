@@ -128,7 +128,7 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
   const [filterTag, setFilterTag] = useState('')
   const [filterCollection, setFilterCollection] = useState<string | null>(null)
   const [filterStarred, setFilterStarred] = useState(false)
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list')
   const [showCreate, setShowCreate] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [selectionMode, setSelectionMode] = useState(false)
