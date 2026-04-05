@@ -373,6 +373,7 @@ class TestSSEProjectFilteringUnit:
 
     httpx ASGI の制約を回避し、フィルタリングロジックを直接検証する。
     mongomock 互換のため mock モードで動作する。
+    プロダクションコードの _should_skip_event を直接呼び出して検証する。
     """
 
     def test_admin_user_project_ids_is_none(self, admin_user):
@@ -387,147 +388,66 @@ class TestSSEProjectFilteringUnit:
 
     def test_filtering_allows_event_when_project_ids_is_none(self):
         """user_project_ids が None (admin) の場合、全イベントを通過させる"""
-        user_project_ids = None  # admin
+        from app.api.v1.endpoints.events import _should_skip_event
+
         message_data = json.dumps(
             {"type": "task_created", "project_id": "proj_123"}
         )
-
-        should_skip = False
-        if user_project_ids is not None:
-            try:
-                event_data = json.loads(message_data)
-                pid = event_data.get("project_id")
-                if pid and pid not in user_project_ids:
-                    should_skip = True
-            except (json.JSONDecodeError, TypeError):
-                pass
-
-        assert should_skip is False
+        assert _should_skip_event(None, message_data) is False
 
     def test_filtering_allows_member_project_event(self):
         """一般ユーザーのメンバープロジェクトイベントは通過する"""
-        user_project_ids = {"proj_A", "proj_B"}
+        from app.api.v1.endpoints.events import _should_skip_event
+
         message_data = json.dumps(
             {"type": "task_created", "project_id": "proj_A"}
         )
-
-        should_skip = False
-        if user_project_ids is not None:
-            try:
-                event_data = json.loads(message_data)
-                pid = event_data.get("project_id")
-                if pid and pid not in user_project_ids:
-                    should_skip = True
-            except (json.JSONDecodeError, TypeError):
-                pass
-
-        assert should_skip is False
+        assert _should_skip_event({"proj_A", "proj_B"}, message_data) is False
 
     def test_filtering_blocks_non_member_project_event(self):
         """一般ユーザーの非メンバープロジェクトイベントはフィルタリングされる"""
-        user_project_ids = {"proj_A", "proj_B"}
+        from app.api.v1.endpoints.events import _should_skip_event
+
         message_data = json.dumps(
             {"type": "task_created", "project_id": "proj_C"}
         )
-
-        should_skip = False
-        if user_project_ids is not None:
-            try:
-                event_data = json.loads(message_data)
-                pid = event_data.get("project_id")
-                if pid and pid not in user_project_ids:
-                    should_skip = True
-            except (json.JSONDecodeError, TypeError):
-                pass
-
-        assert should_skip is True
+        assert _should_skip_event({"proj_A", "proj_B"}, message_data) is True
 
     def test_filtering_allows_event_without_project_id(self):
         """project_id を持たないイベントは一般ユーザーにも通過する"""
-        user_project_ids = {"proj_A", "proj_B"}
+        from app.api.v1.endpoints.events import _should_skip_event
+
         message_data = json.dumps(
             {"type": "system_notification", "message": "hello"}
         )
-
-        should_skip = False
-        if user_project_ids is not None:
-            try:
-                event_data = json.loads(message_data)
-                pid = event_data.get("project_id")
-                if pid and pid not in user_project_ids:
-                    should_skip = True
-            except (json.JSONDecodeError, TypeError):
-                pass
-
-        assert should_skip is False
+        assert _should_skip_event({"proj_A", "proj_B"}, message_data) is False
 
     def test_filtering_handles_invalid_json_gracefully(self):
         """不正な JSON メッセージはフィルタリングせず通過させる"""
-        user_project_ids = {"proj_A"}
-        message_data = "not-json-data"
+        from app.api.v1.endpoints.events import _should_skip_event
 
-        should_skip = False
-        if user_project_ids is not None:
-            try:
-                event_data = json.loads(message_data)
-                pid = event_data.get("project_id")
-                if pid and pid not in user_project_ids:
-                    should_skip = True
-            except (json.JSONDecodeError, TypeError):
-                pass
-
-        assert should_skip is False
+        assert _should_skip_event({"proj_A"}, "not-json-data") is False
 
     def test_filtering_handles_non_dict_json_gracefully(self):
         """JSON だが dict でないメッセージはフィルタリングせず通過させる"""
-        user_project_ids = {"proj_A"}
+        from app.api.v1.endpoints.events import _should_skip_event
+
         message_data = json.dumps([1, 2, 3])  # list, not dict
-
-        should_skip = False
-        if user_project_ids is not None:
-            try:
-                event_data = json.loads(message_data)
-                pid = event_data.get("project_id")
-                if pid and pid not in user_project_ids:
-                    should_skip = True
-            except (json.JSONDecodeError, TypeError, AttributeError):
-                pass
-
-        assert should_skip is False
+        assert _should_skip_event({"proj_A"}, message_data) is False
 
     def test_filtering_with_empty_project_ids_blocks_all_project_events(self):
         """user_project_ids が空セット (メンバー無し) の場合、
         project_id 付きイベントは全てブロックされる"""
-        user_project_ids: set[str] = set()
+        from app.api.v1.endpoints.events import _should_skip_event
+
         message_data = json.dumps(
             {"type": "task_created", "project_id": "proj_X"}
         )
-
-        should_skip = False
-        if user_project_ids is not None:
-            try:
-                event_data = json.loads(message_data)
-                pid = event_data.get("project_id")
-                if pid and pid not in user_project_ids:
-                    should_skip = True
-            except (json.JSONDecodeError, TypeError):
-                pass
-
-        assert should_skip is True
+        assert _should_skip_event(set(), message_data) is True
 
     def test_filtering_with_empty_project_ids_allows_no_project_id_events(self):
         """user_project_ids が空セットでも project_id なしイベントは通過する"""
-        user_project_ids: set[str] = set()
+        from app.api.v1.endpoints.events import _should_skip_event
+
         message_data = json.dumps({"type": "connected"})
-
-        should_skip = False
-        if user_project_ids is not None:
-            try:
-                event_data = json.loads(message_data)
-                pid = event_data.get("project_id")
-                if pid and pid not in user_project_ids:
-                    should_skip = True
-            except (json.JSONDecodeError, TypeError):
-                pass
-
-        assert should_skip is False
+        assert _should_skip_event(set(), message_data) is False

@@ -15,6 +15,29 @@ from ....models.project import ProjectStatus
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/events", tags=["events"])
 
+
+def _should_skip_event(user_project_ids: set[str] | None, message_data: str) -> bool:
+    """Determine whether an SSE event should be skipped for the given user.
+
+    Args:
+        user_project_ids: Set of project IDs the user has access to,
+                          or None if the user is an admin (sees everything).
+        message_data: Raw JSON string of the event message.
+
+    Returns:
+        True if the event should be skipped (not sent to the user).
+    """
+    if user_project_ids is not None:
+        try:
+            event_data = json.loads(message_data)
+            pid = event_data.get("project_id")
+            if pid and pid not in user_project_ids:
+                return True
+        except (json.JSONDecodeError, TypeError, AttributeError):
+            pass
+    return False
+
+
 _SSE_TICKET_TTL = 30  # seconds
 _SSE_TICKET_PREFIX = "sse_ticket:"
 
@@ -81,15 +104,8 @@ async def sse_stream(ticket: str = Query(..., description="One-time SSE ticket")
                     message = None
 
                 if message and message["type"] == "message":
-                    # Project filtering
-                    if user_project_ids is not None:
-                        try:
-                            event_data = json.loads(message["data"])
-                            pid = event_data.get("project_id")
-                            if pid and pid not in user_project_ids:
-                                continue
-                        except (json.JSONDecodeError, TypeError):
-                            pass
+                    if _should_skip_event(user_project_ids, message["data"]):
+                        continue
                     yield f"data: {message['data']}\n\n"
                 else:
                     yield ": keepalive\n\n"
