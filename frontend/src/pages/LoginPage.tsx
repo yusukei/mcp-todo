@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Fingerprint } from 'lucide-react'
 import { startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser'
 import { api } from '../api/client'
@@ -8,7 +8,18 @@ import ThemeToggle from '../components/common/ThemeToggle'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const setUser = useAuthStore((s) => s.setUser)
+
+  const redirectAfterLogin = () => {
+    const returnTo = searchParams.get('returnTo')
+    if (returnTo && returnTo.startsWith('/api/')) {
+      // バックエンドルート（OAuth同意画面等）→ フルページ遷移
+      window.location.href = returnTo
+    } else {
+      navigate(returnTo || '/')
+    }
+  }
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -25,7 +36,7 @@ export default function LoginPage() {
       localStorage.setItem('refresh_token', data.refresh_token)
       const { data: me } = await api.get('/auth/me')
       setUser(me)
-      navigate('/')
+      redirectAfterLogin()
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -55,7 +66,7 @@ export default function LoginPage() {
       localStorage.setItem('refresh_token', data.refresh_token)
       const { data: me } = await api.get('/auth/me')
       setUser(me)
-      navigate('/')
+      redirectAfterLogin()
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'NotAllowedError') {
         // User cancelled

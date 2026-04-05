@@ -94,7 +94,7 @@ class TestAuthenticate:
         """No X-API-Key header raises McpAuthError."""
         mock_get_request.return_value = _mock_request(api_key=None)
 
-        with pytest.raises(McpAuthError, match="X-API-Key header required"):
+        with pytest.raises(McpAuthError, match="Authentication required"):
             await authenticate()
 
     @patch("app.mcp.auth.get_http_request", side_effect=RuntimeError("no context"))

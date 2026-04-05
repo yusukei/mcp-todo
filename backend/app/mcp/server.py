@@ -1,7 +1,43 @@
+"""MCP Todo Server 定義
+
+FastMCP サーバインスタンスを作成し、各ツールモジュールを登録する。
+OAuth 2.1 (TodoOAuthProvider) による認証をサポートし、
+MCP Todo ユーザーと OAuth トークンを紐付ける。
+"""
+
+import logging
+
 from fastmcp import FastMCP
+from mcp.server.auth.settings import ClientRegistrationOptions
+
+from ..core.config import settings
+from .oauth_provider import TodoOAuthProvider
+
+logger = logging.getLogger(__name__)
 
 MOUNT_PREFIX = "/mcp"
 MCP_PATH = "/"
+
+# OAuth プロバイダの構築
+# base_url にマウントプレフィックスを含める（FastMCP の規約）
+_base = settings.BASE_URL.rstrip("/") if settings.BASE_URL else "http://localhost:8000"
+_base_url = f"{_base}{MOUNT_PREFIX}"
+
+if not settings.BASE_URL:
+    logger.warning(
+        "BASE_URL is not set — OAuth URLs will use %s. "
+        "Set BASE_URL to the public HTTPS URL for production.",
+        _base_url,
+    )
+else:
+    logger.info("MCP OAuth base_url: %s", _base_url)
+
+_oauth_provider = TodoOAuthProvider(
+    base_url=_base_url,
+    client_registration_options=ClientRegistrationOptions(
+        enabled=True,
+    ),
+)
 
 mcp = FastMCP(
     name="McpTodo",
@@ -64,6 +100,16 @@ mcp = FastMCP(
         "Bookmarks can be organized into collections (create_bookmark_collection) and tagged. "
         "Full-text search covers title, description, tags, URL, and clipped content "
         "(Japanese supported via Lindera).\n\n"
+        "## Remote execution\n"
+        "Execute commands and access files on remote machines via connected agents. "
+        "Each project can be linked to one remote workspace (agent + directory). "
+        "Use list_remote_agents to see available agents, then configure workspaces "
+        "via the web UI or REST API.\n"
+        "- remote_exec: Run shell commands (git, docker, npm, etc.) in the project's remote directory\n"
+        "- remote_read_file: Read files (relative to remote directory or absolute path)\n"
+        "- remote_write_file: Write files (parent dirs created automatically)\n"
+        "- remote_list_dir: List directory contents\n"
+        "All operations require an online agent and a configured workspace.\n\n"
         "## Development workflow\n"
         "IMPORTANT: Follow this workflow whenever you are about to modify code or configuration files.\n\n"
         "### 1. Task registration\n"
@@ -108,8 +154,9 @@ mcp = FastMCP(
         "then write it to the project's CLAUDE.md (create if needed). "
         "Prerequisite: .mcp.json is already configured manually by the user."
     ),
+    auth=_oauth_provider,
 )
 
 
 def register_tools() -> None:
-    from .tools import bookmarks, documents, docsites, knowledge, projects, setup, tasks  # noqa: F401
+    from .tools import bookmarks, documents, docsites, knowledge, projects, remote, setup, tasks  # noqa: F401

@@ -161,6 +161,7 @@ async def lifespan(app: FastAPI):
     register_tools()
 
     # Inject ResilientSessionManager for container restart recovery
+    # FastMCP.http_app() は auth= を渡せないため、create_streamable_http_app() を直接呼び出す
     import fastmcp.server.http as _fmcp_http
     from .mcp.session_manager import ResilientSessionManager
     _orig_manager = _fmcp_http.StreamableHTTPSessionManager
@@ -168,18 +169,28 @@ async def lifespan(app: FastAPI):
 
     from .mcp.session_store import RedisEventStore
     event_store = RedisEventStore()
-    _mcp_app = _mcp_server.http_app(path=MCP_PATH, event_store=event_store)
+    _mcp_app = _fmcp_http.create_streamable_http_app(
+        server=_mcp_server,
+        streamable_http_path=MCP_PATH,
+        event_store=event_store,
+        auth=_mcp_server.auth,
+    )
 
     _fmcp_http.StreamableHTTPSessionManager = _orig_manager  # restore
 
     # Register well-known routes at root level (before MCP mount)
-    from .mcp.well_known import get_well_known_routes
-    for route in get_well_known_routes():
+    # FastMCP の OAuthProvider が自動生成するルートを使用（手動ルートは廃止）
+    from .mcp.server import _oauth_provider
+    for route in _oauth_provider.get_well_known_routes(mcp_path=MCP_PATH):
         app.routes.insert(0, route)
+
+    # OAuth consent screen router
+    from .mcp.oauth_consent import router as mcp_consent_router
+    app.include_router(mcp_consent_router)
 
     # Mount MCP subapp
     app.mount(MOUNT_PREFIX, _mcp_app)
-    logger.info("MCP server mounted at %s (stateful + RedisEventStore)", MOUNT_PREFIX)
+    logger.info("MCP server mounted at %s (stateful + RedisEventStore + OAuth)", MOUNT_PREFIX)
 
     # MCP subapp lifespan (Starlette mount doesn't auto-execute subapp lifespan)
     if not _is_testing:
@@ -193,6 +204,8 @@ async def lifespan(app: FastAPI):
         from .services.clip_queue import clip_queue
         await clip_queue.stop()
     await event_store.aclose()
+    from .mcp.oauth_provider import close_mcp_redis
+    await close_mcp_redis()
     await close_redis()
     await close_db()
 

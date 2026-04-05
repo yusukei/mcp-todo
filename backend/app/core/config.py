@@ -36,7 +36,7 @@ class Settings(BaseSettings):
 
     COOKIE_DOMAIN: str = ""  # empty = auto from request
     COOKIE_SECURE: bool = False  # True for production HTTPS
-    COOKIE_SAMESITE: str = "strict"
+    COOKIE_SAMESITE: str = "lax"  # lax: OAuth consent flow requires cross-site navigation
     COOKIE_PATH: str = "/"
 
     INIT_ADMIN_EMAIL: str = ""
