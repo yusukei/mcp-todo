@@ -274,6 +274,23 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
     setSelectedIds(new Set())
   }
 
+  // ── Drag & Drop ────────────────────────────────────────
+
+  function handleDragStart(e: React.DragEvent, bmId: string) {
+    // If dragging a selected item, drag all selected; otherwise just the one
+    const ids = selectionMode && selectedIds.has(bmId) ? [...selectedIds] : [bmId]
+    e.dataTransfer.setData('application/x-bookmark-ids', JSON.stringify(ids))
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  function handleDropToCollection(bookmarkIds: string[], collectionId: string) {
+    batchMutation.mutate({
+      bookmark_ids: bookmarkIds,
+      action: 'set_collection',
+      collection_id: collectionId,
+    })
+  }
+
   // ── Helpers ─────────────────────────────────────────────
 
   function clipStatusIcon(status: string) {
@@ -308,6 +325,7 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
         onSelectCollection={setFilterCollection}
         starred={filterStarred}
         onToggleStarred={() => setFilterStarred((s) => !s)}
+        onDropBookmarks={handleDropToCollection}
       />
 
       {/* Main list */}
@@ -460,6 +478,8 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
               {bookmarks.map((bm) => (
                 <div
                   key={bm.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, bm.id)}
                   onClick={() => selectionMode ? toggleSelect(bm.id) : setSelectedId(bm.id)}
                   className={`cursor-pointer rounded-lg border bg-white dark:bg-gray-800 overflow-hidden hover:shadow-md transition-shadow ${
                     selectionMode && selectedIds.has(bm.id)
@@ -512,6 +532,8 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
               {bookmarks.map((bm) => (
                 <div
                   key={bm.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, bm.id)}
                   onClick={() => selectionMode ? toggleSelect(bm.id) : setSelectedId(bm.id)}
                   className={`cursor-pointer flex items-center gap-3 px-3 py-2 rounded-lg border bg-white dark:bg-gray-800 hover:shadow-sm ${
                     selectionMode && selectedIds.has(bm.id)

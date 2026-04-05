@@ -12,6 +12,7 @@ interface Props {
   onSelectCollection: (id: string | null) => void
   starred: boolean
   onToggleStarred: () => void
+  onDropBookmarks?: (bookmarkIds: string[], collectionId: string) => void
 }
 
 export default function BookmarkCollectionSidebar({
@@ -21,10 +22,12 @@ export default function BookmarkCollectionSidebar({
   onSelectCollection,
   starred,
   onToggleStarred,
+  onDropBookmarks,
 }: Props) {
   const qc = useQueryClient()
   const [showAdd, setShowAdd] = useState(false)
   const [newName, setNewName] = useState('')
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
 
   const createMutation = useMutation({
     mutationFn: (name: string) =>
@@ -43,9 +46,44 @@ export default function BookmarkCollectionSidebar({
     if (newName.trim()) createMutation.mutate(newName.trim())
   }
 
-  const itemClass = (active: boolean) =>
+  const handleDragOver = (e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes('application/x-bookmark-ids')) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent, collectionId: string) => {
+    e.preventDefault()
+    setDragOverId(null)
+    const raw = e.dataTransfer.getData('application/x-bookmark-ids')
+    if (!raw || !onDropBookmarks) return
+    try {
+      const ids: string[] = JSON.parse(raw)
+      if (ids.length > 0) onDropBookmarks(ids, collectionId)
+    } catch { /* ignore */ }
+  }
+
+  const handleDragEnter = (e: React.DragEvent, id: string) => {
+    if (e.dataTransfer.types.includes('application/x-bookmark-ids')) {
+      e.preventDefault()
+      setDragOverId(id)
+    }
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    // Only clear if leaving the element entirely (not entering a child)
+    const related = e.relatedTarget as Node | null
+    if (!e.currentTarget.contains(related)) {
+      setDragOverId(null)
+    }
+  }
+
+  const itemClass = (active: boolean, isDragOver = false) =>
     `flex items-center gap-2 px-3 py-2 text-sm rounded-lg cursor-pointer transition-colors ${
-      active
+      isDragOver
+        ? 'bg-indigo-100 dark:bg-indigo-800/40 ring-2 ring-indigo-400 text-indigo-700 dark:text-indigo-300'
+        : active
         ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium'
         : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
     }`
@@ -90,7 +128,11 @@ export default function BookmarkCollectionSidebar({
             onSelectCollection('')
             if (starred) onToggleStarred()
           }}
-          className={itemClass(selectedCollection === '')}
+          onDragOver={handleDragOver}
+          onDragEnter={(e) => handleDragEnter(e, '__unsorted__')}
+          onDragLeave={handleDragLeave}
+          onDrop={(e) => handleDrop(e, '')}
+          className={itemClass(selectedCollection === '', dragOverId === '__unsorted__')}
         >
           <Inbox className="w-4 h-4" />
           未分類
@@ -104,7 +146,11 @@ export default function BookmarkCollectionSidebar({
               onSelectCollection(c.id)
               if (starred) onToggleStarred()
             }}
-            className={itemClass(selectedCollection === c.id)}
+            onDragOver={handleDragOver}
+            onDragEnter={(e) => handleDragEnter(e, c.id)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, c.id)}
+            className={itemClass(selectedCollection === c.id, dragOverId === c.id)}
           >
             <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: c.color }} />
             <span className="truncate">{c.name}</span>
