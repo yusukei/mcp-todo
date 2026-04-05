@@ -370,9 +370,34 @@ async def _clip_twitter(bookmark: Bookmark) -> None:
     if bookmark.title == bookmark.url:
         bookmark.title = f"{author_name}: {tweet_text[:80]}"
 
-    # ── Download thumbnail (first photo or avatar) ──
+    # ── Download thumbnail (first photo, avatar, or syndication screenshot) ──
     asset_dir = Path(settings.BOOKMARK_ASSETS_DIR) / str(bookmark.id)
     asset_dir.mkdir(parents=True, exist_ok=True)
+
+    # If no photos from FxTwitter, try Twitter syndication API for a tweet screenshot
+    if not photos and not avatar_url:
+        syndication_url = f"https://cdn.syndication.twimg.com/tweet-result?id={tweet_id}&token=0"
+        try:
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                resp = await client.get(syndication_url)
+                if resp.status_code == 200:
+                    synd_data = resp.json()
+                    # Extract media from syndication response
+                    for media_item in synd_data.get("mediaDetails", []):
+                        media_url = media_item.get("media_url_https", "")
+                        if media_url:
+                            photos.append(media_url)
+                    # Extract user avatar
+                    synd_user = synd_data.get("user", {})
+                    if synd_user.get("profile_image_url_https"):
+                        avatar_url = synd_user["profile_image_url_https"].replace("_normal", "_400x400")
+                    # Fill in missing author info
+                    if not author_name and synd_user.get("name"):
+                        author_name = synd_user["name"]
+                    if author_handle == f"@{username}" and synd_user.get("screen_name"):
+                        author_handle = f"@{synd_user['screen_name']}"
+        except Exception:
+            logger.debug("Syndication API failed for tweet %s", tweet_id)
 
     thumb_source = photos[0] if photos else avatar_url
     if thumb_source:
