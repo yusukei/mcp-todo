@@ -326,6 +326,52 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
     })
   }
 
+  // ── Reorder D&D (list within same view) ────────────────
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  const dragSourceIndex = useRef<number | null>(null)
+
+  const reorderMutation = useMutation({
+    mutationFn: (ids: string[]) =>
+      api.post(`/projects/${projectId}/bookmarks/reorder`, { ids }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bookmarks', projectId] })
+    },
+    onError: () => showErrorToast('並び替えに失敗しました'),
+  })
+
+  function handleReorderDragStart(e: React.DragEvent, index: number, bmId: string) {
+    dragSourceIndex.current = index
+    e.dataTransfer.setData('application/x-bookmark-reorder', bmId)
+    e.dataTransfer.setData('application/x-bookmark-ids', JSON.stringify([bmId]))
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  function handleReorderDragOver(e: React.DragEvent, index: number) {
+    if (e.dataTransfer.types.includes('application/x-bookmark-reorder')) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+      setDragOverIndex(index)
+    }
+  }
+
+  function handleReorderDrop(e: React.DragEvent, dropIndex: number) {
+    e.preventDefault()
+    setDragOverIndex(null)
+    const srcIdx = dragSourceIndex.current
+    dragSourceIndex.current = null
+    if (srcIdx === null || srcIdx === dropIndex) return
+
+    const reordered = [...bookmarks.map((b) => b.id)]
+    const [moved] = reordered.splice(srcIdx, 1)
+    reordered.splice(dropIndex, 0, moved)
+    reorderMutation.mutate(reordered)
+  }
+
+  function handleReorderDragEnd() {
+    setDragOverIndex(null)
+    dragSourceIndex.current = null
+  }
+
   // ── Helpers ─────────────────────────────────────────────
 
   function clipStatusIcon(status: string) {
@@ -564,20 +610,28 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
             </div>
           ) : (
             <div className="space-y-1.5">
-              {bookmarks.map((bm) => (
+              {bookmarks.map((bm, idx) => (
                 <div
                   key={bm.id}
                   draggable
-                  onDragStart={(e) => handleDragStart(e, bm.id)}
+                  onDragStart={(e) => handleReorderDragStart(e, idx, bm.id)}
+                  onDragOver={(e) => handleReorderDragOver(e, idx)}
+                  onDrop={(e) => handleReorderDrop(e, idx)}
+                  onDragEnd={handleReorderDragEnd}
                   onClick={() => selectionMode ? toggleSelect(bm.id) : setSelectedId(bm.id)}
-                  className={`cursor-pointer flex items-center gap-3 px-3 py-2 rounded-lg border bg-white dark:bg-gray-800 hover:shadow-sm ${
-                    selectionMode && selectedIds.has(bm.id)
+                  className={`cursor-pointer flex items-center gap-3 px-3 py-2 rounded-lg border bg-white dark:bg-gray-800 hover:shadow-sm transition-all ${
+                    dragOverIndex === idx
+                      ? 'border-indigo-400 ring-2 ring-indigo-300 dark:ring-indigo-600'
+                      : selectionMode && selectedIds.has(bm.id)
                       ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50 dark:bg-indigo-950'
                       : selectedId === bm.id && !selectionMode
                       ? 'border-indigo-500 ring-1 ring-indigo-500'
                       : 'border-gray-200 dark:border-gray-700'
                   }`}
                 >
+                  <div className="flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400">
+                    <GripVertical className="w-4 h-4" />
+                  </div>
                   {selectionMode && (
                     <div className="flex-shrink-0">
                       {selectedIds.has(bm.id) ? (
