@@ -186,12 +186,12 @@ export default function Layout() {
         </Link>
         {user?.is_admin && (
           <Link
-            to="/terminal"
+            to="/workspaces"
             onClick={closeSidebar}
             className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
           >
             <TerminalSquare className="w-4 h-4" />
-            ターミナル
+            ワークスペース
           </Link>
         )}
       </nav>

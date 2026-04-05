@@ -87,7 +87,18 @@ async def authenticate() -> dict:
         OAuth の場合: project_scopes は空リスト（全プロジェクトアクセス可）
         API Key の場合: project_scopes はキーに設定されたスコープ
     """
-    # 1. OAuth トークンを確認
+    # 1. HTTP リクエストを取得
+    try:
+        request = get_http_request()
+    except RuntimeError:
+        raise McpAuthError("HTTP request context unavailable") from None
+
+    # 2. X-API-Key が存在すればそちらを優先（プレースホルダトークン経由のため）
+    api_key = request.headers.get("x-api-key")
+    if api_key:
+        return await _resolve_api_key_user(api_key)
+
+    # 3. OAuth Bearer トークンを確認
     from fastmcp.server.dependencies import get_access_token
 
     try:
@@ -101,17 +112,7 @@ async def authenticate() -> dict:
     if token is not None:
         return await _resolve_oauth_user(token)
 
-    # 2. X-API-Key フォールバック
-    try:
-        request = get_http_request()
-    except RuntimeError:
-        raise McpAuthError("HTTP request context unavailable") from None
-
-    api_key = request.headers.get("x-api-key")
-    if not api_key:
-        raise McpAuthError("Authentication required")
-
-    return await _resolve_api_key_user(api_key)
+    raise McpAuthError("Authentication required")
 
 
 async def _resolve_oauth_user(token: object) -> dict:

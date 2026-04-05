@@ -7,7 +7,6 @@ interface Agent {
   os_type: string
   available_shells: string[]
   is_online: boolean
-  active_sessions: number
   last_seen_at: string | null
   created_at: string
 }
@@ -68,11 +67,6 @@ export default function AgentList({ agents, selectedAgentId, onSelect, onDelete 
               <span className="text-xs text-gray-400 dark:text-gray-500">
                 {osLabel(agent.os_type)}
               </span>
-              {agent.active_sessions > 0 && (
-                <span className="text-xs text-green-500 tabular-nums">
-                  {agent.active_sessions} session{agent.active_sessions > 1 ? 's' : ''}
-                </span>
-              )}
             </div>
             {agent.hostname && (
               <p className="text-xs text-gray-400 dark:text-gray-500 truncate">

@@ -18,7 +18,7 @@ import DocumentPage from './pages/DocumentPage'
 import KnowledgePage from './pages/KnowledgePage'
 import DocSitesPage from './pages/DocSitesPage'
 import DocSiteViewerPage from './pages/DocSiteViewerPage'
-import TerminalPage from './pages/TerminalPage'
+import WorkspacePage from './pages/WorkspacePage'
 import SettingsPage from './pages/SettingsPage'
 
 const GoogleCallbackPage = React.lazy(() => import('./pages/GoogleCallbackPage'))
@@ -88,10 +88,10 @@ function AppRoutes() {
             <Route path="docsites" element={<DocSitesPage />} />
             <Route path="docsites/:siteId/*" element={<DocSiteViewerPage />} />
             <Route
-              path="terminal"
+              path="workspaces"
               element={
                 <AdminRoute>
-                  <TerminalPage />
+                  <WorkspacePage />
                 </AdminRoute>
               }
             />

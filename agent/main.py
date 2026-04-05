@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """MCP Todo — Remote Terminal Agent.
 
-Connects to the central server via WebSocket and relays PTY I/O.
-Supports macOS/Linux (stdlib pty) and Windows (pywinpty).
+Connects to the central server via WebSocket and handles remote
+command execution and file operations.
 
 Usage:
     python main.py --url wss://example.com/api/v1/terminal/agent/ws --token ta_xxx
@@ -18,8 +18,9 @@ import logging
 import os
 import platform
 import signal
-import struct
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 logging.basicConfig(
@@ -28,9 +29,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger("terminal-agent")
 
-# ── Platform detection ───────────────────────────────────────
-
 IS_WINDOWS = sys.platform == "win32"
+
+MAX_OUTPUT_BYTES = 2 * 1024 * 1024  # 2 MB
+MAX_FILE_BYTES = 5 * 1024 * 1024  # 5 MB
+MAX_DIR_ENTRIES = 1000
 
 
 def _detect_shells() -> list[str]:
@@ -54,214 +57,250 @@ def _detect_shells() -> list[str]:
         return shells or ["/bin/sh"]
 
 
-def _default_shell() -> str:
-    if IS_WINDOWS:
-        return os.environ.get("COMSPEC", r"C:\Windows\system32\cmd.exe")
-    return os.environ.get("SHELL", "/bin/sh")
+# ── Handlers ────────────────────────────────────────────────
 
 
-# ── PTY Backend ──────────────────────────────────────────────
+async def handle_exec(msg: dict) -> dict:
+    """Execute a shell command and return stdout/stderr."""
+    command = msg.get("command", "")
+    cwd = msg.get("cwd")
+    timeout = min(msg.get("timeout", 60), 300)
 
-class PtySession:
-    """Cross-platform PTY session."""
+    if cwd and not os.path.isdir(cwd):
+        return {
+            "type": "exec_result",
+            "request_id": msg["request_id"],
+            "exit_code": -1,
+            "stdout": "",
+            "stderr": f"Working directory does not exist: {cwd}",
+        }
 
-    def __init__(self):
-        self._process = None
-        self._fd: int | None = None
-        self._pid: int | None = None
-        self._winpty = None  # Windows only
-        self._alive = False
+    try:
+        kwargs = {
+            "stdout": asyncio.subprocess.PIPE,
+            "stderr": asyncio.subprocess.PIPE,
+            "cwd": cwd,
+        }
+        if not IS_WINDOWS:
+            kwargs["preexec_fn"] = os.setsid
 
-    async def spawn(self, shell: str, cols: int, rows: int) -> None:
-        if IS_WINDOWS:
-            await self._spawn_windows(shell, cols, rows)
-        else:
-            await self._spawn_unix(shell, cols, rows)
-        self._alive = True
+        proc = await asyncio.create_subprocess_shell(command, **kwargs)
 
-    async def _spawn_unix(self, shell: str, cols: int, rows: int) -> None:
-        import fcntl
-        import pty
-        import termios
-
-        pid, fd = pty.openpty()
-        # Set window size
-        winsize = struct.pack("HHHH", rows, cols, 0, 0)
-        fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
-
-        env = os.environ.copy()
-        env["TERM"] = "xterm-256color"
-        env["COLORTERM"] = "truecolor"
-
-        child_pid = os.fork()
-        if child_pid == 0:
-            # Child process
-            os.close(pid)
-            os.setsid()
-            import tty
-            tty.setraw(fd)
-
-            # Set fd as controlling terminal
-            fcntl.ioctl(fd, termios.TIOCSCTTY, 0)
-
-            os.dup2(fd, 0)
-            os.dup2(fd, 1)
-            os.dup2(fd, 2)
-            if fd > 2:
-                os.close(fd)
-
-            os.execvpe(shell, [shell], env)
-        else:
-            os.close(fd)
-            self._fd = pid
-            self._pid = child_pid
-
-    async def _spawn_windows(self, shell: str, cols: int, rows: int) -> None:
-        from winpty import PtyProcess  # pywinpty package
-
-        self._winpty = PtyProcess.spawn(
-            shell,
-            dimensions=(rows, cols),
-        )
-
-    async def read(self) -> bytes | None:
-        if not self._alive:
-            return None
-
-        if IS_WINDOWS:
-            return await self._read_windows()
-        else:
-            return await self._read_unix()
-
-    async def _read_unix(self) -> bytes | None:
-        if self._fd is None:
-            return None
-        loop = asyncio.get_event_loop()
         try:
-            data = await loop.run_in_executor(None, os.read, self._fd, 4096)
-            return data if data else None
-        except OSError:
-            self._alive = False
-            return None
-
-    def _read_windows_sync(self) -> bytes | None:
-        """Blocking read — run in executor."""
-        try:
-            data = self._winpty.read(4096)  # type: ignore[union-attr]
-            if not data:
-                return None
-            return data.encode("utf-8", errors="replace") if isinstance(data, str) else data
-        except EOFError:
-            return None
-        except Exception:
-            return None
-
-    async def _read_windows(self) -> bytes | None:
-        if self._winpty is None:
-            return None
-        loop = asyncio.get_event_loop()
-        data = await loop.run_in_executor(None, self._read_windows_sync)
-        if data is None:
-            self._alive = False
-        return data
-
-    async def write(self, data: str) -> None:
-        if IS_WINDOWS:
-            if self._winpty:
-                loop = asyncio.get_event_loop()
-                await loop.run_in_executor(None, self._winpty.write, data)
-        else:
-            if self._fd is not None:
-                loop = asyncio.get_event_loop()
-                await loop.run_in_executor(
-                    None, os.write, self._fd, data.encode() if isinstance(data, str) else data
-                )
-
-    async def resize(self, cols: int, rows: int) -> None:
-        if IS_WINDOWS:
-            if self._winpty:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            if IS_WINDOWS:
+                proc.kill()
+            else:
                 try:
-                    self._winpty.setwinsize(rows, cols)
-                except Exception:
-                    pass
-        else:
-            if self._fd is not None:
-                import fcntl
-                import termios
-                winsize = struct.pack("HHHH", rows, cols, 0, 0)
-                try:
-                    fcntl.ioctl(self._fd, termios.TIOCSWINSZ, winsize)
-                except OSError:
-                    pass
-            # Send SIGWINCH to child
-            if self._pid:
-                try:
-                    os.kill(self._pid, signal.SIGWINCH)
-                except (OSError, AttributeError):
-                    pass
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except (OSError, ProcessLookupError):
+                    proc.kill()
+            stdout, stderr = await proc.communicate()
+            return {
+                "type": "exec_result",
+                "request_id": msg["request_id"],
+                "exit_code": -1,
+                "stdout": stdout[:MAX_OUTPUT_BYTES].decode("utf-8", errors="replace"),
+                "stderr": stderr[:MAX_OUTPUT_BYTES].decode("utf-8", errors="replace")
+                + f"\n[timeout after {timeout}s]",
+            }
 
-    async def terminate(self) -> int:
-        self._alive = False
-        exit_code = -1
+        return {
+            "type": "exec_result",
+            "request_id": msg["request_id"],
+            "exit_code": proc.returncode,
+            "stdout": stdout[:MAX_OUTPUT_BYTES].decode("utf-8", errors="replace"),
+            "stderr": stderr[:MAX_OUTPUT_BYTES].decode("utf-8", errors="replace"),
+        }
 
-        if IS_WINDOWS:
-            if self._winpty:
-                try:
-                    self._winpty.terminate()
-                    exit_code = 0
-                except Exception:
-                    pass
-                self._winpty = None
-        else:
-            if self._pid:
-                try:
-                    os.kill(self._pid, signal.SIGTERM)
-                    _, status = os.waitpid(self._pid, 0)
-                    exit_code = os.WEXITSTATUS(status) if os.WIFEXITED(status) else -1
-                except (ChildProcessError, OSError):
-                    pass
-            if self._fd is not None:
-                try:
-                    os.close(self._fd)
-                except OSError:
-                    pass
-                self._fd = None
-            self._pid = None
+    except Exception as e:
+        return {
+            "type": "exec_result",
+            "request_id": msg["request_id"],
+            "exit_code": -1,
+            "stdout": "",
+            "stderr": str(e),
+        }
 
-        return exit_code
 
-    @property
-    def alive(self) -> bool:
-        if IS_WINDOWS:
-            if self._winpty:
+async def handle_read_file(msg: dict) -> dict:
+    """Read a file and return its content."""
+    path = msg.get("path", "")
+    cwd = msg.get("cwd")
+
+    if not os.path.isabs(path) and cwd:
+        path = os.path.join(cwd, path)
+
+    try:
+        size = os.path.getsize(path)
+        if size > MAX_FILE_BYTES:
+            return {
+                "type": "file_content",
+                "request_id": msg["request_id"],
+                "error": f"File too large: {size} bytes (max {MAX_FILE_BYTES // 1024 // 1024} MB)",
+            }
+
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+
+        return {
+            "type": "file_content",
+            "request_id": msg["request_id"],
+            "content": content,
+            "size": size,
+            "path": path,
+        }
+    except FileNotFoundError:
+        return {
+            "type": "file_content",
+            "request_id": msg["request_id"],
+            "error": f"File not found: {path}",
+        }
+    except PermissionError:
+        return {
+            "type": "file_content",
+            "request_id": msg["request_id"],
+            "error": f"Permission denied: {path}",
+        }
+    except Exception as e:
+        return {
+            "type": "file_content",
+            "request_id": msg["request_id"],
+            "error": str(e),
+        }
+
+
+async def handle_write_file(msg: dict) -> dict:
+    """Write content to a file."""
+    path = msg.get("path", "")
+    cwd = msg.get("cwd")
+    content = msg.get("content", "")
+
+    if not os.path.isabs(path) and cwd:
+        path = os.path.join(cwd, path)
+
+    try:
+        data = content.encode("utf-8")
+        if len(data) > MAX_FILE_BYTES:
+            return {
+                "type": "write_result",
+                "request_id": msg["request_id"],
+                "success": False,
+                "error": f"Content too large: {len(data)} bytes (max {MAX_FILE_BYTES // 1024 // 1024} MB)",
+            }
+
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        return {
+            "type": "write_result",
+            "request_id": msg["request_id"],
+            "success": True,
+            "bytes_written": len(data),
+            "path": path,
+        }
+    except PermissionError:
+        return {
+            "type": "write_result",
+            "request_id": msg["request_id"],
+            "success": False,
+            "error": f"Permission denied: {path}",
+        }
+    except Exception as e:
+        return {
+            "type": "write_result",
+            "request_id": msg["request_id"],
+            "success": False,
+            "error": str(e),
+        }
+
+
+async def handle_list_dir(msg: dict) -> dict:
+    """List directory contents."""
+    path = msg.get("path", ".")
+    cwd = msg.get("cwd")
+
+    if not os.path.isabs(path) and cwd:
+        path = os.path.join(cwd, path)
+
+    try:
+        entries = []
+        with os.scandir(path) as scanner:
+            for entry in scanner:
+                if len(entries) >= MAX_DIR_ENTRIES:
+                    break
                 try:
-                    return self._winpty.isalive()
-                except Exception:
-                    return False
-            return False
-        else:
-            if self._pid:
-                try:
-                    pid, _ = os.waitpid(self._pid, os.WNOHANG)
-                    return pid == 0
-                except ChildProcessError:
-                    return False
-            return False
+                    stat = entry.stat(follow_symlinks=False)
+                    entries.append({
+                        "name": entry.name,
+                        "type": "dir" if entry.is_dir(follow_symlinks=False) else
+                                "symlink" if entry.is_symlink() else "file",
+                        "size": stat.st_size if not entry.is_dir(follow_symlinks=False) else 0,
+                        "modified": datetime.fromtimestamp(
+                            stat.st_mtime, tz=timezone.utc
+                        ).isoformat(),
+                    })
+                except (OSError, PermissionError):
+                    entries.append({
+                        "name": entry.name,
+                        "type": "unknown",
+                        "size": 0,
+                        "modified": "",
+                    })
+
+        entries.sort(key=lambda e: (e["type"] != "dir", e["name"].lower()))
+
+        return {
+            "type": "dir_listing",
+            "request_id": msg["request_id"],
+            "entries": entries,
+            "path": path,
+        }
+    except FileNotFoundError:
+        return {
+            "type": "dir_listing",
+            "request_id": msg["request_id"],
+            "error": f"Directory not found: {path}",
+        }
+    except PermissionError:
+        return {
+            "type": "dir_listing",
+            "request_id": msg["request_id"],
+            "error": f"Permission denied: {path}",
+        }
+    except Exception as e:
+        return {
+            "type": "dir_listing",
+            "request_id": msg["request_id"],
+            "error": str(e),
+        }
+
+
+_HANDLERS = {
+    "exec": handle_exec,
+    "read_file": handle_read_file,
+    "write_file": handle_write_file,
+    "list_dir": handle_list_dir,
+}
 
 
 # ── Agent ────────────────────────────────────────────────────
 
+
 class TerminalAgent:
-    def __init__(self, server_url: str, token: str, default_shell: str = ""):
+    def __init__(self, server_url: str, token: str):
         self.server_url = server_url
         self.token = token
-        self.default_shell = default_shell or _default_shell()
-        # session_id → PtySession
-        self._sessions: dict[str, PtySession] = {}
-        # session_id → asyncio.Task (reader)
-        self._readers: dict[str, asyncio.Task] = {}
         self._ws = None
         self._running = True
+        self._agent_id: str | None = None
 
     async def run(self) -> None:
         backoff = 1
@@ -284,13 +323,30 @@ class TerminalAgent:
     async def _connect(self) -> None:
         import websockets
 
-        url = f"{self.server_url}?token={self.token}"
         logger.info("Connecting to %s", self.server_url)
 
-        async with websockets.connect(url, ping_interval=20, ping_timeout=10) as ws:
+        async with websockets.connect(
+            self.server_url, ping_interval=20, ping_timeout=10,
+        ) as ws:
             self._ws = ws
-            logger.info("Connected to server")
 
+            # ── Auth via first message ──
+            await ws.send(json.dumps({
+                "type": "auth",
+                "token": self.token,
+            }))
+
+            raw = await ws.recv()
+            msg = json.loads(raw)
+            if msg.get("type") != "auth_ok":
+                error = msg.get("message", "Authentication failed")
+                logger.error("Auth failed: %s", error)
+                raise ConnectionRefusedError(error)
+
+            self._agent_id = msg.get("agent_id")
+            logger.info("Authenticated as agent %s", self._agent_id)
+
+            # Send agent info
             await ws.send(json.dumps({
                 "type": "agent_info",
                 "hostname": platform.node(),
@@ -298,6 +354,7 @@ class TerminalAgent:
                 "shells": _detect_shells(),
             }))
 
+            # ── Message loop ──
             async for raw in ws:
                 if not self._running:
                     break
@@ -309,105 +366,23 @@ class TerminalAgent:
 
     async def _handle_message(self, msg: dict) -> None:
         msg_type = msg.get("type")
-        sid = msg.get("session_id", "")
 
-        if msg_type == "session_start":
-            await self._start_session(
-                session_id=sid,
-                shell=msg.get("shell") or self.default_shell,
-                cols=msg.get("cols", 120),
-                rows=msg.get("rows", 40),
-            )
+        handler = _HANDLERS.get(msg_type)
+        if handler:
+            response = await handler(msg)
+            if self._ws and response:
+                try:
+                    await self._ws.send(json.dumps(response))
+                except Exception as e:
+                    logger.error("Failed to send response: %s", e)
+            return
 
-        elif msg_type == "input":
-            pty = self._sessions.get(sid)
-            if pty and pty.alive:
-                await pty.write(msg.get("data", ""))
-
-        elif msg_type == "resize":
-            pty = self._sessions.get(sid)
-            if pty:
-                await pty.resize(
-                    cols=msg.get("cols", 120),
-                    rows=msg.get("rows", 40),
-                )
-
-        elif msg_type == "session_end":
-            await self._end_session(sid)
-
-        elif msg_type == "ping":
+        if msg_type == "ping":
             if self._ws:
                 await self._ws.send(json.dumps({"type": "pong"}))
 
-    async def _start_session(self, session_id: str, shell: str, cols: int, rows: int) -> None:
-        logger.info("Starting PTY: session=%s shell=%s cols=%d rows=%d", session_id, shell, cols, rows)
-        pty = PtySession()
-        try:
-            await pty.spawn(shell, cols, rows)
-        except Exception as e:
-            logger.error("Failed to spawn PTY: %s", e)
-            if self._ws:
-                await self._ws.send(json.dumps({
-                    "type": "exited",
-                    "session_id": session_id,
-                    "exit_code": -1,
-                }))
-            return
-
-        self._sessions[session_id] = pty
-        self._readers[session_id] = asyncio.create_task(
-            self._pty_reader(session_id)
-        )
-
-    async def _pty_reader(self, session_id: str) -> None:
-        pty = self._sessions.get(session_id)
-        try:
-            while pty and pty.alive:
-                data = await pty.read()
-                if data is None:
-                    break
-                if self._ws:
-                    text = data.decode("utf-8", errors="replace")
-                    await self._ws.send(json.dumps({
-                        "type": "output",
-                        "session_id": session_id,
-                        "data": text,
-                    }))
-        except Exception as e:
-            logger.debug("PTY reader ended (session=%s): %s", session_id, e)
-        finally:
-            exit_code = -1
-            pty = self._sessions.pop(session_id, None)
-            if pty:
-                exit_code = await pty.terminate()
-            self._readers.pop(session_id, None)
-            if self._ws:
-                try:
-                    await self._ws.send(json.dumps({
-                        "type": "exited",
-                        "session_id": session_id,
-                        "exit_code": exit_code,
-                    }))
-                except Exception:
-                    pass
-
-    async def _end_session(self, session_id: str) -> None:
-        task = self._readers.pop(session_id, None)
-        if task and not task.done():
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-
-        pty = self._sessions.pop(session_id, None)
-        if pty:
-            await pty.terminate()
-
     async def shutdown(self) -> None:
         self._running = False
-        for sid in list(self._sessions):
-            await self._end_session(sid)
         if self._ws:
             try:
                 await self._ws.close()
@@ -416,6 +391,7 @@ class TerminalAgent:
 
 
 # ── Config ───────────────────────────────────────────────────
+
 
 def load_config(path: str) -> dict:
     p = Path(path).expanduser()
@@ -428,34 +404,47 @@ def load_config(path: str) -> dict:
 
 # ── Entry point ──────────────────────────────────────────────
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="MCP Todo Remote Terminal Agent")
     parser.add_argument("--url", help="WebSocket server URL")
     parser.add_argument("--token", help="Agent authentication token")
-    parser.add_argument("--shell", help="Default shell to use", default="")
     parser.add_argument("--config", help="Path to config JSON file", default="")
     args = parser.parse_args()
 
     server_url = args.url
     token = args.token
-    default_shell = args.shell
 
     if args.config:
         cfg = load_config(args.config)
         server_url = server_url or cfg.get("server_url", "")
         token = token or cfg.get("token", "")
-        default_shell = default_shell or cfg.get("default_shell", "")
 
     if not server_url or not token:
         parser.error("--url and --token are required (or provide --config)")
 
-    agent = TerminalAgent(server_url, token, default_shell)
+    agent = TerminalAgent(server_url, token)
+
+    async def _run():
+        loop = asyncio.get_event_loop()
+
+        def _shutdown(*_):
+            logger.info("Shutting down...")
+            loop.call_soon_threadsafe(lambda: asyncio.ensure_future(agent.shutdown()))
+
+        if not IS_WINDOWS:
+            loop.add_signal_handler(signal.SIGINT, _shutdown)
+            loop.add_signal_handler(signal.SIGTERM, _shutdown)
+        else:
+            signal.signal(signal.SIGINT, _shutdown)
+            signal.signal(signal.SIGTERM, _shutdown)
+
+        await agent.run()
 
     try:
-        asyncio.run(agent.run())
+        asyncio.run(_run())
     except KeyboardInterrupt:
-        logger.info("Shutting down...")
-        asyncio.run(agent.shutdown())
+        pass
     logger.info("Agent stopped")
 
 

@@ -6,7 +6,7 @@ from .knowledge import Knowledge
 from .mcp_api_key import McpApiKey
 from .project import Project, ProjectMember
 from .task import Attachment, Comment, Task
-from .terminal import TerminalAgent, TerminalSession
+from .terminal import RemoteExecLog, RemoteWorkspace, TerminalAgent
 from .user import AuthType, User
 
 __all__ = [
@@ -31,5 +31,6 @@ __all__ = [
     "BookmarkMetadata",
     "ClipStatus",
     "TerminalAgent",
-    "TerminalSession",
+    "RemoteWorkspace",
+    "RemoteExecLog",
 ]

@@ -1,74 +1,144 @@
-"""Terminal remote access — REST endpoints + WebSocket relay.
+"""Terminal remote access — Agent WebSocket + Workspace REST API.
 
-Shared workspace model:
-- Sessions persist until PTY exits, agent disconnects, or user explicitly closes
-- All browsers see the same session list (server is source of truth)
-- Multiple browsers share the same session output
-- One WebSocket per browser, multiplexing all sessions for that agent
+Architecture:
+- Agents connect via WebSocket and authenticate with first message
+- MCP tools send commands to agents via AgentConnectionManager (request/response with Futures)
+- RemoteWorkspace links projects to agents + directories
+- All remote operations are logged to RemoteExecLog
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import secrets
 import uuid
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, Field
 
 from ....core.deps import get_admin_user
-from ....core.redis import get_redis
 from ....core.security import hash_api_key
 from ....models import User
-from ....models.terminal import TerminalAgent, TerminalSession
+from ....models.terminal import RemoteWorkspace, TerminalAgent
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/terminal", tags=["terminal"])
 
-_TICKET_TTL = 30
-_TICKET_PREFIX = "terminal_ticket:"
 
-# ── In-memory state (server is source of truth) ──────────────
+# ── AgentConnectionManager ──────────────────────────────────
 
 
-@dataclass
-class SessionState:
-    session_id: str
-    agent_id: str
-    shell: str
-    started_at: datetime
-    db_id: str
-    browsers: set[WebSocket] = field(default_factory=set)
+class AgentOfflineError(Exception):
+    def __init__(self, agent_id: str):
+        self.agent_id = agent_id
+        super().__init__(f"Agent {agent_id} is offline")
 
 
-# agent_id → WebSocket
-_agent_connections: dict[str, WebSocket] = {}
+class CommandTimeoutError(Exception):
+    def __init__(self, request_id: str, timeout: float):
+        self.request_id = request_id
+        self.timeout = timeout
+        super().__init__(f"Request {request_id} timed out after {timeout}s")
 
-# session_id → SessionState
-_sessions: dict[str, SessionState] = {}
 
-# agent_id → set of session_ids
-_agent_sessions: dict[str, set[str]] = {}
+class AgentConnectionManager:
+    """Manages agent WebSocket connections and request/response exchanges.
 
-# browser WebSocket → (agent_id, user_id)  — tracks all connected browsers
-_browser_agents: dict[WebSocket, tuple[str, str]] = {}
+    Single instance per process. All methods run on the same event loop.
+    """
+
+    def __init__(self) -> None:
+        self._connections: dict[str, WebSocket] = {}
+        # request_id → (agent_id, Future)
+        self._pending: dict[str, tuple[str, asyncio.Future]] = {}
+
+    def register(self, agent_id: str, ws: WebSocket) -> None:
+        self._connections[agent_id] = ws
+
+    def unregister(self, agent_id: str) -> None:
+        self._connections.pop(agent_id, None)
+        # Cancel all pending futures for this agent
+        to_cancel = [
+            rid for rid, (aid, _) in self._pending.items() if aid == agent_id
+        ]
+        for rid in to_cancel:
+            _, fut = self._pending.pop(rid)
+            if not fut.done():
+                fut.set_exception(AgentOfflineError(agent_id))
+
+    def is_connected(self, agent_id: str) -> bool:
+        return agent_id in self._connections
+
+    def get_connected_agent_ids(self) -> list[str]:
+        return list(self._connections.keys())
+
+    async def send_request(
+        self, agent_id: str, msg_type: str, payload: dict, timeout: float = 60.0
+    ) -> dict:
+        """Send request to agent and await response via Future."""
+        ws = self._connections.get(agent_id)
+        if not ws:
+            raise AgentOfflineError(agent_id)
+
+        request_id = uuid.uuid4().hex[:12]
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
+        self._pending[request_id] = (agent_id, future)
+
+        try:
+            await ws.send_text(json.dumps({
+                "type": msg_type, "request_id": request_id, **payload,
+            }))
+            result = await asyncio.wait_for(future, timeout=timeout)
+            if isinstance(result, dict) and result.get("error"):
+                raise RuntimeError(result["error"])
+            return result
+        except asyncio.TimeoutError:
+            raise CommandTimeoutError(request_id, timeout)
+        finally:
+            self._pending.pop(request_id, None)
+
+    def resolve_request(self, msg: dict) -> bool:
+        """Resolve a pending request with an incoming response message."""
+        request_id = msg.get("request_id")
+        if not request_id:
+            return False
+        entry = self._pending.get(request_id)
+        if entry and not entry[1].done():
+            entry[1].set_result(msg)
+            return True
+        return False
+
+
+# Module-level singleton
+agent_manager = AgentConnectionManager()
 
 
 # ── Schemas ──────────────────────────────────────────────────
+
 
 class CreateAgentRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
 
 
-class TicketResponse(BaseModel):
-    ticket: str
+class WorkspaceCreateRequest(BaseModel):
+    agent_id: str
+    project_id: str
+    remote_path: str = Field(..., min_length=1, max_length=1000)
+    label: str = Field("", max_length=200)
+
+
+class WorkspaceUpdateRequest(BaseModel):
+    remote_path: str | None = Field(None, min_length=1, max_length=1000)
+    label: str | None = Field(None, max_length=200)
 
 
 # ── Helpers ──────────────────────────────────────────────────
+
 
 def _agent_dict(a: TerminalAgent) -> dict:
     agent_id = str(a.id)
@@ -78,92 +148,40 @@ def _agent_dict(a: TerminalAgent) -> dict:
         "hostname": a.hostname,
         "os_type": a.os_type,
         "available_shells": a.available_shells,
-        "is_online": agent_id in _agent_connections,
-        "active_sessions": len(_agent_sessions.get(agent_id, set())),
+        "is_online": agent_manager.is_connected(agent_id),
         "last_seen_at": a.last_seen_at.isoformat() if a.last_seen_at else None,
         "created_at": a.created_at.isoformat(),
     }
 
 
-def _session_dict(s: SessionState) -> dict:
+async def _workspace_dict(w: RemoteWorkspace) -> dict:
+    agent = await TerminalAgent.get(w.agent_id)
+    from ....models import Project
+    project = await Project.get(w.project_id)
     return {
-        "session_id": s.session_id,
-        "agent_id": s.agent_id,
-        "shell": s.shell,
-        "started_at": s.started_at.isoformat(),
-        "viewers": len(s.browsers),
+        "id": str(w.id),
+        "agent_id": w.agent_id,
+        "agent_name": agent.name if agent else "",
+        "project_id": w.project_id,
+        "project_name": project.name if project else "",
+        "remote_path": w.remote_path,
+        "label": w.label,
+        "is_online": agent_manager.is_connected(w.agent_id),
+        "created_at": w.created_at.isoformat(),
+        "updated_at": w.updated_at.isoformat(),
     }
-
-
-async def _broadcast_session(session_id: str, message: str) -> None:
-    """Send message to all browsers viewing a session."""
-    state = _sessions.get(session_id)
-    if not state:
-        return
-    dead: list[WebSocket] = []
-    for ws in state.browsers:
-        try:
-            await ws.send_text(message)
-        except Exception:
-            dead.append(ws)
-    for ws in dead:
-        state.browsers.discard(ws)
-
-
-async def _notify_all_browsers(agent_id: str, message: str) -> None:
-    """Send message to all browsers connected to an agent."""
-    for ws, (aid, _uid) in list(_browser_agents.items()):
-        if aid == agent_id:
-            try:
-                await ws.send_text(message)
-            except Exception:
-                pass
-
-
-async def _close_session(session_id: str, reason: str) -> None:
-    """Close a session: notify browsers, update DB, clean up state."""
-    state = _sessions.pop(session_id, None)
-    if not state:
-        return
-
-    # Notify all browsers viewing this session
-    msg = json.dumps({"type": "session_ended", "session_id": session_id, "reason": reason})
-    for ws in state.browsers:
-        try:
-            await ws.send_text(msg)
-        except Exception:
-            pass
-
-    # Notify all browsers of this agent that session list changed
-    await _notify_all_browsers(state.agent_id, json.dumps({
-        "type": "sessions_changed", "agent_id": state.agent_id,
-    }))
-
-    # Remove from agent sessions
-    sids = _agent_sessions.get(state.agent_id)
-    if sids:
-        sids.discard(session_id)
-        if not sids:
-            _agent_sessions.pop(state.agent_id, None)
-
-    # Update DB
-    try:
-        s = await TerminalSession.get(state.db_id)
-        if s and not s.ended_at:
-            s.ended_at = datetime.now(UTC)
-            await s.save()
-    except Exception:
-        pass
 
 
 # ── Health check ─────────────────────────────────────────────
 
+
 @router.get("/health")
 async def terminal_health() -> dict:
-    return {"status": "ok", "websocket_endpoints": ["/agent/ws", "/ws"]}
+    return {"status": "ok", "websocket_endpoint": "/agent/ws"}
 
 
-# ── REST endpoints (admin only) ──────────────────────────────
+# ── Agent REST endpoints (admin only) ────────────────────────
+
 
 @router.get("/agents")
 async def list_agents(user: User = Depends(get_admin_user)) -> list[dict]:
@@ -190,66 +208,131 @@ async def delete_agent(agent_id: str, user: User = Depends(get_admin_user)) -> N
     agent = await TerminalAgent.get(agent_id)
     if not agent or agent.owner_id != str(user.id):
         raise HTTPException(status_code=404, detail="Agent not found")
-    ws = _agent_connections.pop(str(agent.id), None)
-    if ws:
-        try:
-            await ws.close(code=1000, reason="Agent deleted")
-        except Exception:
-            pass
+    agent_manager.unregister(agent_id)
     await agent.delete()
 
 
-@router.get("/sessions")
-async def list_sessions(agent_id: str = Query(...), user: User = Depends(get_admin_user)) -> list[dict]:
-    """List active sessions for an agent (source of truth for all browsers)."""
-    agent = await TerminalAgent.get(agent_id)
+# ── Workspace REST endpoints (admin only) ────────────────────
+
+
+@router.get("/workspaces")
+async def list_workspaces(user: User = Depends(get_admin_user)) -> list[dict]:
+    workspaces = await RemoteWorkspace.find_all().sort("-created_at").to_list()
+    return [await _workspace_dict(w) for w in workspaces]
+
+
+@router.post("/workspaces", status_code=status.HTTP_201_CREATED)
+async def create_workspace(
+    body: WorkspaceCreateRequest,
+    user: User = Depends(get_admin_user),
+) -> dict:
+    # Validate agent exists and belongs to user
+    agent = await TerminalAgent.get(body.agent_id)
     if not agent or agent.owner_id != str(user.id):
         raise HTTPException(status_code=404, detail="Agent not found")
-    sids = _agent_sessions.get(agent_id, set())
-    return [_session_dict(_sessions[sid]) for sid in sids if sid in _sessions]
+
+    # Validate project exists
+    from ....models import Project
+    project = await Project.get(body.project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Check uniqueness (1 project = 1 workspace)
+    existing = await RemoteWorkspace.find_one({"project_id": body.project_id})
+    if existing:
+        raise HTTPException(status_code=409, detail="Project already has a workspace")
+
+    workspace = RemoteWorkspace(
+        agent_id=body.agent_id,
+        project_id=body.project_id,
+        remote_path=body.remote_path,
+        label=body.label,
+    )
+    await workspace.insert()
+    return await _workspace_dict(workspace)
 
 
-@router.post("/ticket", response_model=TicketResponse)
-async def create_terminal_ticket(user: User = Depends(get_admin_user)) -> TicketResponse:
-    ticket = uuid.uuid4().hex
-    redis = get_redis()
-    await redis.set(f"{_TICKET_PREFIX}{ticket}", str(user.id), ex=_TICKET_TTL)
-    return TicketResponse(ticket=ticket)
+@router.patch("/workspaces/{workspace_id}")
+async def update_workspace(
+    workspace_id: str,
+    body: WorkspaceUpdateRequest,
+    user: User = Depends(get_admin_user),
+) -> dict:
+    workspace = await RemoteWorkspace.get(workspace_id)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    if body.remote_path is not None:
+        workspace.remote_path = body.remote_path
+    if body.label is not None:
+        workspace.label = body.label
+    workspace.updated_at = datetime.now(UTC)
+    await workspace.save()
+    return await _workspace_dict(workspace)
+
+
+@router.delete("/workspaces/{workspace_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_workspace(workspace_id: str, user: User = Depends(get_admin_user)) -> None:
+    workspace = await RemoteWorkspace.get(workspace_id)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    await workspace.delete()
 
 
 # ── WebSocket: Agent ─────────────────────────────────────────
 
+
+_RESPONSE_TYPES = frozenset({
+    "exec_result", "file_content", "write_result", "dir_listing",
+})
+
+
 @router.websocket("/agent/ws")
-async def agent_websocket(ws: WebSocket, token: str = Query(...)):
-    key_hash = hash_api_key(token)
-    agent = await TerminalAgent.find_one({"key_hash": key_hash})
-    if not agent:
-        await ws.close(code=4008, reason="Invalid agent token")
+async def agent_websocket(ws: WebSocket):
+    """Agent WebSocket with first-message authentication."""
+    await ws.accept()
+
+    # ── Auth via first message ──
+    try:
+        raw = await asyncio.wait_for(ws.receive_text(), timeout=10.0)
+        msg = json.loads(raw)
+    except (asyncio.TimeoutError, json.JSONDecodeError, WebSocketDisconnect):
+        try:
+            await ws.close(code=4008, reason="Auth timeout")
+        except Exception:
+            pass
         return
 
-    await ws.accept()
+    if msg.get("type") != "auth" or not msg.get("token"):
+        try:
+            await ws.close(code=4008, reason="Expected auth message")
+        except Exception:
+            pass
+        return
+
+    key_hash = hash_api_key(msg["token"])
+    agent = await TerminalAgent.find_one({"key_hash": key_hash})
+    if not agent:
+        try:
+            await ws.send_text(json.dumps({"type": "auth_error", "message": "Invalid token"}))
+            await ws.close(code=4008, reason="Invalid agent token")
+        except Exception:
+            pass
+        return
+
     agent_id = str(agent.id)
-    _agent_connections[agent_id] = ws
+    await ws.send_text(json.dumps({"type": "auth_ok", "agent_id": agent_id}))
+    agent_manager.register(agent_id, ws)
 
     agent.is_online = True
     agent.last_seen_at = datetime.now(UTC)
     await agent.save()
     logger.info("Agent connected: %s (%s)", agent.name, agent_id)
 
+    # ── Message loop ──
     try:
         while True:
             raw = await ws.receive_text()
-
-            # Fast path: output → broadcast to session browsers
-            if '"output"' in raw[:40]:
-                try:
-                    msg = json.loads(raw)
-                    sid = msg.get("session_id", "")
-                except (json.JSONDecodeError, TypeError):
-                    continue
-                if sid:
-                    await _broadcast_session(sid, raw)
-                continue
 
             try:
                 msg = json.loads(raw)
@@ -257,7 +340,11 @@ async def agent_websocket(ws: WebSocket, token: str = Query(...)):
                 continue
 
             msg_type = msg.get("type")
-            sid = msg.get("session_id", "")
+
+            # Try to resolve as request/response first
+            if msg_type in _RESPONSE_TYPES:
+                agent_manager.resolve_request(msg)
+                continue
 
             if msg_type == "agent_info":
                 agent.hostname = msg.get("hostname", agent.hostname)
@@ -265,9 +352,6 @@ async def agent_websocket(ws: WebSocket, token: str = Query(...)):
                 agent.available_shells = msg.get("shells", agent.available_shells)
                 agent.last_seen_at = datetime.now(UTC)
                 await agent.save()
-
-            elif msg_type == "exited":
-                await _close_session(sid, f"process_exited:{msg.get('exit_code', -1)}")
 
             elif msg_type == "pong":
                 pass
@@ -277,234 +361,10 @@ async def agent_websocket(ws: WebSocket, token: str = Query(...)):
     except Exception as e:
         logger.error("Agent WebSocket error: %s", e)
     finally:
-        _agent_connections.pop(agent_id, None)
+        agent_manager.unregister(agent_id)
         agent.is_online = False
         agent.last_seen_at = datetime.now(UTC)
         try:
             await agent.save()
         except Exception:
             pass
-
-        # Close all sessions for this agent
-        for sid in list(_agent_sessions.pop(agent_id, set())):
-            await _close_session(sid, "agent_disconnect")
-
-
-# ── WebSocket: Browser ───────────────────────────────────────
-
-@router.websocket("/ws")
-async def browser_websocket(
-    ws: WebSocket,
-    ticket: str = Query(...),
-    agent_id: str = Query(...),
-):
-    """Single WebSocket per browser, multiplexing all sessions for one agent.
-
-    Browser sends commands via this WS:
-    - {"type": "session_create", "shell": "..."} → create new session
-    - {"type": "session_close", "session_id": "..."} → terminate session
-    - {"type": "session_join", "session_id": "..."} → start receiving output
-    - {"type": "session_leave", "session_id": "..."} → stop receiving output
-    - {"type": "input", "session_id": "...", "data": "..."} → terminal input
-    - {"type": "resize", "session_id": "...", "cols": N, "rows": N}
-    """
-    # Auth
-    redis = get_redis()
-    ticket_key = f"{_TICKET_PREFIX}{ticket}"
-    user_id = await redis.get(ticket_key)
-    if not user_id:
-        await ws.close(code=4001, reason="Invalid or expired ticket")
-        return
-    await redis.delete(ticket_key)
-
-    user = await User.get(user_id)
-    if not user or not user.is_active or not user.is_admin:
-        await ws.close(code=4003, reason="Unauthorized")
-        return
-
-    agent = await TerminalAgent.get(agent_id)
-    if not agent or agent.owner_id != str(user.id):
-        await ws.close(code=4004, reason="Agent not found")
-        return
-
-    await ws.accept()
-    _browser_agents[ws] = (agent_id, str(user.id))
-
-    # Send current session list
-    sids = _agent_sessions.get(agent_id, set())
-    sessions = [_session_dict(_sessions[sid]) for sid in sids if sid in _sessions]
-    await ws.send_text(json.dumps({
-        "type": "session_list",
-        "sessions": sessions,
-    }))
-
-    logger.info("Browser connected: user=%s agent=%s", user.name, agent.name)
-
-    try:
-        while True:
-            raw = await ws.receive_text()
-
-            # Fast path: input
-            if '"input"' in raw[:30]:
-                try:
-                    msg = json.loads(raw)
-                    sid = msg.get("session_id", "")
-                except (json.JSONDecodeError, TypeError):
-                    continue
-                if sid and sid in _sessions:
-                    agent_ws = _agent_connections.get(agent_id)
-                    if agent_ws:
-                        try:
-                            await agent_ws.send_text(raw)
-                        except Exception:
-                            pass
-                continue
-
-            try:
-                msg = json.loads(raw)
-            except json.JSONDecodeError:
-                continue
-
-            msg_type = msg.get("type")
-
-            if msg_type == "session_create":
-                await _handle_create(ws, agent_id, user, msg)
-
-            elif msg_type == "session_close":
-                await _handle_close(ws, agent_id, msg)
-
-            elif msg_type == "session_join":
-                sid = msg.get("session_id", "")
-                state = _sessions.get(sid)
-                if state and state.agent_id == agent_id:
-                    state.browsers.add(ws)
-                    await ws.send_text(json.dumps({
-                        "type": "session_joined",
-                        "session_id": sid,
-                        "viewers": len(state.browsers),
-                    }))
-                    await _broadcast_viewer_changed(sid)
-
-            elif msg_type == "session_leave":
-                sid = msg.get("session_id", "")
-                state = _sessions.get(sid)
-                if state:
-                    state.browsers.discard(ws)
-                    await _broadcast_viewer_changed(sid)
-
-            elif msg_type == "resize":
-                sid = msg.get("session_id", "")
-                if sid and sid in _sessions:
-                    agent_ws = _agent_connections.get(agent_id)
-                    if agent_ws:
-                        try:
-                            await agent_ws.send_text(raw)
-                        except Exception:
-                            pass
-
-            elif msg_type == "ping":
-                await ws.send_text(json.dumps({"type": "pong"}))
-
-    except WebSocketDisconnect:
-        logger.info("Browser disconnected: user=%s", user.name)
-    except Exception as e:
-        logger.error("Browser WebSocket error: %s", e)
-    finally:
-        _browser_agents.pop(ws, None)
-        # Remove this browser from all sessions (but don't close sessions)
-        for state in _sessions.values():
-            if ws in state.browsers:
-                state.browsers.discard(ws)
-
-
-async def _handle_create(ws: WebSocket, agent_id: str, user: User, msg: dict) -> None:
-    """Handle session_create command from browser."""
-    agent_ws = _agent_connections.get(agent_id)
-    if not agent_ws:
-        await ws.send_text(json.dumps({"type": "error", "message": "Agent is offline"}))
-        return
-
-    shell = msg.get("shell", "")
-    session_id = uuid.uuid4().hex[:12]
-
-    # Create DB record
-    db_session = TerminalSession(
-        agent_id=agent_id,
-        user_id=str(user.id),
-        shell=shell,
-    )
-    await db_session.insert()
-
-    # Create state
-    state = SessionState(
-        session_id=session_id,
-        agent_id=agent_id,
-        shell=shell,
-        started_at=datetime.now(UTC),
-        db_id=str(db_session.id),
-        browsers={ws},
-    )
-    _sessions[session_id] = state
-    _agent_sessions.setdefault(agent_id, set()).add(session_id)
-
-    # Tell agent to spawn PTY
-    try:
-        await agent_ws.send_text(json.dumps({
-            "type": "session_start",
-            "session_id": session_id,
-            "shell": shell,
-            "cols": msg.get("cols", 120),
-            "rows": msg.get("rows", 40),
-        }))
-    except Exception as e:
-        logger.error("Failed to start session: %s", e)
-        _sessions.pop(session_id, None)
-        _agent_sessions.get(agent_id, set()).discard(session_id)
-        await ws.send_text(json.dumps({"type": "error", "message": "Failed to start session"}))
-        return
-
-    await ws.send_text(json.dumps({
-        "type": "session_started",
-        "session_id": session_id,
-        "shell": shell,
-    }))
-
-    # Notify all browsers that session list changed
-    await _notify_all_browsers(agent_id, json.dumps({
-        "type": "sessions_changed", "agent_id": agent_id,
-    }))
-
-    logger.info("Session created: %s (agent=%s user=%s)", session_id, agent_id, user.name)
-
-
-async def _handle_close(ws: WebSocket, agent_id: str, msg: dict) -> None:
-    """Handle session_close command from browser — explicitly kill session."""
-    sid = msg.get("session_id", "")
-    state = _sessions.get(sid)
-    if not state or state.agent_id != agent_id:
-        return
-
-    # Tell agent to end PTY
-    agent_ws = _agent_connections.get(agent_id)
-    if agent_ws:
-        try:
-            await agent_ws.send_text(json.dumps({
-                "type": "session_end",
-                "session_id": sid,
-            }))
-        except Exception:
-            pass
-
-    await _close_session(sid, "user_closed")
-
-
-async def _broadcast_viewer_changed(session_id: str) -> None:
-    state = _sessions.get(session_id)
-    if not state:
-        return
-    msg = json.dumps({
-        "type": "viewer_changed",
-        "session_id": session_id,
-        "viewers": len(state.browsers),
-    })
-    await _broadcast_session(session_id, msg)

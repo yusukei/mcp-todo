@@ -24,18 +24,41 @@ class TerminalAgent(Document):
         ]
 
 
-class TerminalSession(Document):
-    """Audit log for terminal sessions."""
+class RemoteWorkspace(Document):
+    """Links a project to a remote agent + directory."""
 
-    agent_id: str
-    user_id: str
-    shell: str = ""
-    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    ended_at: datetime | None = None
+    agent_id: Indexed(str)  # type: ignore[valid-type]
+    project_id: Indexed(str, unique=True)  # type: ignore[valid-type]  # 1 project = 1 workspace
+    remote_path: str  # Absolute path on remote machine
+    label: str = ""
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:
-        name = "terminal_sessions"
+        name = "remote_workspaces"
         indexes = [
-            [("agent_id", 1), ("started_at", -1)],
-            [("user_id", 1), ("started_at", -1)],
+            [("agent_id", 1)],
+        ]
+
+
+class RemoteExecLog(Document):
+    """Audit trail for MCP-initiated remote operations."""
+
+    workspace_id: str
+    agent_id: str
+    operation: str  # "exec" | "read_file" | "write_file" | "list_dir"
+    detail: str  # command string or file path
+    exit_code: int | None = None
+    stdout_len: int = 0
+    stderr_len: int = 0
+    duration_ms: int = 0
+    error: str = ""
+    mcp_key_id: str = ""
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    class Settings:
+        name = "remote_exec_logs"
+        indexes = [
+            [("agent_id", 1), ("created_at", -1)],
+            [("workspace_id", 1), ("created_at", -1)],
         ]
