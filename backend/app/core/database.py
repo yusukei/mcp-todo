@@ -18,12 +18,12 @@ _client: motor.motor_asyncio.AsyncIOMotorClient | None = None
 
 async def connect() -> None:
     global _client
-    from ..models import AllowedEmail, Bookmark, BookmarkCollection, DocPage, DocSite, DocumentVersion, Knowledge, McpApiKey, Project, ProjectDocument, RemoteExecLog, RemoteWorkspace, Task, TerminalAgent, User
+    from ..models import AllowedEmail, Bookmark, BookmarkCollection, ChatMessage, ChatSession, DocPage, DocSite, DocumentVersion, Knowledge, McpApiKey, Project, ProjectDocument, RemoteExecLog, RemoteWorkspace, Task, TerminalAgent, User
 
     _client = motor.motor_asyncio.AsyncIOMotorClient(settings.MONGO_URI)
     await init_beanie(
         database=_client[settings.MONGO_DBNAME],
-        document_models=[User, AllowedEmail, Project, Task, McpApiKey, Knowledge, ProjectDocument, DocumentVersion, DocSite, DocPage, Bookmark, BookmarkCollection, TerminalAgent, RemoteWorkspace, RemoteExecLog],
+        document_models=[User, AllowedEmail, Project, Task, McpApiKey, Knowledge, ProjectDocument, DocumentVersion, DocSite, DocPage, Bookmark, BookmarkCollection, TerminalAgent, RemoteWorkspace, RemoteExecLog, ChatSession, ChatMessage],
     )
     logger.info("MongoDB connected: %s / %s", _mask_uri(settings.MONGO_URI), settings.MONGO_DBNAME)
 

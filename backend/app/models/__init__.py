@@ -1,5 +1,6 @@
 from .allowed_email import AllowedEmail
 from .bookmark import Bookmark, BookmarkCollection, BookmarkMetadata, ClipStatus
+from .chat import ChatMessage, ChatSession, MessageRole, MessageStatus, SessionStatus, ToolCallData
 from .docsite import DocPage, DocSite, DocSiteSection
 from .document import DocumentCategory, DocumentVersion, ProjectDocument
 from .knowledge import Knowledge
@@ -33,4 +34,10 @@ __all__ = [
     "TerminalAgent",
     "RemoteWorkspace",
     "RemoteExecLog",
+    "ChatSession",
+    "ChatMessage",
+    "MessageRole",
+    "MessageStatus",
+    "SessionStatus",
+    "ToolCallData",
 ]

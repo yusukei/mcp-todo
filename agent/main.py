@@ -2,7 +2,7 @@
 """MCP Todo — Remote Terminal Agent.
 
 Connects to the central server via WebSocket and handles remote
-command execution and file operations.
+command execution, file operations, and Claude Code chat sessions.
 
 Usage:
     python main.py --url wss://example.com/api/v1/terminal/agent/ws --token ta_xxx
@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import platform
+import shutil
 import signal
 import sys
 import time
@@ -291,6 +292,182 @@ _HANDLERS = {
 }
 
 
+# ── ChatManager ─────────────────────────────────────────────
+
+
+class ChatManager:
+    """Manages Claude Code chat sessions via stream-json CLI."""
+
+    def __init__(self) -> None:
+        # session_id → (process, request_id)
+        self._active: dict[str, tuple[asyncio.subprocess.Process, str]] = {}
+
+    def _find_claude(self) -> str:
+        """Find the claude CLI executable."""
+        claude = shutil.which("claude")
+        if claude:
+            return claude
+        # Common install paths
+        candidates = [
+            Path.home() / ".claude" / "local" / "claude",
+            Path.home() / ".local" / "bin" / "claude",
+            Path("/usr/local/bin/claude"),
+        ]
+        if IS_WINDOWS:
+            candidates = [
+                Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "claude" / "claude.exe",
+                Path(os.environ.get("APPDATA", "")) / "npm" / "claude.cmd",
+            ]
+        for p in candidates:
+            if p.exists():
+                return str(p)
+        return "claude"  # fallback to PATH
+
+    def _build_command(
+        self,
+        content: str,
+        claude_session_id: str | None = None,
+        model: str = "",
+    ) -> list[str]:
+        """Build claude CLI command."""
+        cmd = [self._find_claude(), "-p", content, "--output-format", "stream-json"]
+        if claude_session_id:
+            cmd.extend(["--resume", claude_session_id])
+        if model:
+            cmd.extend(["--model", model])
+        return cmd
+
+    async def handle_chat_message(self, msg: dict, send_fn) -> None:
+        """Spawn claude CLI and stream events back via send_fn.
+
+        send_fn: async callable that sends a JSON string to the WebSocket.
+        """
+        request_id = msg.get("request_id", "")
+        session_id = msg.get("session_id", "")
+        content = msg.get("content", "")
+        claude_session_id = msg.get("claude_session_id")
+        working_dir = msg.get("working_dir", "")
+        model = msg.get("model", "")
+
+        cmd = self._build_command(content, claude_session_id, model)
+        cwd = working_dir if working_dir and os.path.isdir(working_dir) else None
+
+        logger.info("Chat start: session=%s, cwd=%s, resume=%s", session_id, cwd, claude_session_id)
+
+        try:
+            kwargs = {
+                "stdout": asyncio.subprocess.PIPE,
+                "stderr": asyncio.subprocess.PIPE,
+                "cwd": cwd,
+            }
+            if not IS_WINDOWS:
+                kwargs["preexec_fn"] = os.setsid
+
+            proc = await asyncio.create_subprocess_exec(*cmd, **kwargs)
+            self._active[session_id] = (proc, request_id)
+
+            # Stream stdout line by line
+            new_session_id = None
+            cost_usd = None
+            duration_ms = None
+
+            while True:
+                line = await proc.stdout.readline()
+                if not line:
+                    break
+                text = line.decode("utf-8", errors="replace").strip()
+                if not text:
+                    continue
+                try:
+                    event = json.loads(text)
+                except json.JSONDecodeError:
+                    continue
+
+                # Extract metadata from result event
+                if event.get("type") == "result":
+                    new_session_id = event.get("session_id", new_session_id)
+                    cost_usd = event.get("cost_usd", cost_usd)
+                    duration_ms = event.get("duration_ms", duration_ms)
+                    # Also check subtype for error
+                    if event.get("subtype") == "error":
+                        await send_fn(json.dumps({
+                            "type": "chat_error",
+                            "request_id": request_id,
+                            "session_id": session_id,
+                            "error": event.get("error", "Claude returned an error"),
+                        }))
+                        return
+
+                await send_fn(json.dumps({
+                    "type": "chat_event",
+                    "request_id": request_id,
+                    "session_id": session_id,
+                    "event": event,
+                }))
+
+            await proc.wait()
+
+            if proc.returncode == 0:
+                await send_fn(json.dumps({
+                    "type": "chat_complete",
+                    "request_id": request_id,
+                    "session_id": session_id,
+                    "claude_session_id": new_session_id,
+                    "cost_usd": cost_usd,
+                    "duration_ms": duration_ms,
+                }))
+                logger.info("Chat complete: session=%s, claude=%s", session_id, new_session_id)
+            else:
+                stderr_bytes = await proc.stderr.read()
+                error = stderr_bytes.decode("utf-8", errors="replace").strip()
+                await send_fn(json.dumps({
+                    "type": "chat_error",
+                    "request_id": request_id,
+                    "session_id": session_id,
+                    "error": error or f"claude exited with code {proc.returncode}",
+                }))
+                logger.error("Chat error: session=%s, code=%d", session_id, proc.returncode)
+
+        except Exception as e:
+            logger.error("Chat exception: session=%s, error=%s", session_id, e)
+            try:
+                await send_fn(json.dumps({
+                    "type": "chat_error",
+                    "request_id": request_id,
+                    "session_id": session_id,
+                    "error": str(e),
+                }))
+            except Exception:
+                pass
+        finally:
+            self._active.pop(session_id, None)
+
+    async def handle_cancel(self, msg: dict) -> None:
+        """Cancel an active chat session by killing the claude process."""
+        session_id = msg.get("session_id", "")
+        entry = self._active.get(session_id)
+        if not entry:
+            logger.warning("Cancel: no active session %s", session_id)
+            return
+
+        proc, request_id = entry
+        logger.info("Cancelling chat: session=%s, pid=%s", session_id, proc.pid)
+        try:
+            if IS_WINDOWS:
+                proc.kill()
+            else:
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGINT)
+                except (OSError, ProcessLookupError):
+                    proc.kill()
+        except ProcessLookupError:
+            pass
+
+    def get_active_sessions(self) -> list[str]:
+        """Return list of active session IDs."""
+        return list(self._active.keys())
+
+
 # ── Agent ────────────────────────────────────────────────────
 
 
@@ -301,6 +478,7 @@ class TerminalAgent:
         self._ws = None
         self._running = True
         self._agent_id: str | None = None
+        self._chat_manager = ChatManager()
 
     async def run(self) -> None:
         backoff = 1
@@ -367,6 +545,21 @@ class TerminalAgent:
     async def _handle_message(self, msg: dict) -> None:
         msg_type = msg.get("type")
 
+        # Chat messages: fire-and-forget (long-running, streaming)
+        if msg_type == "chat_message":
+            async def _send(data: str):
+                if self._ws:
+                    await self._ws.send(data)
+            asyncio.create_task(
+                self._chat_manager.handle_chat_message(msg, _send)
+            )
+            return
+
+        if msg_type == "chat_cancel":
+            await self._chat_manager.handle_cancel(msg)
+            return
+
+        # Regular request/response handlers
         handler = _HANDLERS.get(msg_type)
         if handler:
             response = await handler(msg)

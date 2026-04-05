@@ -356,6 +356,10 @@ async def agent_websocket(ws: WebSocket):
             elif msg_type == "pong":
                 pass
 
+            elif msg_type in ("chat_event", "chat_complete", "chat_error"):
+                from .chat import handle_chat_event
+                await handle_chat_event(msg)
+
     except WebSocketDisconnect:
         logger.info("Agent disconnected: %s (%s)", agent.name, agent_id)
     except Exception as e:
