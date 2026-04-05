@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { BookOpen, Plus, Search, Tag, Pencil, Trash2, ExternalLink, Copy, Check, FileQuestion } from 'lucide-react'
 import { api } from '../api/client'
+import { showConfirm } from '../components/common/ConfirmDialog'
 import { showErrorToast, showSuccessToast } from '../components/common/Toast'
 import MarkdownRenderer from '../components/common/MarkdownRenderer'
 import type { Knowledge, KnowledgeCategory } from '../types'
@@ -304,7 +305,7 @@ export default function KnowledgePage() {
                   <Pencil className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => { if (confirm('削除しますか？')) deleteMutation.mutate(selected.id) }}
+                  onClick={async () => { if (await showConfirm('削除しますか？')) deleteMutation.mutate(selected.id) }}
                   className="p-2 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30"
                 >
                   <Trash2 className="w-4 h-4" />

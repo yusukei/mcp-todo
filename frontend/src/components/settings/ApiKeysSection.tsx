@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Key, Copy, Check } from 'lucide-react'
 import { api } from '../../api/client'
+import { showConfirm } from '../common/ConfirmDialog'
 import { showErrorToast, showSuccessToast } from '../../components/common/Toast'
 import type { McpApiKey } from '../../types'
 
@@ -110,7 +111,7 @@ export default function ApiKeysSection() {
                   <td className="px-4 py-3 text-gray-400 dark:text-gray-500">{new Date(k.created_at).toLocaleDateString('ja-JP')}</td>
                   <td className="px-4 py-3 text-right">
                     <button
-                      onClick={() => { if (confirm(`"${k.name}" を無効化しますか？`)) revoke.mutate(k.id) }}
+                      onClick={async () => { if (await showConfirm(`"${k.name}" を無効化しますか？`)) revoke.mutate(k.id) }}
                       className="text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400"
                       aria-label="削除"
                     >

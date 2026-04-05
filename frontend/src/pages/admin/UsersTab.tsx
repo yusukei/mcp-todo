@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Plus, KeyRound } from 'lucide-react'
 import { api } from '../../api/client'
+import { showConfirm } from '../../components/common/ConfirmDialog'
 import { showErrorToast } from '../../components/common/Toast'
 import type { User } from '../../types'
 
@@ -159,7 +160,7 @@ export default function UsersTab() {
                     </button>
                   )}
                   <button
-                    onClick={() => { if (confirm(`"${u.name}" を無効化しますか？`)) del.mutate(u.id) }}
+                    onClick={async () => { if (await showConfirm(`"${u.name}" を無効化しますか？`)) del.mutate(u.id) }}
                     className="text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400"
                     aria-label="削除"
                   >

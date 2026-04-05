@@ -7,6 +7,7 @@ import ErrorBoundary from './components/common/ErrorBoundary'
 import { useGlobalErrorHandler } from './hooks/useGlobalErrorHandler'
 import Layout from './components/common/Layout'
 import ToastContainer from './components/common/Toast'
+import ConfirmDialog from './components/common/ConfirmDialog'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import AdminRoute from './components/common/AdminRoute'
 import LoginPage from './pages/LoginPage'
@@ -60,6 +61,7 @@ function AppRoutes() {
     <ErrorBoundary key={location.pathname}>
       <AppInit>
         <ToastContainer />
+        <ConfirmDialog />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/auth/google/callback" element={

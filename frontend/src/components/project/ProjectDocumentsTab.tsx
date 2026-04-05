@@ -16,6 +16,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { Plus, Search, Tag, Pencil, Trash2, History, FileText, FileDown, GripVertical, FileQuestion, CheckSquare } from 'lucide-react'
 import { api } from '../../api/client'
 import { showErrorToast, showSuccessToast } from '../common/Toast'
+import { showConfirm } from '../common/ConfirmDialog'
 import MarkdownRenderer from '../common/MarkdownRenderer'
 import type { ProjectDocument, DocumentCategory, DocumentVersionSummary } from '../../types'
 
@@ -409,7 +410,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
                   <Pencil className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => { if (confirm('削除しますか？')) deleteMutation.mutate(selected.id) }}
+                  onClick={async () => { if (await showConfirm('削除しますか？')) deleteMutation.mutate(selected.id) }}
                   className="p-2 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30"
                 >
                   <Trash2 className="w-4 h-4" />

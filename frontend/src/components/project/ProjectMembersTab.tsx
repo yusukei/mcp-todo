@@ -4,6 +4,7 @@ import { Crown, UserMinus, UserPlus, Search } from 'lucide-react'
 import { api } from '../../api/client'
 import { useAuthStore } from '../../store/auth'
 import { showErrorToast, showSuccessToast } from '../common/Toast'
+import { showConfirm } from '../common/ConfirmDialog'
 import type { Project, MemberRole } from '../../types'
 
 interface UserResult {
@@ -201,9 +202,9 @@ export default function ProjectMembersTab({ project }: { project: Project }) {
                   <td className="px-4 py-3">
                     {isOwnerOrAdmin && m.user_id !== user?.id ? (
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           const newRole: MemberRole = m.role === 'owner' ? 'member' : 'owner'
-                          if (confirm(`${u?.name || m.user_id} のロールを「${newRole === 'owner' ? 'オーナー' : 'メンバー'}」に変更しますか？`))
+                          if (await showConfirm(`${u?.name || m.user_id} のロールを「${newRole === 'owner' ? 'オーナー' : 'メンバー'}」に変更しますか？`))
                             updateMemberRole.mutate({ userId: m.user_id, role: newRole })
                         }}
                         disabled={updateMemberRole.isPending}
@@ -239,8 +240,8 @@ export default function ProjectMembersTab({ project }: { project: Project }) {
                     <td className="px-4 py-3 text-right">
                       {m.user_id !== user?.id && (
                         <button
-                          onClick={() => {
-                            if (confirm(`${u?.name || m.user_id} をプロジェクトから削除しますか？`))
+                          onClick={async () => {
+                            if (await showConfirm(`${u?.name || m.user_id} をプロジェクトから削除しますか？`))
                               removeMember.mutate(m.user_id)
                           }}
                           className="p-1.5 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400"

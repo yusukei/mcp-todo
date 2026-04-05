@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Check, X } from 'lucide-react'
 import { api } from '../../api/client'
+import { showConfirm } from '../../components/common/ConfirmDialog'
 import { showErrorToast } from '../../components/common/Toast'
 import type { Project } from '../../types'
 
@@ -182,7 +183,7 @@ export default function ProjectsTab() {
                 <td className="px-4 py-3 text-right">
                   {p.status === 'active' && (
                     <button
-                      onClick={() => { if (confirm(`"${p.name}" をアーカイブしますか？`)) archive.mutate(p.id) }}
+                      onClick={async () => { if (await showConfirm(`"${p.name}" をアーカイブしますか？`)) archive.mutate(p.id) }}
                       className="text-xs text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400"
                     >
                       アーカイブ

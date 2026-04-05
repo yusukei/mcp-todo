@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { api } from '../../api/client'
 import { showErrorToast, showSuccessToast } from '../common/Toast'
+import { showConfirm } from '../common/ConfirmDialog'
 import AuthImage from '../common/AuthImage'
 import ClipContentRenderer from '../bookmark/ClipContentRenderer'
 import BookmarkCreateModal from '../bookmark/BookmarkCreateModal'
@@ -522,8 +523,8 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
                   )}
                   <div className="h-4 w-px bg-gray-300 dark:bg-gray-600" />
                   <button
-                    onClick={() => {
-                      if (confirm(`${selectedIds.size}件のブックマークを削除しますか？`))
+                    onClick={async () => {
+                      if (await showConfirm(`${selectedIds.size}件のブックマークを削除しますか？`))
                         batchMutation.mutate({ bookmark_ids: [...selectedIds], action: 'delete' })
                     }}
                     className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400 hover:text-red-700 px-1.5 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/30"
@@ -718,7 +719,7 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
                       <RefreshCw className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => { if (confirm('このブックマークを削除しますか？')) deleteMutation.mutate(selected.id) }}
+                      onClick={async () => { if (await showConfirm('このブックマークを削除しますか？')) deleteMutation.mutate(selected.id) }}
                       className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-red-500"
                       title="削除"
                     >
