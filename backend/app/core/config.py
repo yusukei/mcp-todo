@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     WEBAUTHN_RP_NAME: str = "MCP Todo"
     WEBAUTHN_ORIGIN: str = "http://localhost:3000"
 
+    COOKIE_DOMAIN: str = ""  # empty = auto from request
+    COOKIE_SECURE: bool = False  # True for production HTTPS
+    COOKIE_SAMESITE: str = "strict"
+    COOKIE_PATH: str = "/"
+
     INIT_ADMIN_EMAIL: str = ""
     INIT_ADMIN_PASSWORD: str = ""
 

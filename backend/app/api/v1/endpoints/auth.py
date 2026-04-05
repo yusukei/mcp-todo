@@ -6,7 +6,7 @@ import secrets
 
 import httpx
 from authlib.integrations.httpx_client import AsyncOAuth2Client, OAuthError
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from pymongo.errors import DuplicateKeyError
@@ -33,9 +33,11 @@ from ....core.config import settings
 from ....core.deps import get_current_user
 from ....core.redis import get_redis
 from ....core.security import (
+    clear_auth_cookies,
     create_access_token,
     create_refresh_token,
     decode_refresh_token,
+    set_auth_cookies,
     verify_password,
 )
 from ....models import AllowedEmail, User
@@ -122,7 +124,7 @@ class RefreshRequest(BaseModel):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest) -> TokenResponse:
+async def login(body: LoginRequest, response: Response) -> TokenResponse:
     await _check_rate_limit(body.username)
     user = await User.find_one(User.email == body.username, User.auth_type == AuthType.admin)
     if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
@@ -137,14 +139,14 @@ async def login(body: LoginRequest) -> TokenResponse:
         )
 
     await _clear_login_attempts(body.username)
-    return TokenResponse(
-        access_token=create_access_token(str(user.id)),
-        refresh_token=await _create_and_store_refresh_token(str(user.id)),
-    )
+    access_token = create_access_token(str(user.id))
+    refresh_token = await _create_and_store_refresh_token(str(user.id))
+    set_auth_cookies(response, access_token, refresh_token)
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh(body: RefreshRequest) -> TokenResponse:
+async def refresh(body: RefreshRequest, response: Response) -> TokenResponse:
     payload = decode_refresh_token(body.refresh_token)
     if not payload:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
@@ -158,10 +160,10 @@ async def refresh(body: RefreshRequest) -> TokenResponse:
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
-    return TokenResponse(
-        access_token=create_access_token(str(user.id)),
-        refresh_token=await _create_and_store_refresh_token(str(user.id)),
-    )
+    access_token = create_access_token(str(user.id))
+    refresh_token = await _create_and_store_refresh_token(str(user.id))
+    set_auth_cookies(response, access_token, refresh_token)
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
 
 @router.get("/me")
@@ -176,6 +178,12 @@ async def me(user: User = Depends(get_current_user)) -> dict:
         "has_passkeys": len(user.webauthn_credentials) > 0,
         "password_disabled": user.password_disabled,
     }
+
+
+@router.post("/logout")
+async def logout(response: Response, _: User = Depends(get_current_user)) -> dict:
+    clear_auth_cookies(response)
+    return {"detail": "Logged out"}
 
 
 @router.get("/google")
@@ -194,7 +202,7 @@ async def google_login() -> RedirectResponse:
 
 
 @router.get("/google/callback", response_model=TokenResponse)
-async def google_callback(code: str, state: str) -> TokenResponse:
+async def google_callback(code: str, state: str, response: Response) -> TokenResponse:
     redis = get_redis()
     key = f"oauth:state:{state}"
     if not await redis.get(key):
@@ -250,10 +258,10 @@ async def google_callback(code: str, state: str) -> TokenResponse:
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled")
 
-    return TokenResponse(
-        access_token=create_access_token(str(user.id)),
-        refresh_token=await _create_and_store_refresh_token(str(user.id)),
-    )
+    access_token = create_access_token(str(user.id))
+    refresh_token = await _create_and_store_refresh_token(str(user.id))
+    set_auth_cookies(response, access_token, refresh_token)
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
 
 # ---------------------------------------------------------------------------
@@ -415,7 +423,7 @@ async def webauthn_authenticate_options(body: WebAuthnAuthenticateOptionsRequest
 
 
 @router.post("/webauthn/authenticate/verify", response_model=TokenResponse)
-async def webauthn_authenticate_verify(body: WebAuthnAuthenticateVerifyRequest) -> TokenResponse:
+async def webauthn_authenticate_verify(body: WebAuthnAuthenticateVerifyRequest, response: Response) -> TokenResponse:
     """Verify authentication assertion and return JWT tokens."""
     try:
         credential = parse_authentication_credential_json(json.dumps(body.credential))
@@ -472,10 +480,10 @@ async def webauthn_authenticate_verify(body: WebAuthnAuthenticateVerifyRequest) 
     stored_cred.sign_count = verification.new_sign_count
     await user.save_updated()
 
-    return TokenResponse(
-        access_token=create_access_token(str(user.id)),
-        refresh_token=await _create_and_store_refresh_token(str(user.id)),
-    )
+    access_token = create_access_token(str(user.id))
+    refresh_token = await _create_and_store_refresh_token(str(user.id))
+    set_auth_cookies(response, access_token, refresh_token)
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
 
 @router.get("/webauthn/credentials")
