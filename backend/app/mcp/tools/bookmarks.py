@@ -412,7 +412,7 @@ async def list_bookmarks(
         await Bookmark.find(filters)
         .skip(skip)
         .limit(limit)
-        .sort("+sort_order", "-updated_at")
+        .sort("+sort_order", "+created_at")
         .to_list()
     )
     return {
