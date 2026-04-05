@@ -19,7 +19,7 @@ export default function BackupRestoreTab() {
       const disposition = res.headers['content-disposition']
       const filename = disposition
         ? disposition.split('filename=')[1]?.replace(/"/g, '')
-        : `backup_${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '')}.agz`
+        : `backup_${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '')}.zip`
       a.download = filename
       a.click()
       window.URL.revokeObjectURL(url)
@@ -65,7 +65,7 @@ export default function BackupRestoreTab() {
       <div className="mb-6 p-4 border border-gray-200 dark:border-gray-700 rounded-xl">
         <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">バックアップ</h3>
         <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
-          データベース全体のバックアップを .agz 形式でダウンロードします。
+          データベースとアセットファイル（DocSite・ブックマーク）を .zip 形式でダウンロードします。
         </p>
         <button
           onClick={handleExport}
@@ -81,7 +81,8 @@ export default function BackupRestoreTab() {
       <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-xl">
         <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">リストア</h3>
         <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
-          .agz バックアップファイルからデータベースを復元します。既存のデータは上書きされます。
+          バックアップファイル（.zip）からデータベースとアセットを復元します。既存のデータは上書きされます。
+          旧形式（.agz）のインポートにも対応しています。
         </p>
         <label className="inline-flex items-center gap-1.5 px-3 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 cursor-pointer">
           <Upload className="w-4 h-4" />
@@ -89,7 +90,7 @@ export default function BackupRestoreTab() {
           <input
             ref={fileRef}
             type="file"
-            accept=".agz"
+            accept=".zip,.agz"
             onChange={handleFileSelect}
             disabled={importing}
             className="hidden"

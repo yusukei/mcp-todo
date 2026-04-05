@@ -3,8 +3,11 @@
 import argparse
 import asyncio
 import getpass
+import shutil
 import subprocess
 import sys
+import tempfile
+import zipfile
 from datetime import datetime
 
 from pathlib import Path
@@ -13,6 +16,13 @@ from .core.config import settings
 from .core.database import connect, close_db
 from .core.security import hash_password
 from .models.user import AuthType, User
+
+# Backup archive structure (shared convention with API backup endpoint)
+_DB_DUMP_NAME = "db.agz"
+_ASSET_DIRS = {
+    "docsite_assets": "DOCSITE_ASSETS_DIR",
+    "bookmark_assets": "BOOKMARK_ASSETS_DIR",
+}
 
 
 async def create_admin_user(email: str, password: str, name: str) -> None:
@@ -43,37 +53,95 @@ async def _init_admin(email: str, password: str, name: str) -> None:
         await close_db()
 
 
-async def _backup(output_path: str) -> None:
-    """Export database using mongodump."""
-    args = [
-        "mongodump",
-        f"--uri={settings.MONGO_URI}",
-        f"--db={settings.MONGO_DBNAME}",
-        "--gzip",
-        f"--archive={output_path}",
-    ]
-    result = subprocess.run(args, capture_output=True, text=True, timeout=300)
-    if result.returncode != 0:
-        print(f"Error: mongodump failed: {result.stderr}", file=sys.stderr)
-        sys.exit(1)
-    print(f"Backup saved to {output_path}")
-
-
-async def _restore(input_path: str) -> None:
-    """Restore database using mongorestore."""
+def _run_mongorestore(db_path: str) -> None:
+    """Run mongorestore with the given archive path."""
     args = [
         "mongorestore",
         f"--uri={settings.MONGO_URI}",
         f"--db={settings.MONGO_DBNAME}",
         "--gzip",
-        f"--archive={input_path}",
+        f"--archive={db_path}",
         "--drop",
     ]
     result = subprocess.run(args, capture_output=True, text=True, timeout=300)
     if result.returncode != 0:
         print(f"Error: mongorestore failed: {result.stderr}", file=sys.stderr)
         sys.exit(1)
-    print("Restore completed")
+
+
+async def _backup(output_path: str) -> None:
+    """Export database and asset files as a zip archive."""
+    work_dir = Path(tempfile.mkdtemp(prefix="backup_"))
+    try:
+        # 1. mongodump
+        db_path = work_dir / _DB_DUMP_NAME
+        args = [
+            "mongodump",
+            f"--uri={settings.MONGO_URI}",
+            f"--db={settings.MONGO_DBNAME}",
+            "--gzip",
+            f"--archive={db_path}",
+        ]
+        result = subprocess.run(args, capture_output=True, text=True, timeout=300)
+        if result.returncode != 0:
+            print(f"Error: mongodump failed: {result.stderr}", file=sys.stderr)
+            sys.exit(1)
+
+        # 2. Create zip with DB dump + assets
+        with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.write(db_path, _DB_DUMP_NAME)
+            for arc_name, setting_attr in _ASSET_DIRS.items():
+                asset_dir = Path(getattr(settings, setting_attr))
+                if asset_dir.is_dir():
+                    count = 0
+                    for fpath in sorted(asset_dir.rglob("*")):
+                        if fpath.is_file():
+                            zf.write(fpath, f"{arc_name}/{fpath.relative_to(asset_dir)}")
+                            count += 1
+                    if count:
+                        print(f"  {arc_name}: {count} files")
+
+        print(f"Backup saved to {output_path}")
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
+async def _restore(input_path: str) -> None:
+    """Restore database and assets from a backup archive (.zip or legacy .agz)."""
+    if input_path.endswith(".zip"):
+        work_dir = Path(tempfile.mkdtemp(prefix="restore_"))
+        try:
+            with zipfile.ZipFile(input_path, "r") as zf:
+                zf.extractall(work_dir)
+
+            db_path = work_dir / _DB_DUMP_NAME
+            if not db_path.exists():
+                print(f"Error: {_DB_DUMP_NAME} not found in archive", file=sys.stderr)
+                sys.exit(1)
+
+            _run_mongorestore(str(db_path))
+
+            for arc_name, setting_attr in _ASSET_DIRS.items():
+                target = Path(getattr(settings, setting_attr))
+                src = work_dir / arc_name
+                if target.exists():
+                    shutil.rmtree(target)
+                if src.is_dir():
+                    shutil.copytree(src, target)
+                    count = sum(1 for f in target.rglob("*") if f.is_file())
+                    print(f"  {arc_name}: {count} files restored")
+                else:
+                    target.mkdir(parents=True, exist_ok=True)
+
+            print("Restore completed")
+        finally:
+            shutil.rmtree(work_dir, ignore_errors=True)
+    elif input_path.endswith(".agz"):
+        _run_mongorestore(input_path)
+        print("Restore completed (legacy format, assets not included)")
+    else:
+        print("Error: file must be .zip or .agz format", file=sys.stderr)
+        sys.exit(1)
 
 
 async def _import_docsite(
@@ -180,11 +248,11 @@ def main() -> None:
     init_cmd.add_argument("--password", help="Admin password (or INIT_ADMIN_PASSWORD env)")
     init_cmd.add_argument("--name", default="Admin", help="Display name (default: Admin)")
 
-    backup_cmd = sub.add_parser("backup", help="Export database using mongodump")
+    backup_cmd = sub.add_parser("backup", help="Export database and assets as zip")
     backup_cmd.add_argument("--output", "-o", help="Output file path")
 
-    restore_cmd = sub.add_parser("restore", help="Restore database using mongorestore")
-    restore_cmd.add_argument("input", help="Backup file path (.agz)")
+    restore_cmd = sub.add_parser("restore", help="Restore database and assets from backup")
+    restore_cmd.add_argument("input", help="Backup file path (.zip or legacy .agz)")
     restore_cmd.add_argument(
         "--confirm", action="store_true", required=True,
         help="Confirm data replacement",
@@ -215,7 +283,7 @@ def main() -> None:
         asyncio.run(_init_admin(email, password, args.name))
 
     elif args.command == "backup":
-        output = args.output or f"backup_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.agz"
+        output = args.output or f"backup_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.zip"
         asyncio.run(_backup(output))
 
     elif args.command == "restore":

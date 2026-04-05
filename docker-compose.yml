@@ -134,6 +134,32 @@ services:
     networks:
       - todo-net
 
+  backup:
+    build:
+      context: ./backup
+      dockerfile: Dockerfile
+    container_name: todo-backup
+    environment:
+      - MONGO_URI=mongodb://${MONGO_USER:-todoadmin}:${MONGO_PASSWORD:-changeme}@mongo:27017/${MONGO_DBNAME:-claude_todo}?authSource=admin
+      - MONGO_DBNAME=${MONGO_DBNAME:-claude_todo}
+      - BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-7}
+      - BACKUP_CRON=${BACKUP_CRON:-0 3 * * *}
+    volumes:
+      - docsite_assets:/data/docsite_assets:ro
+      - bookmark_assets:/data/bookmark_assets:ro
+      - backups:/backups
+    depends_on:
+      mongo:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    restart: unless-stopped
+    networks:
+      - todo-net
+
 volumes:
   mongo_data:
   redis_data:
@@ -142,6 +168,7 @@ volumes:
   docsite_index:
   bookmark_assets:
   bookmark_index:
+  backups:
 
 networks:
   todo-net:
