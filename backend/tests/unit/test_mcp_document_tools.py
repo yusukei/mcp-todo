@@ -61,7 +61,7 @@ class TestCreateDocument:
         from app.mcp.tools.documents import create_document
 
         p = await _make_project()
-        result = await create_document.fn(
+        result = await create_document(
             project_id=str(p.id),
             title="Auth Flow Spec",
             content="# Authentication\nOAuth2 + JWT",
@@ -80,7 +80,7 @@ class TestCreateDocument:
         from app.mcp.tools.documents import create_document
 
         p = await _make_project()
-        result = await create_document.fn(
+        result = await create_document(
             project_id=str(p.id),
             title="Test",
             content="Content",
@@ -94,7 +94,7 @@ class TestCreateDocument:
 
         p = await _make_project()
         with pytest.raises(ToolError, match="Title is required"):
-            await create_document.fn(project_id=str(p.id), title="", content="test")
+            await create_document(project_id=str(p.id), title="", content="test")
 
     async def test_rejects_long_title(self):
         from app.mcp.tools.documents import create_document
@@ -102,7 +102,7 @@ class TestCreateDocument:
 
         p = await _make_project()
         with pytest.raises(ToolError, match="255"):
-            await create_document.fn(project_id=str(p.id), title="x" * 256, content="test")
+            await create_document(project_id=str(p.id), title="x" * 256, content="test")
 
     async def test_rejects_long_content(self):
         from app.mcp.tools.documents import create_document
@@ -110,7 +110,7 @@ class TestCreateDocument:
 
         p = await _make_project()
         with pytest.raises(ToolError, match="100000"):
-            await create_document.fn(project_id=str(p.id), title="Test", content="x" * 100001)
+            await create_document(project_id=str(p.id), title="Test", content="x" * 100001)
 
     async def test_rejects_invalid_category(self):
         from app.mcp.tools.documents import create_document
@@ -118,13 +118,13 @@ class TestCreateDocument:
 
         p = await _make_project()
         with pytest.raises(ToolError, match="Invalid category"):
-            await create_document.fn(project_id=str(p.id), title="Test", category="invalid")
+            await create_document(project_id=str(p.id), title="Test", category="invalid")
 
     async def test_resolves_project_by_name(self):
         from app.mcp.tools.documents import create_document
 
         p = await _make_project("my-cool-project")
-        result = await create_document.fn(
+        result = await create_document(
             project_id="my-cool-project",
             title="Resolved by name",
         )
@@ -137,7 +137,7 @@ class TestGetDocument:
 
         p = await _make_project()
         d = await _make_document(str(p.id), title="My Doc")
-        result = await get_document.fn(document_id=str(d.id))
+        result = await get_document(document_id=str(d.id))
         assert result["title"] == "My Doc"
 
     async def test_not_found(self):
@@ -145,7 +145,7 @@ class TestGetDocument:
         from fastmcp.exceptions import ToolError
 
         with pytest.raises(ToolError, match="not found"):
-            await get_document.fn(document_id="000000000000000000000000")
+            await get_document(document_id="000000000000000000000000")
 
     async def test_deleted_not_found(self):
         from app.mcp.tools.documents import get_document
@@ -154,7 +154,7 @@ class TestGetDocument:
         p = await _make_project()
         d = await _make_document(str(p.id), is_deleted=True)
         with pytest.raises(ToolError, match="not found"):
-            await get_document.fn(document_id=str(d.id))
+            await get_document(document_id=str(d.id))
 
 
 class TestUpdateDocument:
@@ -163,7 +163,7 @@ class TestUpdateDocument:
 
         p = await _make_project()
         d = await _make_document(str(p.id), title="Old Title", content="Old content")
-        result = await update_document.fn(
+        result = await update_document(
             document_id=str(d.id),
             title="New Title",
             content="New content",
@@ -178,7 +178,7 @@ class TestUpdateDocument:
 
         p = await _make_project()
         d = await _make_document(str(p.id), title="Original", content="Keep this")
-        result = await update_document.fn(document_id=str(d.id), title="Changed")
+        result = await update_document(document_id=str(d.id), title="Changed")
         assert result["title"] == "Changed"
         assert result["content"] == "Keep this"
 
@@ -187,7 +187,7 @@ class TestUpdateDocument:
 
         p = await _make_project()
         d = await _make_document(str(p.id), tags=["old"])
-        result = await update_document.fn(document_id=str(d.id), tags=["new", "TAGS"])
+        result = await update_document(document_id=str(d.id), tags=["new", "TAGS"])
         assert result["tags"] == ["new", "tags"]
 
 
@@ -197,7 +197,7 @@ class TestDeleteDocument:
 
         p = await _make_project()
         d = await _make_document(str(p.id))
-        result = await delete_document.fn(document_id=str(d.id))
+        result = await delete_document(document_id=str(d.id))
         assert result["success"] is True
 
         reloaded = await ProjectDocument.get(d.id)
@@ -212,7 +212,7 @@ class TestListDocuments:
         await _make_document(str(p.id), title="Doc 1")
         await _make_document(str(p.id), title="Doc 2")
 
-        result = await list_documents.fn(project_id=str(p.id))
+        result = await list_documents(project_id=str(p.id))
         assert result["total"] == 2
         assert len(result["items"]) == 2
 
@@ -223,7 +223,7 @@ class TestListDocuments:
         await _make_document(str(p.id), title="Spec Doc", category=DocumentCategory.spec)
         await _make_document(str(p.id), title="API Doc", category=DocumentCategory.api)
 
-        result = await list_documents.fn(project_id=str(p.id), category="spec")
+        result = await list_documents(project_id=str(p.id), category="spec")
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Spec Doc"
 
@@ -234,7 +234,7 @@ class TestListDocuments:
         await _make_document(str(p.id), title="Tagged", tags=["auth"])
         await _make_document(str(p.id), title="Untagged")
 
-        result = await list_documents.fn(project_id=str(p.id), tag="auth")
+        result = await list_documents(project_id=str(p.id), tag="auth")
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Tagged"
 
@@ -245,7 +245,7 @@ class TestListDocuments:
         await _make_document(str(p.id), title="Active")
         await _make_document(str(p.id), title="Deleted", is_deleted=True)
 
-        result = await list_documents.fn(project_id=str(p.id))
+        result = await list_documents(project_id=str(p.id))
         assert result["total"] == 1
 
     async def test_different_projects_isolated(self):
@@ -256,7 +256,7 @@ class TestListDocuments:
         await _make_document(str(p1.id), title="P1 Doc")
         await _make_document(str(p2.id), title="P2 Doc")
 
-        result = await list_documents.fn(project_id=str(p1.id))
+        result = await list_documents(project_id=str(p1.id))
         assert result["total"] == 1
         assert result["items"][0]["title"] == "P1 Doc"
 
@@ -269,7 +269,7 @@ class TestSearchDocuments:
         await _make_document(str(p.id), title="認証フロー仕様", content="OAuth2 + JWT認証")
         await _make_document(str(p.id), title="DB設計", content="MongoDB schema")
 
-        result = await search_documents.fn(query="認証", project_id=str(p.id))
+        result = await search_documents(query="認証", project_id=str(p.id))
         assert result["total"] == 1
         assert result["items"][0]["title"] == "認証フロー仕様"
         assert result["_meta"]["search_engine"] == "regex"
@@ -283,7 +283,7 @@ class TestSearchDocuments:
         await _make_document(str(p2.id), title="個別仕様", content="個別の認証")
 
         # Search across all projects
-        result = await search_documents.fn(query="認証")
+        result = await search_documents(query="認証")
         assert result["total"] == 2
 
     async def test_rejects_empty_query(self):
@@ -291,7 +291,7 @@ class TestSearchDocuments:
         from fastmcp.exceptions import ToolError
 
         with pytest.raises(ToolError, match="Query is required"):
-            await search_documents.fn(query="")
+            await search_documents(query="")
 
 
 class TestUpdateDocumentVersioning:
@@ -301,7 +301,7 @@ class TestUpdateDocumentVersioning:
         p = await _make_project()
         d = await _make_document(str(p.id), title="Original", content="Original content")
 
-        result = await update_document.fn(
+        result = await update_document(
             document_id=str(d.id),
             title="Updated",
             content="Updated content",
@@ -327,8 +327,8 @@ class TestUpdateDocumentVersioning:
         p = await _make_project()
         d = await _make_document(str(p.id), title="v1")
 
-        await update_document.fn(document_id=str(d.id), title="v2")
-        result = await update_document.fn(document_id=str(d.id), title="v3")
+        await update_document(document_id=str(d.id), title="v2")
+        result = await update_document(document_id=str(d.id), title="v3")
 
         assert result["version"] == 3
 
@@ -347,7 +347,7 @@ class TestUpdateDocumentVersioning:
         p = await _make_project()
         d = await _make_document(str(p.id))
 
-        await update_document.fn(
+        await update_document(
             document_id=str(d.id),
             title="Changed",
             task_id="abc123",
@@ -368,9 +368,9 @@ class TestGetDocumentHistory:
 
         p = await _make_project()
         d = await _make_document(str(p.id), title="Original")
-        await update_document.fn(document_id=str(d.id), title="Updated")
+        await update_document(document_id=str(d.id), title="Updated")
 
-        result = await get_document_history.fn(document_id=str(d.id))
+        result = await get_document_history(document_id=str(d.id))
         assert result["current_version"] == 2
         assert result["total"] == 1
         assert len(result["items"]) == 1
@@ -385,7 +385,7 @@ class TestGetDocumentHistory:
         p = await _make_project()
         d = await _make_document(str(p.id))
 
-        result = await get_document_history.fn(document_id=str(d.id))
+        result = await get_document_history(document_id=str(d.id))
         assert result["total"] == 0
         assert result["items"] == []
 
@@ -396,9 +396,9 @@ class TestGetDocumentVersion:
 
         p = await _make_project()
         d = await _make_document(str(p.id), title="v1", content="Content v1")
-        await update_document.fn(document_id=str(d.id), title="v2", content="Content v2")
+        await update_document(document_id=str(d.id), title="v2", content="Content v2")
 
-        result = await get_document_version.fn(document_id=str(d.id), version=1)
+        result = await get_document_version(document_id=str(d.id), version=1)
         assert result["version"] == 1
         assert result["title"] == "v1"
         assert result["content"] == "Content v1"
@@ -411,4 +411,4 @@ class TestGetDocumentVersion:
         d = await _make_document(str(p.id))
 
         with pytest.raises(ToolError, match="Version 99 not found"):
-            await get_document_version.fn(document_id=str(d.id), version=99)
+            await get_document_version(document_id=str(d.id), version=99)

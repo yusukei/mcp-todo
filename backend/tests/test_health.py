@@ -14,7 +14,7 @@ import pytest
 class TestHealthEndpoint:
     """GET /health のテスト"""
 
-    async def test_health_ok_when_both_services_healthy(self, client):
+    async def test_health_ok_when_both_services_healthy(self):
         """MongoDB・Redis 両方が正常なら 200 + status=ok"""
         # conftest の test_app には /health が無いため、
         # main.py の health 関数を直接呼び出す
@@ -40,7 +40,7 @@ class TestHealthEndpoint:
         assert data["mongo"] == "ok"
         assert data["redis"] == "ok"
 
-    async def test_health_503_when_mongo_down(self, client):
+    async def test_health_503_when_mongo_down(self):
         """MongoDB が down なら 503 + mongo=down"""
         from app.main import health
 
@@ -63,7 +63,7 @@ class TestHealthEndpoint:
         assert data["mongo"] == "down"
         assert data["redis"] == "ok"
 
-    async def test_health_503_when_redis_down(self, client):
+    async def test_health_503_when_redis_down(self):
         """Redis が down なら 503 + redis=down"""
         from app.main import health
 
@@ -86,7 +86,7 @@ class TestHealthEndpoint:
         assert data["mongo"] == "ok"
         assert data["redis"] == "down"
 
-    async def test_health_503_when_both_down(self, client):
+    async def test_health_503_when_both_down(self):
         """MongoDB・Redis 両方が down なら 503 + 両方 down"""
         from app.main import health
 
@@ -109,7 +109,7 @@ class TestHealthEndpoint:
         assert data["mongo"] == "down"
         assert data["redis"] == "down"
 
-    async def test_health_ok_when_mongo_client_is_none(self, client):
+    async def test_health_ok_when_mongo_client_is_none(self):
         """get_mongo_client() が None を返しても mongo=ok (ping スキップ)"""
         from app.main import health
 

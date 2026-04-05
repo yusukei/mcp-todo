@@ -46,7 +46,7 @@ class TestCreateKnowledge:
     async def test_creates_entry(self):
         from app.mcp.tools.knowledge import create_knowledge
 
-        result = await create_knowledge.fn(
+        result = await create_knowledge(
             title="FastMCP Integration",
             content="How to integrate FastMCP with FastAPI",
             tags=["fastmcp", "fastapi"],
@@ -64,7 +64,7 @@ class TestCreateKnowledge:
     async def test_normalizes_tags(self):
         from app.mcp.tools.knowledge import create_knowledge
 
-        result = await create_knowledge.fn(
+        result = await create_knowledge(
             title="Test",
             content="Content",
             tags=["  FastAPI  ", "PYTHON", ""],
@@ -77,14 +77,14 @@ class TestCreateKnowledge:
         from fastmcp.exceptions import ToolError
 
         with pytest.raises(ToolError, match="Title is required"):
-            await create_knowledge.fn(title="", content="test")
+            await create_knowledge(title="", content="test")
 
     async def test_rejects_invalid_category(self):
         from app.mcp.tools.knowledge import create_knowledge
         from fastmcp.exceptions import ToolError
 
         with pytest.raises(ToolError, match="Invalid category"):
-            await create_knowledge.fn(title="Test", content="test", category="invalid")
+            await create_knowledge(title="Test", content="test", category="invalid")
 
 
 class TestGetKnowledge:
@@ -92,7 +92,7 @@ class TestGetKnowledge:
         from app.mcp.tools.knowledge import get_knowledge
 
         k = await _make_knowledge(title="Test Entry")
-        result = await get_knowledge.fn(knowledge_id=str(k.id))
+        result = await get_knowledge(knowledge_id=str(k.id))
 
         assert result["title"] == "Test Entry"
         assert result["id"] == str(k.id)
@@ -103,7 +103,7 @@ class TestGetKnowledge:
 
         k = await _make_knowledge(is_deleted=True)
         with pytest.raises(ToolError, match="not found"):
-            await get_knowledge.fn(knowledge_id=str(k.id))
+            await get_knowledge(knowledge_id=str(k.id))
 
 
 class TestUpdateKnowledge:
@@ -111,7 +111,7 @@ class TestUpdateKnowledge:
         from app.mcp.tools.knowledge import update_knowledge
 
         k = await _make_knowledge(title="Old Title", tags=["old"])
-        result = await update_knowledge.fn(
+        result = await update_knowledge(
             knowledge_id=str(k.id),
             title="New Title",
             tags=["new", "updated"],
@@ -126,7 +126,7 @@ class TestUpdateKnowledge:
         from app.mcp.tools.knowledge import update_knowledge
 
         k = await _make_knowledge(title="Keep This", content="Original")
-        result = await update_knowledge.fn(
+        result = await update_knowledge(
             knowledge_id=str(k.id),
             content="Updated content",
         )
@@ -141,12 +141,12 @@ class TestDeleteKnowledge:
         from fastmcp.exceptions import ToolError
 
         k = await _make_knowledge()
-        result = await delete_knowledge.fn(knowledge_id=str(k.id))
+        result = await delete_knowledge(knowledge_id=str(k.id))
 
         assert result["success"] is True
 
         with pytest.raises(ToolError, match="not found"):
-            await get_knowledge.fn(knowledge_id=str(k.id))
+            await get_knowledge(knowledge_id=str(k.id))
 
 
 class TestListKnowledge:
@@ -156,7 +156,7 @@ class TestListKnowledge:
         await _make_knowledge(title="Entry 1")
         await _make_knowledge(title="Entry 2")
 
-        result = await list_knowledge.fn()
+        result = await list_knowledge()
 
         assert result["total"] == 2
         assert len(result["items"]) == 2
@@ -167,7 +167,7 @@ class TestListKnowledge:
         await _make_knowledge(title="Recipe", category=KnowledgeCategory.recipe)
         await _make_knowledge(title="Tip", category=KnowledgeCategory.tip)
 
-        result = await list_knowledge.fn(category="recipe")
+        result = await list_knowledge(category="recipe")
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Recipe"
@@ -178,7 +178,7 @@ class TestListKnowledge:
         await _make_knowledge(title="Tagged", tags=["python"])
         await _make_knowledge(title="Other", tags=["rust"])
 
-        result = await list_knowledge.fn(tag="python")
+        result = await list_knowledge(tag="python")
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Tagged"
@@ -189,7 +189,7 @@ class TestListKnowledge:
         await _make_knowledge(title="Active")
         await _make_knowledge(title="Deleted", is_deleted=True)
 
-        result = await list_knowledge.fn()
+        result = await list_knowledge()
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Active"
@@ -200,7 +200,7 @@ class TestListKnowledge:
         for i in range(5):
             await _make_knowledge(title=f"Entry {i}")
 
-        result = await list_knowledge.fn(limit=2, skip=2)
+        result = await list_knowledge(limit=2, skip=2)
 
         assert result["total"] == 5
         assert len(result["items"]) == 2
@@ -216,7 +216,7 @@ class TestSearchKnowledge:
         await _make_knowledge(title="FastAPI Integration Guide", content="How to use FastAPI")
         await _make_knowledge(title="Unrelated", content="Something else")
 
-        result = await search_knowledge.fn(query="FastAPI")
+        result = await search_knowledge(query="FastAPI")
 
         assert result["total"] >= 1
         titles = [item["title"] for item in result["items"]]
@@ -229,7 +229,7 @@ class TestSearchKnowledge:
         await _make_knowledge(title="FastAPI Recipe", category=KnowledgeCategory.recipe)
         await _make_knowledge(title="FastAPI Tip", category=KnowledgeCategory.tip)
 
-        result = await search_knowledge.fn(query="FastAPI", category="recipe")
+        result = await search_knowledge(query="FastAPI", category="recipe")
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "FastAPI Recipe"
@@ -240,7 +240,7 @@ class TestSearchKnowledge:
         await _make_knowledge(title="Python FastAPI", tags=["python", "fastapi"])
         await _make_knowledge(title="Rust Tantivy", tags=["rust", "tantivy"])
 
-        result = await search_knowledge.fn(query="FastAPI", tag="python")
+        result = await search_knowledge(query="FastAPI", tag="python")
 
         # Should find the one with matching query AND tag
         titles = [item["title"] for item in result["items"]]
@@ -251,4 +251,4 @@ class TestSearchKnowledge:
         from fastmcp.exceptions import ToolError
 
         with pytest.raises(ToolError, match="Query is required"):
-            await search_knowledge.fn(query="")
+            await search_knowledge(query="")
