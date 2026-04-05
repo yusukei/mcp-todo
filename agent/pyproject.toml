@@ -1,0 +1,12 @@
+[project]
+name = "mcp-terminal-agent"
+version = "0.1.0"
+description = "Remote terminal agent for MCP Todo"
+requires-python = ">=3.10"
+dependencies = [
+    "websockets>=13.0",
+    "pywinpty>=2.0; sys_platform == 'win32'",
+]
+
+[project.scripts]
+mcp-terminal-agent = "main:main"

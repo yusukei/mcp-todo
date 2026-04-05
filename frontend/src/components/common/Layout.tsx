@@ -9,7 +9,7 @@ import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { FolderOpen, LogOut, Settings, UserCog, CheckSquare, Menu, X, BookOpen, Library, GripVertical } from 'lucide-react'
+import { FolderOpen, LogOut, Settings, UserCog, CheckSquare, Menu, X, BookOpen, Library, TerminalSquare, GripVertical } from 'lucide-react'
 import { api } from '../../api/client'
 import { useAuthStore } from '../../store/auth'
 import { useSSE } from '../../hooks/useSSE'
@@ -184,6 +184,16 @@ export default function Layout() {
           <Library className="w-4 h-4" />
           ドキュメントサイト
         </Link>
+        {user?.is_admin && (
+          <Link
+            to="/terminal"
+            onClick={closeSidebar}
+            className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            <TerminalSquare className="w-4 h-4" />
+            ターミナル
+          </Link>
+        )}
       </nav>
 
       <div className="px-3 py-4 border-t border-gray-100 dark:border-gray-700 space-y-1">
