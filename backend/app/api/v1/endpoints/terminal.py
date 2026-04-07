@@ -346,7 +346,15 @@ async def delete_workspace(workspace_id: str, user: User = Depends(get_admin_use
 
 
 _RESPONSE_TYPES = frozenset({
+    # Phase 0 handlers
     "exec_result", "file_content", "write_result", "dir_listing",
+    # Phase 1 handlers (added 2026-04-07): stat / mkdir / delete / move /
+    # copy / glob / grep. Each handler returns one of these *_result
+    # message types. If a new handler is added, its response type MUST
+    # be registered here or its responses will be silently dropped and
+    # the caller's Future will hang until the MCP layer's timeout.
+    "stat_result", "mkdir_result", "delete_result",
+    "move_result", "copy_result", "glob_result", "grep_result",
 })
 
 
