@@ -57,8 +57,8 @@ function useChatWs(sessionId: string | null) {
   const connect = useCallback(() => {
     if (!sessionId) return
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const token = localStorage.getItem('access_token')
-    const url = `${proto}//${location.host}/api/v1/chat/ws/${sessionId}${token ? `?token=${token}` : ''}`
+    // Cookie is sent automatically with same-origin WebSocket connections.
+    const url = `${proto}//${location.host}/api/v1/chat/ws/${sessionId}`
     const ws = new WebSocket(url)
     wsRef.current = ws
 

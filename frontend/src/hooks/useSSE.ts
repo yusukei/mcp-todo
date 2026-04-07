@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { api } from '../api/client'
+import { useAuthStore } from '../store/auth'
 import { showInfoToast } from '../components/common/Toast'
 
 interface SSEEvent {
@@ -49,8 +50,8 @@ export function useSSE() {
     const MAX_RETRIES = 20
 
     async function connect() {
-      const token = localStorage.getItem('access_token')
-      if (!token) return
+      // Cookie auth: only attempt if the user is logged in.
+      if (!useAuthStore.getState().user) return
 
       // Fetch a short-lived, single-use ticket instead of passing JWT in URL
       let ticket: string

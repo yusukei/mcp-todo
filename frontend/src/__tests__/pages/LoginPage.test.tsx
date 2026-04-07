@@ -37,17 +37,6 @@ describe('LoginPage', () => {
     expect(screen.getByRole('button', { name: /Google でログイン/ })).toBeInTheDocument()
   })
 
-  it('ログイン成功後に access_token を localStorage に保存する', async () => {
-    renderLoginPage()
-    await userEvent.type(screen.getByLabelText('メールアドレス'), 'admin@test.com')
-    await userEvent.type(screen.getByLabelText('パスワード'), 'password')
-    await userEvent.click(screen.getByRole('button', { name: 'ログイン' }))
-
-    await waitFor(() => {
-      expect(localStorage.getItem('access_token')).toBe(mockTokens.access_token)
-    })
-  })
-
   it('ログイン成功後に / へナビゲートする', async () => {
     renderLoginPage()
     await userEvent.type(screen.getByLabelText('メールアドレス'), 'admin@test.com')

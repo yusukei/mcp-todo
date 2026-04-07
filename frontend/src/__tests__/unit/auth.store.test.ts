@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import { http, HttpResponse } from 'msw'
 import { useAuthStore } from '../../store/auth'
 import { createMockUser } from '../mocks/factories'
+import { server } from '../mocks/server'
 
 const mockUser = createMockUser({
   id: 'user-1',
@@ -11,14 +13,11 @@ const mockUser = createMockUser({
 
 describe('useAuthStore', () => {
   beforeEach(() => {
-    // ストアを初期状態にリセット
-    useAuthStore.setState({ user: null })
-    localStorage.clear()
+    useAuthStore.setState({ user: null, isInitialized: false })
   })
 
   it('初期状態で user は null', () => {
-    const { user } = useAuthStore.getState()
-    expect(user).toBeNull()
+    expect(useAuthStore.getState().user).toBeNull()
   })
 
   it('setUser でユーザー情報が反映される', () => {
@@ -32,28 +31,44 @@ describe('useAuthStore', () => {
     expect(useAuthStore.getState().user).toBeNull()
   })
 
-  it('logout で user が null になる', () => {
+  it('setInitialized でフラグが切り替わる', () => {
+    useAuthStore.getState().setInitialized(true)
+    expect(useAuthStore.getState().isInitialized).toBe(true)
+  })
+
+  it('logout で user が null になる', async () => {
+    server.use(
+      http.post('/api/v1/auth/logout', () => new HttpResponse(null, { status: 204 })),
+    )
+
     useAuthStore.getState().setUser(mockUser)
-    useAuthStore.getState().logout()
+    await useAuthStore.getState().logout()
     expect(useAuthStore.getState().user).toBeNull()
   })
 
-  it('logout で localStorage の access_token が削除される', () => {
-    localStorage.setItem('access_token', 'my-token')
-    useAuthStore.getState().logout()
-    expect(localStorage.getItem('access_token')).toBeNull()
+  it('logout は /auth/logout を呼び出す', async () => {
+    let logoutCalled = false
+    server.use(
+      http.post('/api/v1/auth/logout', () => {
+        logoutCalled = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    useAuthStore.getState().setUser(mockUser)
+    await useAuthStore.getState().logout()
+    expect(logoutCalled).toBe(true)
   })
 
-  it('logout で localStorage の refresh_token が削除される', () => {
-    localStorage.setItem('refresh_token', 'my-refresh')
-    useAuthStore.getState().logout()
-    expect(localStorage.getItem('refresh_token')).toBeNull()
-  })
+  it('logout はサーバ側エラーでも user を null にする', async () => {
+    server.use(
+      http.post('/api/v1/auth/logout', () =>
+        HttpResponse.json({ detail: 'server down' }, { status: 500 }),
+      ),
+    )
 
-  it('logout 後も他の localStorage キーは残る', () => {
-    localStorage.setItem('other_key', 'other_value')
-    localStorage.setItem('access_token', 'token')
-    useAuthStore.getState().logout()
-    expect(localStorage.getItem('other_key')).toBe('other_value')
+    useAuthStore.getState().setUser(mockUser)
+    await useAuthStore.getState().logout()
+    expect(useAuthStore.getState().user).toBeNull()
   })
 })

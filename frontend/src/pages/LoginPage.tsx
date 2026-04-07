@@ -31,9 +31,8 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
     try {
-      const { data } = await api.post('/auth/login', { username, password })
-      localStorage.setItem('access_token', data.access_token)
-      localStorage.setItem('refresh_token', data.refresh_token)
+      // Cookie is set by the backend response; no localStorage needed.
+      await api.post('/auth/login', { username, password })
       const { data: me } = await api.get('/auth/me')
       setUser(me)
       redirectAfterLogin()
@@ -61,9 +60,8 @@ export default function LoginPage() {
       const credential = await startAuthentication({ optionsJSON: options })
 
       // 3. Verify with server
-      const { data } = await api.post('/auth/webauthn/authenticate/verify', { credential })
-      localStorage.setItem('access_token', data.access_token)
-      localStorage.setItem('refresh_token', data.refresh_token)
+      // Cookie is set by the backend; no localStorage needed.
+      await api.post('/auth/webauthn/authenticate/verify', { credential })
       const { data: me } = await api.get('/auth/me')
       setUser(me)
       redirectAfterLogin()

@@ -1,18 +1,27 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '../mocks/server'
 import { api } from '../../api/client'
+import { useAuthStore } from '../../store/auth'
 
-describe('api client token refresh', () => {
+/**
+ * Cookie-based auth tests for the axios client.
+ *
+ * The frontend no longer reads or writes tokens from JS — they live in
+ * HttpOnly cookies set by the backend. The interceptor's job is now to
+ * call /auth/refresh on a 401 (the new cookie comes back in the
+ * response), retry the original request, and force a logout when
+ * refresh itself fails.
+ */
+describe('api client cookie refresh', () => {
   beforeEach(() => {
-    localStorage.clear()
+    // Reset auth state so logout() side-effects don't leak between tests
+    useAuthStore.setState({ user: null, isInitialized: false })
   })
 
-  it('401 レスポンスでリフレッシュを実行し、元リクエストをリトライする', async () => {
-    localStorage.setItem('access_token', 'expired-token')
-    localStorage.setItem('refresh_token', 'valid-refresh')
-
+  it('retries the original request after a successful /auth/refresh', async () => {
     let meCallCount = 0
+    let refreshCallCount = 0
     server.use(
       http.get('/api/v1/auth/me', () => {
         meCallCount++
@@ -21,25 +30,19 @@ describe('api client token refresh', () => {
         }
         return HttpResponse.json({ id: 'user-1', email: 'test@test.com', name: 'Test' })
       }),
-      http.post('/api/v1/auth/refresh', () =>
-        HttpResponse.json({
-          access_token: 'new-access-token',
-          refresh_token: 'new-refresh-token',
-          token_type: 'bearer',
-        })
-      )
+      http.post('/api/v1/auth/refresh', () => {
+        refreshCallCount++
+        return new HttpResponse(null, { status: 204 })
+      }),
     )
 
     const response = await api.get('/auth/me')
     expect(response.data.email).toBe('test@test.com')
-    expect(localStorage.getItem('access_token')).toBe('new-access-token')
-    expect(localStorage.getItem('refresh_token')).toBe('new-refresh-token')
+    expect(meCallCount).toBe(2)
+    expect(refreshCallCount).toBe(1)
   })
 
-  it('同時 401 で refresh promise を共有する (リフレッシュが1回のみ)', async () => {
-    localStorage.setItem('access_token', 'expired-token')
-    localStorage.setItem('refresh_token', 'valid-refresh')
-
+  it('coalesces concurrent refreshes into a single request', async () => {
     let refreshCallCount = 0
     const meResponses: number[] = []
     const projectsResponses: number[] = []
@@ -62,12 +65,8 @@ describe('api client token refresh', () => {
       http.post('/api/v1/auth/refresh', async () => {
         refreshCallCount++
         await new Promise((r) => setTimeout(r, 50))
-        return HttpResponse.json({
-          access_token: 'new-access-token',
-          refresh_token: 'new-refresh-token',
-          token_type: 'bearer',
-        })
-      })
+        return new HttpResponse(null, { status: 204 })
+      }),
     )
 
     const [meRes, projectsRes] = await Promise.all([
@@ -80,31 +79,39 @@ describe('api client token refresh', () => {
     expect(refreshCallCount).toBe(1)
   })
 
-  it('リフレッシュ失敗時にトークンがクリアされる', async () => {
-    localStorage.setItem('access_token', 'expired-token')
-    localStorage.setItem('refresh_token', 'invalid-refresh')
+  it('triggers logout when /auth/refresh itself returns 401', async () => {
+    // Seed the store so logout() has something to clear
+    useAuthStore.setState({
+      user: { id: 'u1', email: 'a@b.c', name: 'A' } as never,
+    })
 
     let refreshCalled = false
+    let logoutCalled = false
     server.use(
       http.get('/api/v1/auth/me', () =>
-        HttpResponse.json({ detail: 'Unauthorized' }, { status: 401 })
+        HttpResponse.json({ detail: 'Unauthorized' }, { status: 401 }),
       ),
       http.post('/api/v1/auth/refresh', () => {
         refreshCalled = true
         return HttpResponse.json({ detail: 'Invalid refresh token' }, { status: 401 })
-      })
+      }),
+      http.post('/api/v1/auth/logout', () => {
+        logoutCalled = true
+        return new HttpResponse(null, { status: 204 })
+      }),
     )
 
     try {
       await api.get('/auth/me')
     } catch {
-      // エラーが発生することを期待
+      // Expected — refresh failed
     }
 
-    // リフレッシュが試行されたことを確認
+    // Wait for the async logout() to run
+    await new Promise((r) => setTimeout(r, 20))
+
     expect(refreshCalled).toBe(true)
-    // トークンがクリアされていることを確認
-    expect(localStorage.getItem('access_token')).toBeNull()
-    expect(localStorage.getItem('refresh_token')).toBeNull()
+    expect(logoutCalled).toBe(true)
+    expect(useAuthStore.getState().user).toBeNull()
   })
 })

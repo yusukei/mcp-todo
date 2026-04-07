@@ -1,14 +1,13 @@
 /**
- * Tests for AppInit — the auth bootstrap component.
+ * Tests for AppInit — the cookie-based auth bootstrap component.
  *
- * Covers the three branches of the boot sequence:
- *   1. token present + /auth/me succeeds → user populated, initialized=true
- *   2. token present + /auth/me fails    → tokens cleared, initialized=true
- *   3. no token                           → no API call, initialized=true
+ * After the localStorage→cookie migration, AppInit always issues a
+ * /auth/me request. The browser ships the HttpOnly cookie automatically
+ * (or doesn't), and the bootstrap branches on the response status:
  *
- * Uses MSW for the /auth/me handler and renderWithProviders for the
- * QueryClient + Router wrapping (the component itself doesn't use the
- * router, but the helper sets up a clean QueryClient per test).
+ *   1. /auth/me succeeds → user populated, initialized=true
+ *   2. /auth/me 401     → user stays null, initialized=true
+ *   3. children are rendered regardless
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
@@ -26,33 +25,14 @@ function resetAuthStore() {
 
 describe('AppInit', () => {
   beforeEach(() => {
-    localStorage.clear()
     resetAuthStore()
   })
 
   afterEach(() => {
-    localStorage.clear()
     resetAuthStore()
   })
 
-  it('marks initialized=true immediately when no token is present', async () => {
-    renderWithProviders(
-      <AppInit>
-        <div data-testid="child">child</div>
-      </AppInit>,
-    )
-
-    expect(screen.getByTestId('child')).toBeInTheDocument()
-
-    await waitFor(() => {
-      expect(useAuthStore.getState().isInitialized).toBe(true)
-    })
-    expect(useAuthStore.getState().user).toBeNull()
-  })
-
-  it('fetches /auth/me and populates the user when a token is present', async () => {
-    localStorage.setItem('access_token', 'test-token')
-
+  it('populates the user when /auth/me succeeds', async () => {
     renderWithProviders(
       <AppInit>
         <div data-testid="child">child</div>
@@ -63,18 +43,19 @@ describe('AppInit', () => {
       expect(useAuthStore.getState().user).toEqual(mockUser)
     })
     expect(useAuthStore.getState().isInitialized).toBe(true)
-    // Token should NOT be cleared on success
-    expect(localStorage.getItem('access_token')).toBe('test-token')
   })
 
-  it('clears stale tokens when /auth/me fails', async () => {
-    localStorage.setItem('access_token', 'expired-token')
-    localStorage.setItem('refresh_token', 'expired-refresh')
-
+  it('leaves the user null and still marks initialized when /auth/me returns 401', async () => {
     server.use(
       http.get('/api/v1/auth/me', () =>
         HttpResponse.json({ detail: 'Unauthorized' }, { status: 401 }),
       ),
+      // Catch the refresh attempt the interceptor will issue and fail it,
+      // so the test resolves quickly without retrying forever.
+      http.post('/api/v1/auth/refresh', () =>
+        HttpResponse.json({ detail: 'Invalid' }, { status: 401 }),
+      ),
+      http.post('/api/v1/auth/logout', () => new HttpResponse(null, { status: 204 })),
     )
 
     renderWithProviders(
@@ -87,8 +68,6 @@ describe('AppInit', () => {
       expect(useAuthStore.getState().isInitialized).toBe(true)
     })
     expect(useAuthStore.getState().user).toBeNull()
-    expect(localStorage.getItem('access_token')).toBeNull()
-    expect(localStorage.getItem('refresh_token')).toBeNull()
   })
 
   it('renders children regardless of init state', async () => {

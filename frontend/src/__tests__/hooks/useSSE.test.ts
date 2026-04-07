@@ -3,6 +3,8 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
 import { useSSE } from '../../hooks/useSSE'
+import { useAuthStore } from '../../store/auth'
+import { createMockUser } from '../mocks/factories'
 
 // Mock the api client
 vi.mock('../../api/client', () => ({
@@ -60,14 +62,14 @@ describe('useSSE', () => {
     MockEventSource.instances = []
     // @ts-expect-error - グローバルモック差し替え
     global.EventSource = MockEventSource
-    localStorage.clear()
+    useAuthStore.setState({ user: null, isInitialized: false })
   })
 
   afterEach(() => {
     global.EventSource = originalEventSource
   })
 
-  it('access_token がない場合 EventSource を生成しない', async () => {
+  it('未ログイン (auth store user が null) なら EventSource を生成しない', async () => {
     renderHook(() => useSSE(), { wrapper: makeWrapper() })
     // Give time for potential async operations
     await act(async () => {
@@ -76,8 +78,8 @@ describe('useSSE', () => {
     expect(MockEventSource.instances).toHaveLength(0)
   })
 
-  it('access_token がある場合 ticket を取得して EventSource を生成する', async () => {
-    localStorage.setItem('access_token', 'my-token')
+  it('ログイン済みなら ticket を取得して EventSource を生成する', async () => {
+    useAuthStore.setState({ user: createMockUser() })
     renderHook(() => useSSE(), { wrapper: makeWrapper() })
     await waitForEventSource()
     expect(MockEventSource.instances).toHaveLength(1)
@@ -85,7 +87,7 @@ describe('useSSE', () => {
   })
 
   it('コンポーネントのアンマウント時に es.close() が呼ばれる', async () => {
-    localStorage.setItem('access_token', 'my-token')
+    useAuthStore.setState({ user: createMockUser() })
     const { unmount } = renderHook(() => useSSE(), { wrapper: makeWrapper() })
     await waitForEventSource()
     unmount()
@@ -93,7 +95,7 @@ describe('useSSE', () => {
   })
 
   it('onerror ハンドラが es.close() を呼ぶ', async () => {
-    localStorage.setItem('access_token', 'my-token')
+    useAuthStore.setState({ user: createMockUser() })
     renderHook(() => useSSE(), { wrapper: makeWrapper() })
     await waitForEventSource()
     MockEventSource.instances[0].simulateError()
@@ -104,7 +106,7 @@ describe('useSSE', () => {
     const qc = new QueryClient()
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
 
-    localStorage.setItem('access_token', 'my-token')
+    useAuthStore.setState({ user: createMockUser() })
     renderHook(() => useSSE(), {
       wrapper: ({ children }) =>
         createElement(QueryClientProvider, { client: qc }, children),
@@ -122,7 +124,7 @@ describe('useSSE', () => {
     const qc = new QueryClient()
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
 
-    localStorage.setItem('access_token', 'my-token')
+    useAuthStore.setState({ user: createMockUser() })
     renderHook(() => useSSE(), {
       wrapper: ({ children }) =>
         createElement(QueryClientProvider, { client: qc }, children),
@@ -146,7 +148,7 @@ describe('useSSE', () => {
     const qc = new QueryClient()
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
 
-    localStorage.setItem('access_token', 'my-token')
+    useAuthStore.setState({ user: createMockUser() })
     renderHook(() => useSSE(), {
       wrapper: ({ children }) =>
         createElement(QueryClientProvider, { client: qc }, children),
@@ -170,7 +172,7 @@ describe('useSSE', () => {
     const qc = new QueryClient()
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
 
-    localStorage.setItem('access_token', 'my-token')
+    useAuthStore.setState({ user: createMockUser() })
     renderHook(() => useSSE(), {
       wrapper: ({ children }) =>
         createElement(QueryClientProvider, { client: qc }, children),
@@ -200,7 +202,7 @@ describe('useSSE', () => {
     const qc = new QueryClient()
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
 
-    localStorage.setItem('access_token', 'my-token')
+    useAuthStore.setState({ user: createMockUser() })
     renderHook(() => useSSE(), {
       wrapper: ({ children }) =>
         createElement(QueryClientProvider, { client: qc }, children),
@@ -227,7 +229,7 @@ describe('useSSE', () => {
     const qc = new QueryClient()
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
 
-    localStorage.setItem('access_token', 'my-token')
+    useAuthStore.setState({ user: createMockUser() })
     renderHook(() => useSSE(), {
       wrapper: ({ children }) =>
         createElement(QueryClientProvider, { client: qc }, children),
@@ -254,7 +256,7 @@ describe('useSSE', () => {
     const qc = new QueryClient()
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
 
-    localStorage.setItem('access_token', 'my-token')
+    useAuthStore.setState({ user: createMockUser() })
     renderHook(() => useSSE(), {
       wrapper: ({ children }) =>
         createElement(QueryClientProvider, { client: qc }, children),
@@ -275,7 +277,7 @@ describe('useSSE', () => {
   })
 
   it('不正な JSON を受信してもクラッシュしない', async () => {
-    localStorage.setItem('access_token', 'my-token')
+    useAuthStore.setState({ user: createMockUser() })
     renderHook(() => useSSE(), { wrapper: makeWrapper() })
     await waitForEventSource()
 

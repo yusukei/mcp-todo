@@ -35,9 +35,8 @@ export default function GoogleCallbackPage() {
 
     api
       .get('/auth/google/callback', { params: { code, state } })
-      .then(async ({ data }) => {
-        localStorage.setItem('access_token', data.access_token)
-        localStorage.setItem('refresh_token', data.refresh_token)
+      .then(async () => {
+        // Cookie is set by the backend callback response.
         const { data: me } = await api.get('/auth/me')
         setUser(me)
         navigate('/', { replace: true })

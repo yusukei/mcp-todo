@@ -18,49 +18,39 @@ function renderWithRouter(ui: React.ReactNode, initialPath = '/protected') {
 
 describe('ProtectedRoute', () => {
   beforeEach(() => {
-    useAuthStore.setState({ user: null })
-    localStorage.clear()
+    useAuthStore.setState({ user: null, isInitialized: false })
   })
 
-  it('user と token が両方ない場合 /login にリダイレクト', () => {
-    renderWithRouter(
-      <ProtectedRoute>
-        <div>Protected Content</div>
-      </ProtectedRoute>
-    )
-    expect(screen.getByText('Login Page')).toBeInTheDocument()
-    expect(screen.queryByText('Protected Content')).not.toBeInTheDocument()
-  })
-
-  it('user が存在する場合 children を描画', () => {
-    useAuthStore.setState({
-      user: createMockUser({ id: '1', email: 'a@test.com', name: 'A', is_admin: false }),
-    })
+  it('未初期化のあいだは読み込み中を表示する', () => {
+    useAuthStore.setState({ user: null, isInitialized: false })
 
     renderWithRouter(
       <ProtectedRoute>
         <div>Protected Content</div>
       </ProtectedRoute>
     )
-    expect(screen.getByText('Protected Content')).toBeInTheDocument()
-  })
 
-  it('token だけある場合 (user=null, 未初期化) はローディングを表示', () => {
-    localStorage.setItem('access_token', 'some-token')
-    useAuthStore.setState({ isInitialized: false })
-
-    renderWithRouter(
-      <ProtectedRoute>
-        <div>Protected Content</div>
-      </ProtectedRoute>
-    )
     expect(screen.getByText('読み込み中...')).toBeInTheDocument()
     expect(screen.queryByText('Protected Content')).not.toBeInTheDocument()
   })
 
-  it('user はあるが token がない場合も children を描画', () => {
+  it('初期化済み + user なしなら /login にリダイレクト', () => {
+    useAuthStore.setState({ user: null, isInitialized: true })
+
+    renderWithRouter(
+      <ProtectedRoute>
+        <div>Protected Content</div>
+      </ProtectedRoute>
+    )
+
+    expect(screen.getByText('Login Page')).toBeInTheDocument()
+    expect(screen.queryByText('Protected Content')).not.toBeInTheDocument()
+  })
+
+  it('初期化済み + user ありなら children を描画', () => {
     useAuthStore.setState({
       user: createMockUser({ id: '1', email: 'a@test.com', name: 'A', is_admin: false }),
+      isInitialized: true,
     })
 
     renderWithRouter(
@@ -68,6 +58,7 @@ describe('ProtectedRoute', () => {
         <div>Protected Content</div>
       </ProtectedRoute>
     )
+
     expect(screen.getByText('Protected Content')).toBeInTheDocument()
   })
 })
