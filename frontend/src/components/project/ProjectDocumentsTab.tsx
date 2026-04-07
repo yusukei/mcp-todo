@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -13,7 +13,7 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Plus, Search, Tag, Pencil, Trash2, History, FileText, FileDown, GripVertical, FileQuestion, CheckSquare } from 'lucide-react'
+import { Plus, Search, Tag, Pencil, Trash2, History, FileText, FileDown, GripVertical, FileQuestion, CheckSquare, Upload } from 'lucide-react'
 import { api } from '../../api/client'
 import { showErrorToast, showSuccessToast } from '../common/Toast'
 import { showConfirm } from '../common/ConfirmDialog'
@@ -174,6 +174,53 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
     onError: () => showErrorToast('削除に失敗しました'),
   })
 
+  // ── Markdown import (multi-file upload) ──
+  const importInputRef = useRef<HTMLInputElement>(null)
+
+  const importMutation = useMutation({
+    mutationFn: async (files: FileList) => {
+      const formData = new FormData()
+      for (const file of Array.from(files)) {
+        formData.append('files', file)
+      }
+      const resp = await api.post(
+        `/projects/${projectId}/documents/import`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 },
+      )
+      return resp.data
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['documents', projectId] })
+      const imported = data?.imported ?? 0
+      const skipped = data?.skipped ?? 0
+      if (imported > 0 && skipped === 0) {
+        showSuccessToast(`${imported}件のドキュメントをインポートしました`)
+      } else if (imported > 0 && skipped > 0) {
+        showSuccessToast(`${imported}件インポート、${skipped}件スキップ`)
+      } else {
+        showErrorToast(`インポートに失敗（${skipped}件スキップ）`)
+      }
+    },
+    onError: () => showErrorToast('インポートに失敗しました'),
+  })
+
+  const handleImportClick = useCallback(() => {
+    importInputRef.current?.click()
+  }, [])
+
+  const handleImportChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files
+      if (files && files.length > 0) {
+        importMutation.mutate(files)
+      }
+      // Reset the input so selecting the same file again retriggers onChange
+      e.target.value = ''
+    },
+    [importMutation],
+  )
+
   const handleCreate = useCallback(() => {
     const tags = form.tags.split(',').map((t) => t.trim()).filter(Boolean)
     createMutation.mutate({ title: form.title, content: form.content, tags, category: form.category })
@@ -244,6 +291,22 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
             >
               <CheckSquare className="w-3.5 h-3.5" />
             </button>
+            <button
+              onClick={handleImportClick}
+              disabled={importMutation.isPending}
+              className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+              title="Markdown ファイルをインポート"
+            >
+              <Upload className="w-3.5 h-3.5" /> {importMutation.isPending ? '...' : 'インポート'}
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".md,.markdown,text/markdown"
+              multiple
+              onChange={handleImportChange}
+              className="hidden"
+            />
             <button
               onClick={() => { setCreating(true); setMobileShowDetail(true) }}
               className="flex items-center gap-1 px-2 py-1 text-xs bg-indigo-600 text-white rounded-md hover:bg-indigo-700"

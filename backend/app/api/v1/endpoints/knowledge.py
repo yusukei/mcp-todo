@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
 
 from ....core.deps import get_current_user
 from ....models import User
 from ....models.knowledge import Knowledge, KnowledgeCategory
 from ....services.knowledge_search import index_knowledge, deindex_knowledge
+from ....services.markdown_import import parse_markdown_file
 from ....services.serializers import knowledge_to_dict as _knowledge_dict
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
@@ -79,6 +80,73 @@ async def create_knowledge(
     await k.insert()
     await index_knowledge(k)
     return _knowledge_dict(k)
+
+
+_IMPORT_MAX_FILES = 50
+_IMPORT_MAX_BYTES = 50_000  # matches the knowledge content max_length
+
+
+@router.post("/import", status_code=status.HTTP_201_CREATED)
+async def import_knowledge(
+    files: list[UploadFile] = File(..., description="Markdown files to import"),
+    user: User = Depends(get_current_user),
+):
+    """Import one or more Markdown files as knowledge entries.
+
+    Same parsing rules as the project document import: optional YAML
+    frontmatter (`title`, `tags`, `category`), file name as fallback
+    title, body as content. Files with unsupported extensions or invalid
+    UTF-8 are skipped with an error entry so partial imports work.
+    """
+    if len(files) > _IMPORT_MAX_FILES:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Too many files (max {_IMPORT_MAX_FILES})",
+        )
+
+    created: list[dict] = []
+    errors: list[dict] = []
+
+    for upload in files:
+        name = upload.filename or "untitled.md"
+        lower = name.lower()
+        if not (lower.endswith(".md") or lower.endswith(".markdown")):
+            errors.append({"filename": name, "error": "Not a Markdown file"})
+            continue
+
+        raw_bytes = await upload.read()
+        if len(raw_bytes) > _IMPORT_MAX_BYTES:
+            errors.append({"filename": name, "error": "File too large"})
+            continue
+        try:
+            text = raw_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            errors.append({"filename": name, "error": "Not valid UTF-8"})
+            continue
+
+        parsed = parse_markdown_file(name, text)
+
+        category_value = (
+            parsed.category if parsed.category in _VALID_CATEGORIES else "reference"
+        )
+
+        k = Knowledge(
+            title=parsed.title[:255],
+            content=parsed.content[:_IMPORT_MAX_BYTES],
+            tags=parsed.tags,
+            category=KnowledgeCategory(category_value),
+            created_by=str(user.id),
+        )
+        await k.insert()
+        await index_knowledge(k)
+        created.append(_knowledge_dict(k))
+
+    return {
+        "created": created,
+        "errors": errors,
+        "imported": len(created),
+        "skipped": len(errors),
+    }
 
 
 @router.get("/{knowledge_id}")
