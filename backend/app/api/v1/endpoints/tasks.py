@@ -17,6 +17,7 @@ from ....models.task import Attachment, Comment, DecisionContext, DecisionOption
 from ....services.events import publish_event
 from ....services.search import deindex_task as _deindex_task, index_task as _index_task
 from ....services.serializers import task_to_dict as _task_dict
+from ....services.task_approval import cascade_approve_subtasks
 from ....services.task_export import export_tasks_markdown, export_tasks_pdf
 
 UPLOADS_DIR = Path(settings.UPLOADS_DIR)
@@ -265,6 +266,7 @@ async def batch_update_tasks(
 
     updated = []
     failed = []
+    cascade_ids: list[str] = []
 
     for item in body.updates:
         task = task_map.get(item.task_id)
@@ -283,6 +285,7 @@ async def batch_update_tasks(
             task.approved = changes["approved"]
             if changes["approved"]:
                 task.needs_detail = False
+                cascade_ids.append(str(task.id))
         if "archived" in changes:
             task.archived = changes["archived"]
 
@@ -304,6 +307,11 @@ async def batch_update_tasks(
         await publish_event(project_id, "tasks.batch_updated", {
             "count": len(saved), "task_ids": [t["id"] for t in saved]
         })
+
+    saved_ids = {t["id"] for t in saved}
+    for cid in cascade_ids:
+        if cid in saved_ids:
+            await cascade_approve_subtasks(cid, actor)
 
     return {"updated": saved, "failed": failed}
 
@@ -405,15 +413,19 @@ async def update_task(
         task.needs_detail = updates["needs_detail"]
         if updates["needs_detail"]:
             task.approved = False
+    cascade_approved = False
     if "approved" in updates:
         task.record_change("approved", str(task.approved), str(updates["approved"]), actor)
         task.approved = updates["approved"]
         if updates["approved"]:
             task.needs_detail = False
+            cascade_approved = True
     if "completion_report" in updates:
         task.completion_report = updates["completion_report"]
 
     await task.save_updated()
+    if cascade_approved:
+        await cascade_approve_subtasks(str(task.id), actor)
     await publish_event(project_id, "task.updated", _task_dict(task))
     await _index_task(task)
     return _task_dict(task)

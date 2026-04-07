@@ -10,6 +10,7 @@ from ...models.project import ProjectStatus
 from ...models.task import Comment, DecisionContext, DecisionOption, TaskPriority, TaskStatus, TaskType
 from ...services.events import publish_event
 from ...services.serializers import task_to_dict as _task_dict
+from ...services.task_approval import cascade_approve_subtasks
 from ..auth import authenticate, check_project_access
 from ..server import mcp
 from .projects import _check_project_not_locked, _resolve_project_id
@@ -273,6 +274,7 @@ async def get_work_context(
     """
     key_info = await authenticate()
     scopes = key_info["project_scopes"]
+    updates_input_for_cascade = list(updates)
     now = datetime.now(UTC)
 
     base_filters: dict = {"is_deleted": False}
@@ -536,6 +538,8 @@ async def update_task(
         task.needs_detail = False
 
     await task.save_updated()
+    if updates.get("approved"):
+        await cascade_approve_subtasks(str(task.id), actor)
     await publish_event(task.project_id, "task.updated", _task_dict(task))
     await _index_task(task)
     return _task_dict(task)
@@ -1117,6 +1121,14 @@ async def batch_update_tasks(updates: list[dict]) -> dict:
     for pid in project_ids:
         pid_count = sum(1 for t in tasks_to_save if t.project_id == pid and _task_dict(t) in updated)
         await publish_event(pid, "tasks.batch_updated", {"count": pid_count})
+
+    # Cascade approve to subtasks for any task that was just approved
+    actor_str = f"mcp:{key_info['key_name']}" if key_info.get("key_name") else "mcp"
+    saved_id_set = {u["id"] for u in updated}
+    for item in updates_input_for_cascade:
+        tid = item.get("task_id")
+        if tid and tid in saved_id_set and item.get("approved") is True:
+            await cascade_approve_subtasks(tid, actor_str)
 
     return {"updated": updated, "failed": failed}
 
