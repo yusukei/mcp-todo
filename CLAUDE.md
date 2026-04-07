@@ -148,6 +148,60 @@ Before modifying code or configuration files:
 5. **Spec review** — Compare the diff against project documents; fix discrepancies before completing
 6. **Complete** — Mark the task done via `complete_task` with a completion report
 
+### Coding Rules
+
+These rules apply to **all** code in this repository (backend, frontend,
+agent). Violations are treated as bugs even if tests pass.
+
+#### No silent fallbacks
+**Fallbacks are prohibited as a default design choice.** If a primary
+mechanism fails, surface the failure as an error — do **not** quietly
+substitute a slower, less correct, or less capable alternative and
+pretend the request succeeded.
+
+- Do **not** add a "fallback" branch unless the user has explicitly
+  approved it for that specific case. When you think a fallback is
+  unavoidable, **stop and ask the user first** before writing it.
+- Reasons fallbacks are harmful here:
+  - They mask the real failure, making diagnosis impossible. The
+    user sees "it worked, but slowly" instead of "X is broken, fix it."
+  - They keep dead code paths alive that nobody tests in production.
+  - They turn loud, recoverable failures into silent, persistent
+    degradation.
+- If a dependency (binary, service, library) is required for a feature
+  to work correctly, **require it**. Document the requirement, log
+  loudly at startup if it is missing, and return a clear error from
+  the affected operations until it is installed/restored.
+
+#### No error hiding
+**`try`/`except` blocks that swallow or downgrade errors are
+prohibited.** Errors must be handled as errors.
+
+- Do **not** write `except Exception: pass`, `except Exception: return
+  None`, `except Exception: continue`, or any equivalent that turns a
+  failure into silence.
+- Do **not** catch broad `Exception` just to log and move on. If you
+  cannot meaningfully recover, let it propagate.
+- Acceptable patterns:
+  - Catch a **specific** exception type that represents a known,
+    expected failure mode, and handle it explicitly (return a
+    structured error, retry with backoff, etc.).
+  - Catch at a **boundary** (HTTP handler, WebSocket dispatcher, MCP
+    tool entry point) where the error must be converted into a
+    protocol-level response — and in that case log the full traceback
+    via `logger.exception(...)`, never `logger.error(...)` without
+    `exc_info`.
+- Never use `errors="ignore"` on text decoding, `json.JSONDecodeError:
+  continue` in a parse loop, or similar patterns that throw away data
+  on the floor. If the input is malformed, that is information the
+  operator needs.
+- Frontend equivalents apply: no empty `.catch(() => {})`, no
+  `try { ... } catch { /* ignore */ }` in TS/JS.
+
+When in doubt: **let it crash and surface the real problem.** A loud
+failure that points at the cause is always better than a quiet
+degradation that hides it.
+
 ### Git
 - Do not add `Co-Authored-By` trailer to commits
 - Include the task ID in commit messages for traceability (e.g., `feat: add versioning to documents [task:69c22641]`)
