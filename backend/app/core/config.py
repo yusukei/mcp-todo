@@ -42,6 +42,14 @@ class Settings(BaseSettings):
     INIT_ADMIN_EMAIL: str = ""
     INIT_ADMIN_PASSWORD: str = ""
 
+    # ── Login rate limiting ───────────────────────────────────
+    # Per-email failed-login counter stored in Redis. Used to slow down
+    # password brute-forcing without blocking legitimate developers who
+    # mistype a password a few times. Defaults are intentionally generous
+    # for a small-team internal tool — tighten in production via env.
+    LOGIN_MAX_ATTEMPTS: int = 20
+    LOGIN_LOCKOUT_SECONDS: int = 300  # 5 minutes
+
     model_config = {"env_file": ("../.env", ".env"), "extra": "ignore"}
 
 

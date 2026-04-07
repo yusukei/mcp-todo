@@ -48,8 +48,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 _OAUTH_STATE_TTL = 600  # 10分
-_LOGIN_MAX_ATTEMPTS = 5
-_LOGIN_LOCKOUT_SECONDS = 900  # 15分
+# Sourced from settings so deployments can tune them via env vars
+# (LOGIN_MAX_ATTEMPTS / LOGIN_LOCKOUT_SECONDS). Module-level aliases
+# are kept for tests that monkeypatch the constant directly.
+_LOGIN_MAX_ATTEMPTS = settings.LOGIN_MAX_ATTEMPTS
+_LOGIN_LOCKOUT_SECONDS = settings.LOGIN_LOCKOUT_SECONDS
 _REFRESH_JTI_TTL = settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400  # seconds
 
 

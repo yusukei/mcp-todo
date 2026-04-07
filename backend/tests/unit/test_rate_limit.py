@@ -61,7 +61,10 @@ class TestCheckRateLimit:
 
     async def test_above_limit_blocks_login(self, fake_redis):
         """More than MAX_ATTEMPTS failures still triggers 429."""
-        await fake_redis.set("login_attempts:user@example.com", "10")
+        await fake_redis.set(
+            "login_attempts:user@example.com",
+            str(_LOGIN_MAX_ATTEMPTS + 5),
+        )
         with pytest.raises(HTTPException) as exc_info:
             await _check_rate_limit("user@example.com")
         assert exc_info.value.status_code == 429
