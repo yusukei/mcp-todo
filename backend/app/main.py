@@ -32,6 +32,26 @@ class ORJSONResponse(JSONResponse):
         return orjson.dumps(content, option=orjson.OPT_NON_STR_KEYS | orjson.OPT_NAIVE_UTC)
 
 
+
+def _should_rebuild(idx) -> bool:
+    """Decide whether a search index needs a full rebuild on startup.
+
+    Rebuild when:
+    - FORCE_REINDEX env var is truthy (operator override), OR
+    - the index was cleared due to a schema change, OR
+    - the index has no documents on disk.
+
+    Skipping rebuild lets large deployments restart in seconds; the
+    on-write index_task / deindex_task hooks keep the index in sync
+    while the process runs.
+    """
+    if os.environ.get("FORCE_REINDEX", "").lower() in ("1", "true", "yes"):
+        return True
+    if getattr(idx, "schema_cleared", False):
+        return True
+    return idx.is_empty()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect()
@@ -77,8 +97,11 @@ async def lifespan(app: FastAPI):
                 indexer = SearchIndexer(search_index)
                 SearchIndexer.set_instance(indexer)
                 SearchService.set_instance(SearchService(search_index))
-                count = await indexer.rebuild()
-                logger.info("Search index ready: %d tasks indexed", count)
+                if _should_rebuild(search_index):
+                    count = await indexer.rebuild()
+                    logger.info("Search index rebuilt: %d tasks indexed", count)
+                else:
+                    logger.info("Search index loaded from disk: %d documents (skip rebuild)", search_index.doc_count())
             except Exception as e:
                 logger.warning("Failed to initialize search index: %s — full-text search disabled", e)
         else:
@@ -97,8 +120,11 @@ async def lifespan(app: FastAPI):
                 k_indexer = KnowledgeSearchIndexer(k_index)
                 KnowledgeSearchIndexer.set_instance(k_indexer)
                 KnowledgeSearchService.set_instance(KnowledgeSearchService(k_index))
-                k_count = await k_indexer.rebuild()
-                logger.info("Knowledge search index ready: %d entries indexed", k_count)
+                if _should_rebuild(k_index):
+                    k_count = await k_indexer.rebuild()
+                    logger.info("Knowledge search index rebuilt: %d entries indexed", k_count)
+                else:
+                    logger.info("Knowledge search index loaded from disk: %d documents (skip rebuild)", k_index.doc_count())
             except Exception as e:
                 logger.warning("Failed to initialize knowledge search index: %s", e)
 
@@ -115,8 +141,11 @@ async def lifespan(app: FastAPI):
                 d_indexer = DocumentSearchIndexer(d_index)
                 DocumentSearchIndexer.set_instance(d_indexer)
                 DocumentSearchService.set_instance(DocumentSearchService(d_index))
-                d_count = await d_indexer.rebuild()
-                logger.info("Document search index ready: %d entries indexed", d_count)
+                if _should_rebuild(d_index):
+                    d_count = await d_indexer.rebuild()
+                    logger.info("Document search index rebuilt: %d entries indexed", d_count)
+                else:
+                    logger.info("Document search index loaded from disk: %d documents (skip rebuild)", d_index.doc_count())
             except Exception as e:
                 logger.warning("Failed to initialize document search index: %s", e)
 
@@ -133,8 +162,11 @@ async def lifespan(app: FastAPI):
                 ds_indexer = DocSiteSearchIndexer(ds_index)
                 DocSiteSearchIndexer.set_instance(ds_indexer)
                 DocSiteSearchService.set_instance(DocSiteSearchService(ds_index))
-                ds_count = await ds_indexer.rebuild()
-                logger.info("DocSite search index ready: %d pages indexed", ds_count)
+                if _should_rebuild(ds_index):
+                    ds_count = await ds_indexer.rebuild()
+                    logger.info("DocSite search index rebuilt: %d pages indexed", ds_count)
+                else:
+                    logger.info("DocSite search index loaded from disk: %d documents (skip rebuild)", ds_index.doc_count())
             except Exception as e:
                 logger.warning("Failed to initialize docsite search index: %s", e)
 
@@ -151,8 +183,11 @@ async def lifespan(app: FastAPI):
                 bm_indexer = BookmarkSearchIndexer(bm_index)
                 BookmarkSearchIndexer.set_instance(bm_indexer)
                 BookmarkSearchService.set_instance(BookmarkSearchService(bm_index))
-                bm_count = await bm_indexer.rebuild()
-                logger.info("Bookmark search index ready: %d bookmarks indexed", bm_count)
+                if _should_rebuild(bm_index):
+                    bm_count = await bm_indexer.rebuild()
+                    logger.info("Bookmark search index rebuilt: %d bookmarks indexed", bm_count)
+                else:
+                    logger.info("Bookmark search index loaded from disk: %d documents (skip rebuild)", bm_index.doc_count())
             except Exception as e:
                 logger.warning("Failed to initialize bookmark search index: %s", e)
 

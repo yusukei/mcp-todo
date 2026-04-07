@@ -70,6 +70,21 @@ class KnowledgeSearchIndex:
         ).build()
         self.index.register_tokenizer("lang_ja", analyzer)
 
+    def doc_count(self) -> int:
+        """Return the number of documents currently in the index.
+
+        Returns -1 if the count cannot be determined (e.g. tantivy API
+        change). Callers should treat -1 as "unknown" and force a rebuild.
+        """
+        try:
+            self.index.reload()
+            return int(self.index.searcher().num_docs)
+        except Exception:
+            return -1
+
+    def is_empty(self) -> bool:
+        """True when the index has zero documents (or count is unknown)."""
+        return self.doc_count() <= 0
 
 # ──────────────────────────────────────────────
 # KnowledgeSearchIndexer

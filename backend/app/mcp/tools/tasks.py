@@ -274,7 +274,6 @@ async def get_work_context(
     """
     key_info = await authenticate()
     scopes = key_info["project_scopes"]
-    updates_input_for_cascade = list(updates)
     now = datetime.now(UTC)
 
     base_filters: dict = {"is_deleted": False}
@@ -1050,6 +1049,7 @@ async def batch_update_tasks(updates: list[dict]) -> dict:
     """
     key_info = await authenticate()
     scopes = key_info["project_scopes"]
+    updates_input_for_cascade = list(updates)
 
     updated = []
     failed = []
