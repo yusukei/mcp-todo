@@ -46,6 +46,8 @@ class AgentConnectionManager:
         self._connections: dict[str, WebSocket] = {}
         # request_id → (agent_id, Future)
         self._pending: dict[str, tuple[str, asyncio.Future]] = {}
+        # agent_id → set[Event] — woken when the agent connects/reconnects
+        self._connect_waiters: dict[str, set[asyncio.Event]] = {}
 
     def register(self, agent_id: str, ws: WebSocket) -> WebSocket | None:
         """Register a new connection, returning the old one if replaced."""
@@ -53,6 +55,12 @@ class AgentConnectionManager:
         self._connections[agent_id] = ws
         if old_ws is not None and old_ws is not ws:
             logger.warning("Agent %s: replacing existing connection (reconnect)", agent_id)
+        # Wake up anybody waiting on `wait_for_connection(agent_id)`
+        waiters = self._connect_waiters.pop(agent_id, None)
+        if waiters:
+            for event in waiters:
+                event.set()
+        if old_ws is not None and old_ws is not ws:
             return old_ws
         return None
 
@@ -85,6 +93,31 @@ class AgentConnectionManager:
     def get_connected_agent_ids(self) -> list[str]:
         return list(self._connections.keys())
 
+    async def wait_for_connection(self, agent_id: str, timeout: float) -> bool:
+        """Block until ``agent_id`` connects, up to ``timeout`` seconds.
+
+        Returns ``True`` if the agent is (now) connected, ``False`` if the
+        wait expired. Used to absorb brief network drops where the caller
+        is willing to retry-after-reconnect rather than failing immediately.
+        """
+        if timeout <= 0:
+            return self.is_connected(agent_id)
+        if self.is_connected(agent_id):
+            return True
+        event = asyncio.Event()
+        self._connect_waiters.setdefault(agent_id, set()).add(event)
+        try:
+            await asyncio.wait_for(event.wait(), timeout=timeout)
+            return self.is_connected(agent_id)
+        except asyncio.TimeoutError:
+            return False
+        finally:
+            waiters = self._connect_waiters.get(agent_id)
+            if waiters:
+                waiters.discard(event)
+                if not waiters:
+                    self._connect_waiters.pop(agent_id, None)
+
     async def send_raw(self, agent_id: str, payload: dict[str, Any]) -> None:
         """Send a fire-and-forget JSON payload to an agent (no response awaited).
 
@@ -98,10 +131,23 @@ class AgentConnectionManager:
         await ws.send_text(json.dumps(payload))
 
     async def send_request(
-        self, agent_id: str, msg_type: str, payload: dict, timeout: float = 60.0
+        self,
+        agent_id: str,
+        msg_type: str,
+        payload: dict,
+        timeout: float = 60.0,
+        wait_for_agent: float = 0.0,
     ) -> dict:
-        """Send request to agent and await response via Future."""
+        """Send request to agent and await response via Future.
+
+        ``wait_for_agent``: when > 0, block up to that many seconds waiting
+        for the agent to (re)connect before failing with AgentOfflineError.
+        Useful for absorbing brief disconnects (sleep/wake, WiFi switch).
+        """
         ws = self._connections.get(agent_id)
+        if not ws and wait_for_agent > 0:
+            if await self.wait_for_connection(agent_id, wait_for_agent):
+                ws = self._connections.get(agent_id)
         if not ws:
             raise AgentOfflineError(agent_id)
 

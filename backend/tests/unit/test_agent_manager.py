@@ -162,3 +162,61 @@ class TestResolveRequest:
 
     def test_resolve_without_id_returns_false(self, manager):
         assert manager.resolve_request({}) is False
+
+
+class TestWaitForConnection:
+    async def test_returns_true_when_already_connected(self, manager):
+        ws = FakeWebSocket()
+        manager.register("agent-1", ws)
+        assert await manager.wait_for_connection("agent-1", timeout=1.0) is True
+
+    async def test_returns_false_on_timeout_when_offline(self, manager):
+        assert await manager.wait_for_connection("missing", timeout=0.05) is False
+
+    async def test_zero_timeout_returns_immediate_state(self, manager):
+        # Offline agent + zero timeout — short-circuit, no waiting.
+        assert await manager.wait_for_connection("missing", timeout=0) is False
+        ws = FakeWebSocket()
+        manager.register("a", ws)
+        assert await manager.wait_for_connection("a", timeout=0) is True
+
+    async def test_wakes_when_agent_connects(self, manager):
+        ws = FakeWebSocket()
+
+        async def connect_after_delay():
+            await asyncio.sleep(0.02)
+            manager.register("agent-1", ws)
+
+        asyncio.create_task(connect_after_delay())
+        connected = await manager.wait_for_connection("agent-1", timeout=1.0)
+        assert connected is True
+
+
+class TestSendRequestWaitForAgent:
+    async def test_send_request_waits_for_reconnect(self, manager):
+        """If wait_for_agent>0 and the agent reconnects in time, send_request succeeds."""
+        ws = FakeWebSocket()
+
+        async def connect_then_respond():
+            await asyncio.sleep(0.02)
+            manager.register("agent-1", ws)
+            # Wait until send_request has actually pushed the payload
+            for _ in range(50):
+                if ws.sent:
+                    break
+                await asyncio.sleep(0.01)
+            request_id = json.loads(ws.sent[0])["request_id"]
+            manager.resolve_request({"request_id": request_id, "ok": True})
+
+        asyncio.create_task(connect_then_respond())
+        result = await manager.send_request(
+            "agent-1", "exec", {}, timeout=2.0, wait_for_agent=1.0,
+        )
+        assert result["ok"] is True
+
+    async def test_send_request_offline_raises_after_wait_expires(self, manager):
+        with pytest.raises(AgentOfflineError):
+            await manager.send_request(
+                "ghost", "exec", {}, timeout=1.0, wait_for_agent=0.05,
+            )
+
