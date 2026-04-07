@@ -58,6 +58,33 @@ def _detect_shells() -> list[str]:
         return shells or ["/bin/sh"]
 
 
+def _resolve_safe_path(path: str, cwd: str | None) -> str:
+    """Resolve a user-supplied path against cwd, ensuring it stays inside cwd.
+
+    Both relative and absolute inputs are normalized via realpath, and the
+    result must be a descendant of (or equal to) the realpath of ``cwd``.
+
+    Raises:
+        ValueError: when ``cwd`` is missing/invalid or when the resolved path
+            escapes ``cwd`` (path traversal).
+    """
+    if not cwd:
+        raise ValueError("cwd is required")
+    base = os.path.realpath(cwd)
+    if not os.path.isdir(base):
+        raise ValueError(f"Working directory does not exist: {cwd}")
+    candidate = path if os.path.isabs(path) else os.path.join(base, path)
+    resolved = os.path.realpath(candidate)
+    try:
+        common = os.path.commonpath([resolved, base])
+    except ValueError:
+        # Different drives on Windows, or mixed path types
+        raise ValueError("Path traversal not allowed")
+    if common != base:
+        raise ValueError("Path traversal not allowed")
+    return resolved
+
+
 def _kill_process(proc: asyncio.subprocess.Process) -> None:
     """Kill a subprocess safely across platforms."""
     try:
@@ -140,8 +167,10 @@ async def handle_read_file(msg: dict) -> dict:
     path = msg.get("path", "")
     cwd = msg.get("cwd")
 
-    if not os.path.isabs(path) and cwd:
-        path = os.path.join(cwd, path)
+    try:
+        path = _resolve_safe_path(path, cwd)
+    except ValueError as e:
+        return {"type": "file_content", "request_id": msg["request_id"], "error": str(e)}
 
     def _read():
         size = os.path.getsize(path)
@@ -167,8 +196,10 @@ async def handle_write_file(msg: dict) -> dict:
     cwd = msg.get("cwd")
     content = msg.get("content", "")
 
-    if not os.path.isabs(path) and cwd:
-        path = os.path.join(cwd, path)
+    try:
+        path = _resolve_safe_path(path, cwd)
+    except ValueError as e:
+        return {"type": "write_result", "request_id": msg["request_id"], "success": False, "error": str(e)}
 
     def _write():
         data = content.encode("utf-8")
@@ -195,8 +226,10 @@ async def handle_list_dir(msg: dict) -> dict:
     path = msg.get("path", ".")
     cwd = msg.get("cwd")
 
-    if not os.path.isabs(path) and cwd:
-        path = os.path.join(cwd, path)
+    try:
+        path = _resolve_safe_path(path, cwd)
+    except ValueError as e:
+        return {"type": "dir_listing", "request_id": msg["request_id"], "error": str(e)}
 
     def _list():
         entries = []
