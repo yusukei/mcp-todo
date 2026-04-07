@@ -458,29 +458,117 @@ class TestGlob:
 
 
 # ──────────────────────────────────────────────
-# handle_grep
+# handle_grep — ripgrep is REQUIRED. There is no Python fallback.
+# Tests that need to exercise the actual ripgrep binary are guarded by
+# @pytest.mark.skipif(not _HAS_RG); the rest mock create_subprocess_exec
+# so they run in any environment.
 # ──────────────────────────────────────────────
 
 
-class TestGrep:
-    def test_grep_basic_match(self, tmp_path):
-        (tmp_path / "f.txt").write_text("hello world\nfoo bar\nbar baz\n")
+import shutil as _shutil
+_HAS_RG = _shutil.which("rg") is not None
+
+
+class TestGrepRequiresRipgrep:
+    """When ripgrep is unavailable, handle_grep must surface a clear error."""
+
+    def test_rg_missing_returns_error(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(main, "RG_PATH", None)
         result = _run(main.handle_grep({
             "request_id": REQ_ID,
-            "pattern": "bar",
+            "pattern": "needle",
             "path": ".",
             "cwd": str(tmp_path),
         }))
-        assert result["count"] == 2
-        lines = sorted(m["line"] for m in result["matches"])
-        assert lines == [2, 3]
+        assert "error" in result
+        assert "ripgrep" in result["error"].lower()
 
-    def test_grep_glob_filter(self, tmp_path):
-        (tmp_path / "a.py").write_text("import foo")
-        (tmp_path / "b.txt").write_text("import foo")
+    def test_rg_missing_error_includes_install_hint(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(main, "RG_PATH", None)
         result = _run(main.handle_grep({
             "request_id": REQ_ID,
-            "pattern": "import",
+            "pattern": "needle",
+            "path": ".",
+            "cwd": str(tmp_path),
+        }))
+        # Error message must point operators at how to fix the problem
+        assert "install" in result["error"].lower()
+
+
+class TestGrepValidation:
+    """Argument validation is independent of ripgrep — exercised via mock."""
+
+    def _mock_rg(self, monkeypatch):
+        class _FakeProc:
+            returncode = 0
+            pid = 12345
+            async def communicate(self):
+                return (b"", b"")
+        async def _fake(*args, **kwargs):
+            return _FakeProc()
+        monkeypatch.setattr(main, "RG_PATH", "rg")
+        monkeypatch.setattr(main.asyncio, "create_subprocess_exec", _fake)
+
+    def test_empty_pattern_rejected(self, tmp_path, monkeypatch):
+        self._mock_rg(monkeypatch)
+        result = _run(main.handle_grep({
+            "request_id": REQ_ID, "pattern": "", "path": ".",
+            "cwd": str(tmp_path),
+        }))
+        assert "error" in result
+        assert "pattern" in result["error"].lower()
+
+    def test_max_results_non_integer_rejected(self, tmp_path, monkeypatch):
+        self._mock_rg(monkeypatch)
+        result = _run(main.handle_grep({
+            "request_id": REQ_ID, "pattern": "x", "path": ".",
+            "cwd": str(tmp_path), "max_results": "abc",
+        }))
+        assert "error" in result
+        assert "integer" in result["error"]
+
+    def test_nonexistent_base_dir_rejected(self, tmp_path, monkeypatch):
+        self._mock_rg(monkeypatch)
+        result = _run(main.handle_grep({
+            "request_id": REQ_ID, "pattern": "x",
+            "path": "does-not-exist", "cwd": str(tmp_path),
+        }))
+        assert "error" in result
+
+    def test_path_traversal_rejected(self, tmp_path, monkeypatch):
+        self._mock_rg(monkeypatch)
+        result = _run(main.handle_grep({
+            "request_id": REQ_ID, "pattern": "x",
+            "path": "../../etc", "cwd": str(tmp_path),
+        }))
+        assert "error" in result
+
+
+@pytest.mark.skipif(not _HAS_RG, reason="ripgrep not installed")
+class TestGrepWithRipgrep:
+    """End-to-end tests against the real ripgrep binary."""
+
+    def test_rg_basic_match(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(main, "RG_PATH", _shutil.which("rg"))
+        (tmp_path / "f.txt").write_text("alpha\nbeta needle gamma\ndelta\n")
+        result = _run(main.handle_grep({
+            "request_id": REQ_ID,
+            "pattern": "needle",
+            "path": ".",
+            "cwd": str(tmp_path),
+        }))
+        assert result["engine"] == "ripgrep"
+        assert result["count"] == 1
+        assert result["matches"][0]["line"] == 2
+        assert "needle" in result["matches"][0]["text"]
+
+    def test_rg_glob_filter(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(main, "RG_PATH", _shutil.which("rg"))
+        (tmp_path / "a.py").write_text("import needle")
+        (tmp_path / "b.txt").write_text("import needle")
+        result = _run(main.handle_grep({
+            "request_id": REQ_ID,
+            "pattern": "needle",
             "path": ".",
             "cwd": str(tmp_path),
             "glob": "*.py",
@@ -488,18 +576,35 @@ class TestGrep:
         assert result["count"] == 1
         assert result["matches"][0]["file"].endswith("a.py")
 
-    def test_grep_case_insensitive(self, tmp_path):
-        (tmp_path / "f.txt").write_text("HELLO\n")
+    def test_rg_case_insensitive(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(main, "RG_PATH", _shutil.which("rg"))
+        (tmp_path / "f.txt").write_text("NEEDLE\n")
         result = _run(main.handle_grep({
             "request_id": REQ_ID,
-            "pattern": "hello",
+            "pattern": "needle",
             "path": ".",
             "cwd": str(tmp_path),
             "case_insensitive": True,
         }))
         assert result["count"] == 1
 
-    def test_grep_invalid_regex(self, tmp_path):
+    def test_rg_max_results_truncates(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(main, "RG_PATH", _shutil.which("rg"))
+        (tmp_path / "f.txt").write_text("\n".join(["needle"] * 50) + "\n")
+        result = _run(main.handle_grep({
+            "request_id": REQ_ID,
+            "pattern": "needle",
+            "path": ".",
+            "cwd": str(tmp_path),
+            "max_results": 10,
+        }))
+        assert result["count"] == 10
+        assert result["truncated"] is True
+
+    def test_rg_invalid_regex_raises_ripgrep_error(self, tmp_path, monkeypatch):
+        """Invalid regex must surface as a clear error from ripgrep."""
+        monkeypatch.setattr(main, "RG_PATH", _shutil.which("rg"))
+        (tmp_path / "f.txt").write_text("anything")
         result = _run(main.handle_grep({
             "request_id": REQ_ID,
             "pattern": "[invalid",
@@ -508,39 +613,32 @@ class TestGrep:
         }))
         assert "error" in result
 
-    def test_grep_max_results_truncates(self, tmp_path):
-        (tmp_path / "f.txt").write_text("\n".join(["match"] * 50) + "\n")
-        result = _run(main.handle_grep({
-            "request_id": REQ_ID,
-            "pattern": "match",
-            "path": ".",
-            "cwd": str(tmp_path),
-            "max_results": 10,
-        }))
-        assert result["count"] == 10
-        assert result["truncated"] is True
+    def test_rg_respects_gitignore_when_requested(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(main, "RG_PATH", _shutil.which("rg"))
+        (tmp_path / ".gitignore").write_text("ignored.txt\n")
+        (tmp_path / "ignored.txt").write_text("needle\n")
+        (tmp_path / "kept.txt").write_text("needle\n")
 
-    def test_grep_skips_vendored_dirs(self, tmp_path):
-        (tmp_path / ".git").mkdir()
-        (tmp_path / ".git" / "secret.txt").write_text("password")
-        (tmp_path / "f.txt").write_text("password")
-        result = _run(main.handle_grep({
-            "request_id": REQ_ID,
-            "pattern": "password",
-            "path": ".",
-            "cwd": str(tmp_path),
+        # respect_gitignore=False (default) → both files matched
+        r1 = _run(main.handle_grep({
+            "request_id": REQ_ID, "pattern": "needle",
+            "path": ".", "cwd": str(tmp_path),
+            "respect_gitignore": False,
         }))
-        # Only the top-level file should match
-        assert result["count"] == 1
-        assert ".git" not in result["matches"][0]["file"]
+        assert r1["count"] == 2
 
-    def test_grep_skips_extended_vendored_dirs(self, tmp_path):
-        # Newly added skip dirs (Phase 1 of the perf improvement)
-        for d in (".next", ".cache", ".idea", ".vscode", "target",
-                  ".mypy_cache", ".ruff_cache"):
-            (tmp_path / d).mkdir()
-            (tmp_path / d / "f.txt").write_text("needle")
-        (tmp_path / "real.txt").write_text("needle")
+        # respect_gitignore=True → only kept.txt
+        r2 = _run(main.handle_grep({
+            "request_id": REQ_ID, "pattern": "needle",
+            "path": ".", "cwd": str(tmp_path),
+            "respect_gitignore": True,
+        }))
+        assert r2["count"] == 1
+        assert r2["matches"][0]["file"].endswith("kept.txt")
+
+    def test_rg_invalid_utf8_via_bytes_field(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(main, "RG_PATH", _shutil.which("rg"))
+        (tmp_path / "f.txt").write_bytes(b"needle \xff\xfe rest\n")
         result = _run(main.handle_grep({
             "request_id": REQ_ID,
             "pattern": "needle",
@@ -548,116 +646,218 @@ class TestGrep:
             "cwd": str(tmp_path),
         }))
         assert result["count"] == 1
-        assert result["matches"][0]["file"].endswith("real.txt")
+        assert "needle" in result["matches"][0]["text"]
 
-    def test_grep_skips_binary_extensions(self, tmp_path):
-        # The pattern would match if these were scanned, but their
-        # extensions are in the binary skip list.
-        (tmp_path / "image.png").write_bytes(b"needle in a png")
-        (tmp_path / "doc.pdf").write_bytes(b"needle in a pdf")
-        (tmp_path / "archive.zip").write_bytes(b"needle in a zip")
-        (tmp_path / "real.txt").write_text("needle")
-        result = _run(main.handle_grep({
+
+class TestGrepRgCommandLine:
+    """Verify the command line passed to ripgrep.
+
+    These tests work without a real ripgrep binary by mocking
+    ``asyncio.create_subprocess_exec`` and capturing the argv. They
+    catch regressions like "we forgot to pass --no-ignore" or "we
+    forgot to exclude .venv when --no-ignore is set".
+    """
+
+    def _run_with_capture(self, monkeypatch, tmp_path, **grep_kwargs):
+        """Run handle_grep with a fake rg subprocess and return the captured argv."""
+        captured = {}
+
+        class _FakeProc:
+            returncode = 0
+            pid = 12345
+            async def communicate(self):
+                # Empty stdout/stderr → no matches
+                return (b"", b"")
+
+        async def _fake_create(*args, **kwargs):
+            captured["argv"] = list(args)
+            return _FakeProc()
+
+        monkeypatch.setattr(main, "RG_PATH", "rg")
+        monkeypatch.setattr(main.asyncio, "create_subprocess_exec", _fake_create)
+        # Touch a file so base_dir exists
+        (tmp_path / "f.txt").write_text("x")
+
+        msg = {
             "request_id": REQ_ID,
             "pattern": "needle",
             "path": ".",
             "cwd": str(tmp_path),
-        }))
-        assert result["count"] == 1
-        assert result["matches"][0]["file"].endswith("real.txt")
+            **grep_kwargs,
+        }
+        result = _run(main.handle_grep(msg))
+        return captured.get("argv"), result
 
-    def test_grep_skips_binary_by_nul_heuristic(self, tmp_path):
-        # File has a non-binary extension but contains a NUL in the head
-        (tmp_path / "weird.txt").write_bytes(b"abc\x00needle here\n")
-        (tmp_path / "real.txt").write_text("needle")
-        result = _run(main.handle_grep({
-            "request_id": REQ_ID,
-            "pattern": "needle",
-            "path": ".",
-            "cwd": str(tmp_path),
-        }))
-        assert result["count"] == 1
-        assert result["matches"][0]["file"].endswith("real.txt")
-        assert result["files_skipped_binary"] >= 1
+    def test_no_ignore_added_by_default(self, tmp_path, monkeypatch):
+        argv, _ = self._run_with_capture(monkeypatch, tmp_path)
+        assert "--no-ignore" in argv
 
-    def test_grep_skips_large_files(self, tmp_path):
-        # Create a file just over the size limit (10 MB) — use sparse
-        # padding so the test stays fast.
-        big = tmp_path / "big.txt"
-        big.write_bytes(b"x" * (main.GREP_MAX_FILE_SIZE + 1) + b"\nneedle\n")
-        (tmp_path / "small.txt").write_text("needle")
-        result = _run(main.handle_grep({
-            "request_id": REQ_ID,
-            "pattern": "needle",
-            "path": ".",
-            "cwd": str(tmp_path),
-        }))
-        assert result["count"] == 1
-        assert result["matches"][0]["file"].endswith("small.txt")
-        assert result["files_skipped_large"] >= 1
+    def test_no_ignore_omitted_when_respecting_gitignore(self, tmp_path, monkeypatch):
+        argv, _ = self._run_with_capture(
+            monkeypatch, tmp_path, respect_gitignore=True
+        )
+        assert "--no-ignore" not in argv
 
-    def test_grep_results_sorted_by_file(self, tmp_path):
-        (tmp_path / "z.txt").write_text("needle\n")
-        (tmp_path / "a.txt").write_text("needle\n")
-        (tmp_path / "m.txt").write_text("needle\n")
-        result = _run(main.handle_grep({
-            "request_id": REQ_ID,
-            "pattern": "needle",
-            "path": ".",
-            "cwd": str(tmp_path),
-        }))
-        assert result["count"] == 3
-        files = [m["file"] for m in result["matches"]]
-        assert files == sorted(files)
+    def test_skip_dirs_excluded_when_no_ignore(self, tmp_path, monkeypatch):
+        """When --no-ignore is set, our heavy-dir glob filters MUST be passed.
 
-    def test_grep_max_results_clamped_to_minimum(self, tmp_path):
-        # max_results=0 must be clamped to 1, not silently return zero
-        (tmp_path / "f.txt").write_text("needle\nneedle\n")
-        result = _run(main.handle_grep({
-            "request_id": REQ_ID,
-            "pattern": "needle",
-            "path": ".",
-            "cwd": str(tmp_path),
-            "max_results": 0,
-        }))
-        assert "error" not in result
-        assert result["count"] == 1
-        assert result["truncated"] is True
+        This is the regression that caused remote_grep to time out on the
+        mcp-todo project: rg without these globs walks .venv / node_modules /
+        .git and never finishes on real-world repos.
+        """
+        argv, _ = self._run_with_capture(monkeypatch, tmp_path)
+        # Spot-check the most painful directories
+        for skip in (".git", ".venv", "node_modules", "__pycache__",
+                     "dist", "build", ".next", "target"):
+            assert f"!{skip}" in argv, f"missing top-level skip glob for {skip}"
+            assert f"!**/{skip}/**" in argv, f"missing recursive skip glob for {skip}"
+        # And every entry in GREP_SKIP_DIRS should be present
+        for skip in main.GREP_SKIP_DIRS:
+            assert f"!{skip}" in argv
 
-    def test_grep_max_results_clamped_to_maximum(self, tmp_path):
-        # max_results > 2000 must be clamped, not raise
-        (tmp_path / "f.txt").write_text("needle\n")
-        result = _run(main.handle_grep({
-            "request_id": REQ_ID,
-            "pattern": "needle",
-            "path": ".",
-            "cwd": str(tmp_path),
-            "max_results": 99999,
-        }))
-        assert "error" not in result
-        assert result["count"] == 1
+    def test_skip_dirs_NOT_added_when_respecting_gitignore(self, tmp_path, monkeypatch):
+        """When the user opts into gitignore, we let rg do its own thing
+        and don't pile on extra exclusions."""
+        argv, _ = self._run_with_capture(
+            monkeypatch, tmp_path, respect_gitignore=True
+        )
+        # No skip-dir globs should appear
+        assert "!.venv" not in argv
+        assert "!node_modules" not in argv
 
-    def test_grep_max_results_non_integer(self, tmp_path):
+    def test_max_count_and_filesize_passed(self, tmp_path, monkeypatch):
+        argv, _ = self._run_with_capture(monkeypatch, tmp_path, max_results=42)
+        assert "--max-count" in argv
+        assert "42" in argv
+        assert "--max-filesize" in argv
+        assert "10M" in argv
+
+    def test_glob_filter_passed_through(self, tmp_path, monkeypatch):
+        argv, _ = self._run_with_capture(monkeypatch, tmp_path, glob="*.py")
+        # The user's glob should be present (alongside our skip globs)
+        assert "*.py" in argv
+
+    def test_case_insensitive_flag(self, tmp_path, monkeypatch):
+        argv, _ = self._run_with_capture(
+            monkeypatch, tmp_path, case_insensitive=True
+        )
+        assert "-i" in argv
+
+    def test_pattern_passed_with_dash_e(self, tmp_path, monkeypatch):
+        argv, _ = self._run_with_capture(monkeypatch, tmp_path)
+        # -e <pattern> -- <base_dir>
+        e_idx = argv.index("-e")
+        assert argv[e_idx + 1] == "needle"
+
+
+class TestGrepRgErrorSurfacing:
+    """Verify ripgrep failures surface as structured errors, not as silent fallback."""
+
+    def test_nonzero_exit_returns_error(self, tmp_path, monkeypatch):
+        class _FakeProc:
+            returncode = 2  # ripgrep exit code 2 = error
+            pid = 12345
+            async def communicate(self):
+                return (b"", b"regex parse error: unclosed group")
+        async def _fake(*args, **kwargs):
+            return _FakeProc()
+        monkeypatch.setattr(main, "RG_PATH", "rg")
+        monkeypatch.setattr(main.asyncio, "create_subprocess_exec", _fake)
+        (tmp_path / "f.txt").write_text("x")
         result = _run(main.handle_grep({
-            "request_id": REQ_ID,
-            "pattern": "needle",
-            "path": ".",
-            "cwd": str(tmp_path),
-            "max_results": "abc",
+            "request_id": REQ_ID, "pattern": "needle",
+            "path": ".", "cwd": str(tmp_path),
         }))
         assert "error" in result
-        assert "integer" in result["error"]
+        assert "ripgrep exited 2" in result["error"]
+        assert "regex parse error" in result["error"]
 
-    def test_grep_bytes_mode_handles_invalid_utf8(self, tmp_path):
-        # File contains invalid UTF-8 — bytes mode must not crash, and
-        # the matching line should still be returned (with replacement chars).
-        (tmp_path / "f.txt").write_bytes(b"good line\nneedle \xff\xfe rest\n")
+    def test_launch_failure_returns_error(self, tmp_path, monkeypatch):
+        async def _fake_create(*args, **kwargs):
+            raise FileNotFoundError(2, "No such file or directory: 'rg'")
+        monkeypatch.setattr(main, "RG_PATH", "/nonexistent/rg")
+        monkeypatch.setattr(main.asyncio, "create_subprocess_exec", _fake_create)
+        (tmp_path / "f.txt").write_text("x")
         result = _run(main.handle_grep({
-            "request_id": REQ_ID,
-            "pattern": "needle",
-            "path": ".",
-            "cwd": str(tmp_path),
+            "request_id": REQ_ID, "pattern": "needle",
+            "path": ".", "cwd": str(tmp_path),
         }))
-        assert result["count"] == 1
-        assert result["matches"][0]["line"] == 2
-        assert "needle" in result["matches"][0]["text"]
+        assert "error" in result
+        assert "failed to launch ripgrep" in result["error"].lower()
+
+    def test_timeout_returns_error(self, tmp_path, monkeypatch):
+        class _HangingProc:
+            returncode = None
+            killed = False
+            pid = 12345
+            async def communicate(self):
+                # Simulate hang by waiting forever; wait_for will cancel us.
+                await asyncio.sleep(3600)
+                return (b"", b"")
+            def kill(self):
+                self.__class__.killed = True
+        async def _fake(*args, **kwargs):
+            return _HangingProc()
+        # Patch wait_for to raise TimeoutError immediately so the test is fast.
+        async def _fake_wait_for(coro, timeout):
+            # Cancel the coroutine to clean up
+            task = asyncio.ensure_future(coro)
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, BaseException):
+                pass
+            raise asyncio.TimeoutError()
+        monkeypatch.setattr(main, "RG_PATH", "rg")
+        monkeypatch.setattr(main.asyncio, "create_subprocess_exec", _fake)
+        monkeypatch.setattr(main.asyncio, "wait_for", _fake_wait_for)
+        (tmp_path / "f.txt").write_text("x")
+        result = _run(main.handle_grep({
+            "request_id": REQ_ID, "pattern": "needle",
+            "path": ".", "cwd": str(tmp_path),
+        }))
+        assert "error" in result
+        assert "timed out" in result["error"].lower()
+        assert _HangingProc.killed is True
+
+    def test_malformed_json_propagates_as_handler_error(self, tmp_path, monkeypatch):
+        """Malformed JSON from rg is a bug — it must NOT be silently skipped."""
+        class _FakeProc:
+            returncode = 0
+            pid = 12345
+            async def communicate(self):
+                return (b"this is not json\n", b"")
+        async def _fake(*args, **kwargs):
+            return _FakeProc()
+        monkeypatch.setattr(main, "RG_PATH", "rg")
+        monkeypatch.setattr(main.asyncio, "create_subprocess_exec", _fake)
+        (tmp_path / "f.txt").write_text("x")
+        # JSONDecodeError must propagate from _grep_with_rg. handle_grep
+        # does NOT catch it (only RipgrepError), so it bubbles up to the
+        # caller — the test runner sees a real exception.
+        with pytest.raises(__import__("json").JSONDecodeError):
+            _run(main.handle_grep({
+                "request_id": REQ_ID, "pattern": "needle",
+                "path": ".", "cwd": str(tmp_path),
+            }))
+
+
+class TestDecodeRgTextField:
+    def test_decode_text(self):
+        assert main._decode_rg_text_field({"text": "hello"}) == "hello"
+
+    def test_decode_bytes(self):
+        # base64 of "hello" = "aGVsbG8="
+        assert main._decode_rg_text_field({"bytes": "aGVsbG8="}) == "hello"
+
+    def test_decode_invalid_bytes_returns_replacement(self):
+        # base64 of invalid utf-8 \xff\xfe → "//4="
+        result = main._decode_rg_text_field({"bytes": "//4="})
+        # Should not raise; result is a string with replacement chars
+        assert isinstance(result, str)
+
+    def test_decode_none(self):
+        assert main._decode_rg_text_field(None) == ""
+
+    def test_decode_unknown_shape(self):
+        assert main._decode_rg_text_field({"weird": "thing"}) == ""

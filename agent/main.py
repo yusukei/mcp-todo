@@ -14,15 +14,14 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
-import fnmatch
 import json
 import logging
 import os
 import platform
-import re
 import shutil
 import signal
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -40,6 +39,22 @@ MAX_DIR_ENTRIES = 1000
 MAX_GLOB_RESULTS = 1000
 MAX_GREP_RESULTS_DEFAULT = 200
 CHAT_TIMEOUT = 30 * 60  # 30 minutes max per chat message
+
+# ripgrep is REQUIRED for handle_grep. Detected at startup and resolved
+# to an absolute path so subprocess invocation does not depend on the
+# agent process's CWD. If ripgrep is missing, handle_grep returns an
+# error rather than silently falling back to a slow Python loop — a
+# Python implementation simply isn't fast enough on real-world repos.
+def _detect_ripgrep() -> str | None:
+    found = shutil.which("rg")
+    if not found:
+        return None
+    # Resolve to absolute path so a relative result like ".\\rg.EXE"
+    # doesn't break when subprocess working directory differs.
+    return os.path.abspath(found)
+
+
+RG_PATH: str | None = _detect_ripgrep()
 
 
 def _detect_shells() -> list[str]:
@@ -699,7 +714,9 @@ async def handle_glob(msg: dict) -> dict:
 
 
 # Directories that are universally heavy / vendored / generated.
-# Skipping these dramatically speeds up grep on real-world repos.
+# We pass these to ripgrep as `-g '!<dir>'` exclusions when running with
+# --no-ignore so it doesn't walk into .venv / node_modules / .git on
+# real-world repositories.
 GREP_SKIP_DIRS = frozenset({
     ".git", ".hg", ".svn",
     "node_modules", "bower_components",
@@ -711,166 +728,256 @@ GREP_SKIP_DIRS = frozenset({
     "coverage", ".nyc_output",
 })
 
-# File extensions that are almost always binary — skipped without opening.
-GREP_BINARY_EXTS = frozenset({
-    # Images
-    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif",
-    ".ico", ".heic", ".avif", ".psd",
-    # Audio / video
-    ".mp3", ".wav", ".ogg", ".flac", ".m4a",
-    ".mp4", ".mov", ".avi", ".mkv", ".webm", ".wmv",
-    # Archives / compressed
-    ".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".7z", ".rar",
-    ".agz",
-    # Documents
-    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-    # Fonts
-    ".woff", ".woff2", ".ttf", ".otf", ".eot",
-    # Native binaries / object files
-    ".so", ".dll", ".dylib", ".exe", ".bin", ".o", ".a", ".lib",
-    ".class", ".jar", ".war", ".pyc", ".pyo", ".pyd",
-    # Misc
-    ".lock", ".min.js", ".min.css", ".map",
-})
 
-GREP_MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB — skip individual files larger than this
+class RipgrepError(Exception):
+    """Raised when ripgrep cannot be executed or returns an error."""
 
 
-def _looks_binary(head: bytes) -> bool:
-    """Heuristic: a file is binary if its first 8 KB contain a NUL byte."""
-    return b"\x00" in head
+def _decode_rg_text_field(field: dict | None) -> str:
+    """Decode a ripgrep --json text field.
+
+    ripgrep emits ``{"text": "..."}`` for valid UTF-8 and
+    ``{"bytes": "<base64>"}`` when the bytes are not valid UTF-8.
+    Decoding errors propagate; the caller (or test) will see them.
+    """
+    if not field:
+        return ""
+    if "text" in field:
+        return field["text"]
+    if "bytes" in field:
+        # Use errors="replace" only for the byte→str step: invalid UTF-8
+        # is the *expected* reason ripgrep used the bytes form, so it's
+        # not an error to handle. base64 decoding itself will raise on
+        # malformed input.
+        return base64.b64decode(field["bytes"]).decode("utf-8", errors="replace")
+    return ""
+
+
+async def _grep_with_rg(
+    *,
+    base_dir: str,
+    pattern: str,
+    glob_filter: str | None,
+    case_insensitive: bool,
+    max_results: int,
+    respect_gitignore: bool,
+) -> dict:
+    """Run ripgrep and translate its --json output to our schema.
+
+    Raises ``RipgrepError`` on launch failure, timeout, or non-zero/non-1
+    exit. ``json.JSONDecodeError`` propagates if ripgrep emits malformed
+    JSON (which would indicate a bug — we want to know).
+    """
+    t0 = time.perf_counter()
+
+    cmd: list[str] = [
+        RG_PATH,  # type: ignore[list-item]
+        "--json",
+        "--no-messages",
+        "--no-config",
+        "--max-count", str(max_results),
+        "--max-filesize", "10M",
+    ]
+    if not respect_gitignore:
+        # Without --no-ignore, ripgrep skips gitignored files which may
+        # not match our intent. With --no-ignore, ripgrep would happily
+        # walk into .venv / node_modules / .git, so we explicitly exclude
+        # our skip list via glob filters.
+        cmd.append("--no-ignore")
+        for skip_dir in GREP_SKIP_DIRS:
+            cmd += ["-g", f"!{skip_dir}", "-g", f"!**/{skip_dir}/**"]
+    if case_insensitive:
+        cmd.append("-i")
+    if glob_filter:
+        cmd += ["-g", glob_filter]
+    cmd += ["-e", pattern, "--", base_dir]
+
+    logger.info(
+        "[grep] launching ripgrep: rg=%s pattern=%r base=%s glob=%r ci=%s "
+        "max=%d gitignore=%s argc=%d",
+        RG_PATH, pattern, base_dir, glob_filter, case_insensitive,
+        max_results, respect_gitignore, len(cmd),
+    )
+    logger.debug("[grep] full argv: %r", cmd)
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as e:
+        logger.error("[grep] failed to launch ripgrep at %s: %s", RG_PATH, e)
+        raise RipgrepError(f"failed to launch ripgrep ({RG_PATH}): {e}") from e
+
+    logger.info("[grep] ripgrep started (pid=%s); awaiting communicate()", proc.pid)
+
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+    except asyncio.TimeoutError as e:
+        elapsed = time.perf_counter() - t0
+        logger.error(
+            "[grep] ripgrep TIMED OUT after %.1fs (pid=%s, base_dir=%s) — killing",
+            elapsed, proc.pid, base_dir,
+        )
+        proc.kill()
+        raise RipgrepError(f"ripgrep timed out after 30s (base_dir={base_dir})") from e
+
+    elapsed = time.perf_counter() - t0
+    logger.info(
+        "[grep] ripgrep finished: pid=%s exit=%s elapsed=%.3fs "
+        "stdout=%dB stderr=%dB",
+        proc.pid, proc.returncode, elapsed, len(stdout), len(stderr),
+    )
+
+    # ripgrep exit codes:
+    #   0 = matches found
+    #   1 = no matches (not an error)
+    #   2 = error
+    if proc.returncode not in (0, 1):
+        err_text = stderr.decode("utf-8", errors="replace").strip()
+        logger.error("[grep] ripgrep exited %s: %s", proc.returncode, err_text)
+        raise RipgrepError(
+            f"ripgrep exited {proc.returncode}: {err_text or 'unknown error'}"
+        )
+
+    matches: list[dict] = []
+    files_scanned = 0
+    truncated = False
+    summary_matches: int | None = None
+
+    for raw_line in stdout.split(b"\n"):
+        if not raw_line.strip():
+            continue
+        # JSONDecodeError propagates intentionally — malformed output
+        # from ripgrep is a bug we must surface, not silently skip.
+        evt = json.loads(raw_line)
+        etype = evt.get("type")
+        data = evt.get("data") or {}
+        if etype == "match":
+            if len(matches) >= max_results:
+                truncated = True
+                continue
+            file_path = _decode_rg_text_field(data.get("path"))
+            line_no = data.get("line_number")
+            text = _decode_rg_text_field(data.get("lines")).rstrip("\n")[:500]
+            matches.append({
+                "file": file_path,
+                "line": line_no,
+                "text": text,
+            })
+        elif etype == "end":
+            files_scanned += 1
+        elif etype == "summary":
+            stats = data.get("stats") or {}
+            summary_matches = stats.get("matches")
+
+    # If summary reports more matches than we kept, ripgrep was truncated
+    # by --max-count per file or we hit our own ceiling.
+    if summary_matches is not None and summary_matches > len(matches):
+        truncated = True
+
+    matches.sort(key=lambda m: (m["file"], m["line"] or 0))
+    logger.info(
+        "[grep] parsed: matches=%d files_scanned=%d truncated=%s",
+        len(matches), files_scanned, truncated,
+    )
+    return {
+        "matches": matches,
+        "count": len(matches),
+        "files_scanned": files_scanned,
+        "truncated": truncated,
+        "engine": "ripgrep",
+    }
 
 
 async def handle_grep(msg: dict) -> dict:
     """Search for ``pattern`` (regex) inside files under ``path``.
 
+    Requires ripgrep (``rg``) to be installed on the agent host. The
+    Python fallback was removed because it was not fast enough on
+    real-world repositories. If ripgrep is missing, this returns an
+    error and the operator must install it.
+
     Optional file filter ``glob`` (e.g. ``*.py``) limits the file set.
     Returns at most ``max_results`` matches with file path + line number.
 
-    Performance notes:
-    - Files with known binary extensions are skipped without opening.
-    - Files larger than ``GREP_MAX_FILE_SIZE`` (10 MB) are skipped.
-    - Files whose first 8 KB contain a NUL byte are treated as binary
-      and skipped.
-    - Reading happens in ``rb`` mode against a bytes regex; this avoids
-      Python's text decoder overhead.
-    - Heavy / vendored directories (see ``GREP_SKIP_DIRS``) are pruned.
+    Heavy / vendored directories (see ``GREP_SKIP_DIRS``) are pruned by
+    passing ``-g '!<dir>'`` and ``-g '!**/<dir>/**'`` filters to ripgrep.
+    Setting ``respect_gitignore=True`` lets ripgrep honor ``.gitignore``
+    instead, in which case the explicit skip globs are not added.
     """
+    request_id = msg["request_id"]
+    logger.info("[grep] handle_grep called: request_id=%s RG_PATH=%s", request_id, RG_PATH)
+
+    if RG_PATH is None:
+        logger.error("[grep] RG_PATH is None — returning install-hint error")
+        return {
+            "type": "grep_result",
+            "request_id": request_id,
+            "error": (
+                "ripgrep (rg) is not installed on the agent host. "
+                "Install it (macOS: brew install ripgrep | "
+                "Debian/Ubuntu: apt install ripgrep | "
+                "Windows: winget install BurntSushi.ripgrep.MSVC) "
+                "and restart the agent."
+            ),
+        }
+
     pattern = msg.get("pattern", "")
     path = msg.get("path", ".")
     cwd = msg.get("cwd")
     glob_filter = msg.get("glob")
     case_insensitive = bool(msg.get("case_insensitive", False))
+    respect_gitignore = bool(msg.get("respect_gitignore", False))
+    logger.info(
+        "[grep] msg: pattern=%r path=%r cwd=%r glob=%r ci=%s gitignore=%s",
+        pattern, path, cwd, glob_filter, case_insensitive, respect_gitignore,
+    )
     try:
         max_results_raw = int(msg.get("max_results", MAX_GREP_RESULTS_DEFAULT))
     except (TypeError, ValueError):
-        return {"type": "grep_result", "request_id": msg["request_id"],
+        return {"type": "grep_result", "request_id": request_id,
                 "error": "max_results must be an integer"}
     max_results = max(1, min(max_results_raw, 2000))
 
     if not pattern:
-        return {"type": "grep_result", "request_id": msg["request_id"], "error": "pattern is required"}
+        return {"type": "grep_result", "request_id": request_id,
+                "error": "pattern is required"}
 
     try:
         base_dir = _resolve_safe_path(path, cwd)
     except ValueError as e:
-        return {"type": "grep_result", "request_id": msg["request_id"], "error": str(e)}
+        logger.error("[grep] path validation failed: %s", e)
+        return {"type": "grep_result", "request_id": request_id, "error": str(e)}
+    logger.info("[grep] resolved base_dir=%s", base_dir)
+
+    if not os.path.exists(base_dir):
+        logger.error("[grep] base_dir does not exist: %s", base_dir)
+        return {"type": "grep_result", "request_id": request_id,
+                "error": f"Not a directory: {base_dir}"}
 
     try:
-        flags = re.IGNORECASE if case_insensitive else 0
-        # Compile as bytes — we read files in rb mode for speed.
-        regex = re.compile(pattern.encode("utf-8"), flags)
-    except re.error as e:
-        return {"type": "grep_result", "request_id": msg["request_id"], "error": f"Invalid regex: {e}"}
+        result = await _grep_with_rg(
+            base_dir=base_dir,
+            pattern=pattern,
+            glob_filter=glob_filter,
+            case_insensitive=case_insensitive,
+            max_results=max_results,
+            respect_gitignore=respect_gitignore,
+        )
+    except RipgrepError as e:
+        # Known failure modes (launch failure / timeout / non-zero exit)
+        # surface as a structured error to the MCP layer.
+        logger.error("[grep] RipgrepError: %s", e)
+        return {"type": "grep_result", "request_id": request_id, "error": str(e)}
+    # Any other exception (JSONDecodeError, programmer bugs, …) intentionally
+    # propagates. The agent's outer dispatcher will log a stack trace and
+    # the operator will see exactly what went wrong instead of a vague
+    # "ripgrep failed" message.
 
-    def _grep():
-        base = Path(base_dir)
-        if not base.is_dir():
-            if base.is_file():
-                files_iter = [base]
-            else:
-                return {"error": f"Not a directory: {base_dir}"}
-        else:
-            def _iter_files():
-                for root, dirs, files in os.walk(base):
-                    # Prune heavy / vendored directories in-place
-                    dirs[:] = [d for d in dirs if d not in GREP_SKIP_DIRS]
-                    for fname in files:
-                        if glob_filter and not fnmatch.fnmatch(fname, glob_filter):
-                            continue
-                        # Cheap extension-based binary skip
-                        ext = os.path.splitext(fname)[1].lower()
-                        if ext in GREP_BINARY_EXTS:
-                            continue
-                        yield Path(root) / fname
-            files_iter = _iter_files()
-
-        matches: list[dict] = []
-        files_scanned = 0
-        files_skipped_binary = 0
-        files_skipped_large = 0
-        for fpath in files_iter:
-            try:
-                # Size check first — cheaper than opening
-                try:
-                    fsize = fpath.stat().st_size
-                except OSError:
-                    continue
-                if fsize > GREP_MAX_FILE_SIZE:
-                    files_skipped_large += 1
-                    continue
-
-                with open(fpath, "rb") as f:
-                    head = f.read(8192)
-                    if _looks_binary(head):
-                        files_skipped_binary += 1
-                        continue
-                    files_scanned += 1
-                    # Process the head we already read, then the rest.
-                    # Use a single buffer to keep line numbering simple.
-                    rest = f.read()
-                    data = head + rest
-                    # Iterate lines via splitlines(keepends=False) — but
-                    # we need line numbers, so split on b"\n".
-                    line_no = 0
-                    for raw_line in data.split(b"\n"):
-                        line_no += 1
-                        if regex.search(raw_line):
-                            text = raw_line[:500].decode("utf-8", errors="replace")
-                            matches.append({
-                                "file": str(fpath),
-                                "line": line_no,
-                                "text": text,
-                            })
-                            if len(matches) >= max_results:
-                                # Sort by file path for stable ordering
-                                matches.sort(key=lambda m: (m["file"], m["line"]))
-                                return {
-                                    "matches": matches,
-                                    "count": len(matches),
-                                    "files_scanned": files_scanned,
-                                    "files_skipped_binary": files_skipped_binary,
-                                    "files_skipped_large": files_skipped_large,
-                                    "truncated": True,
-                                }
-            except (OSError, PermissionError):
-                continue
-        # Sort by file path for stable ordering
-        matches.sort(key=lambda m: (m["file"], m["line"]))
-        return {
-            "matches": matches,
-            "count": len(matches),
-            "files_scanned": files_scanned,
-            "files_skipped_binary": files_skipped_binary,
-            "files_skipped_large": files_skipped_large,
-            "truncated": False,
-        }
-
-    try:
-        result = await asyncio.to_thread(_grep)
-        return {"type": "grep_result", "request_id": msg["request_id"], **result}
-    except Exception as e:
-        return {"type": "grep_result", "request_id": msg["request_id"], "error": str(e)}
+    logger.info("[grep] returning %d matches for request_id=%s", result.get("count", 0), request_id)
+    return {"type": "grep_result", "request_id": request_id, **result}
 
 
 _HANDLERS = {
@@ -1200,19 +1307,43 @@ class TerminalAgent:
 
     async def _run_handler(self, handler, msg: dict) -> None:
         """Run a request/response handler as a background task."""
+        msg_type = msg.get("type")
+        request_id = msg.get("request_id")
         try:
             response = await handler(msg)
             if response:
-                await self._safe_send(json.dumps(response))
+                try:
+                    payload = json.dumps(response)
+                except (TypeError, ValueError) as e:
+                    logger.exception(
+                        "[dispatch] FAILED to serialize response for %s/%s: %s",
+                        msg_type, request_id, e,
+                    )
+                    # Send a minimal error so the caller doesn't hang.
+                    payload = json.dumps({
+                        "type": f"{msg_type}_result",
+                        "request_id": request_id,
+                        "error": f"response serialization failed: {e}",
+                    })
+                logger.info(
+                    "[dispatch] sending response: type=%s req=%s bytes=%d",
+                    response.get("type"), request_id, len(payload),
+                )
+                await self._safe_send(payload)
+                logger.info(
+                    "[dispatch] response sent: type=%s req=%s",
+                    response.get("type"), request_id,
+                )
         except Exception as e:
-            logger.error("Handler error for %s: %s", msg.get("type"), e)
-            # Send error response so backend Future doesn't hang
-            request_id = msg.get("request_id")
+            # Full stack trace so operators can see WHERE the handler died,
+            # not just the exception message.
+            logger.exception("[dispatch] Handler error for %s/%s: %s",
+                             msg_type, request_id, e)
             if request_id:
                 await self._safe_send(json.dumps({
-                    "type": f"{msg.get('type', 'unknown')}_result",
+                    "type": f"{msg_type or 'unknown'}_result",
                     "request_id": request_id,
-                    "error": str(e),
+                    "error": f"{type(e).__name__}: {e}",
                 }))
 
     async def shutdown(self) -> None:
@@ -1240,12 +1371,33 @@ def load_config(path: str) -> dict:
 # ── Entry point ──────────────────────────────────────────────
 
 
+def _log_grep_engine() -> None:
+    """Log ripgrep detection result on startup.
+
+    ripgrep is required for remote_grep. If it is missing the agent
+    still starts (so other handlers keep working) but every grep
+    request will return an error until ripgrep is installed.
+    """
+    if RG_PATH:
+        logger.info("ripgrep detected at %s — remote_grep ready", RG_PATH)
+    else:
+        logger.error(
+            "ripgrep (rg) NOT FOUND on PATH — remote_grep will return errors. "
+            "Install it (macOS: brew install ripgrep | "
+            "Debian/Ubuntu: apt install ripgrep | "
+            "Windows: winget install BurntSushi.ripgrep.MSVC) "
+            "and restart the agent."
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="MCP Todo Remote Terminal Agent")
     parser.add_argument("--url", help="WebSocket server URL")
     parser.add_argument("--token", help="Agent authentication token")
     parser.add_argument("--config", help="Path to config JSON file", default="")
     args = parser.parse_args()
+
+    _log_grep_engine()
 
     server_url = args.url
     token = args.token

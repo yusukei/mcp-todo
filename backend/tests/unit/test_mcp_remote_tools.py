@@ -318,6 +318,23 @@ class TestRemoteGrep:
             await remote.remote_grep(project_id="p", pattern="x", max_results=2000)
         assert send_request.call_count == 2
 
+    async def test_grep_respect_gitignore_default_false(self, patch_auth):
+        """Default for respect_gitignore must be False (Phase 1 compat)."""
+        send_request = AsyncMock(return_value={"matches": [], "count": 0,
+                                               "files_scanned": 0, "truncated": False})
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            await remote.remote_grep(project_id="p", pattern="x")
+        payload = send_request.call_args[0][2]
+        assert payload["respect_gitignore"] is False
+
+    async def test_grep_respect_gitignore_passthrough(self, patch_auth):
+        send_request = AsyncMock(return_value={"matches": [], "count": 0,
+                                               "files_scanned": 0, "truncated": False})
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            await remote.remote_grep(project_id="p", pattern="x", respect_gitignore=True)
+        payload = send_request.call_args[0][2]
+        assert payload["respect_gitignore"] is True
+
 
 # ──────────────────────────────────────────────
 # remote_mkdir / remote_delete_file / remote_move_file / remote_copy_file

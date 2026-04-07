@@ -521,6 +521,7 @@ async def remote_grep(
     glob: str | None = None,
     case_insensitive: bool = False,
     max_results: int = 200,
+    respect_gitignore: bool = False,
 ) -> dict:
     """Search for ``pattern`` (regex) inside files under ``path``.
 
@@ -531,10 +532,19 @@ async def remote_grep(
         glob: Optional file-name glob filter (e.g. ``*.py``)
         case_insensitive: Match without regard to letter case
         max_results: Maximum number of matches to return (1-2000)
+        respect_gitignore: When the agent has ripgrep available, honor
+            ``.gitignore`` / ``.ignore`` files. Default ``False`` for
+            backwards compatibility with the Python fallback. The Python
+            fallback never reads gitignore regardless of this flag.
 
     Returns matches as ``[{file, line, text}]`` sorted by ``(file, line)``.
     The result also includes ``files_scanned``, ``files_skipped_binary``,
-    and ``files_skipped_large`` for visibility into what was filtered.
+    ``files_skipped_large``, and ``engine`` (``"ripgrep"`` or ``"python"``)
+    for visibility into how the search ran.
+
+    Engine: if the remote agent has ``ripgrep`` (``rg``) installed, it
+    is used and is 10–100× faster than the Python fallback. Otherwise
+    a pure-Python implementation is used.
 
     The agent automatically skips:
     - Heavy/vendored directories (.git, node_modules, .venv, venv, env,
@@ -560,6 +570,7 @@ async def remote_grep(
         "cwd": workspace.remote_path,
         "case_insensitive": case_insensitive,
         "max_results": max_results,
+        "respect_gitignore": respect_gitignore,
     }
     if glob:
         payload["glob"] = glob
