@@ -44,6 +44,11 @@ async def clip_twitter(bookmark: Bookmark, log_and_publish_fn) -> None:
     Produces a <!--tweet:URL|author|date|text--> marker that the frontend
     renders as a full tweet embed via react-tweet, matching the existing
     embedded tweet format used for tweets found within articles.
+
+    All HTTP traffic for a single clip operation goes through one shared
+    ``httpx.AsyncClient`` so TCP / TLS connections to api.fxtwitter.com,
+    publish.twitter.com, cdn.syndication.twimg.com, and pbs.twimg.com can
+    be reused across the FxTwitter call, fallbacks, and image downloads.
     """
     info = extract_tweet_id(bookmark.url)
     if not info:
@@ -59,9 +64,12 @@ async def clip_twitter(bookmark: Bookmark, log_and_publish_fn) -> None:
     photos: list[str] = []
     avatar_url = ""
 
-    # ── Primary: FxTwitter API ──
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+    # Single shared client for the entire clip operation. ``follow_redirects``
+    # is needed for syndication / image hosts; the FxTwitter and oEmbed
+    # endpoints don't redirect, so enabling it globally is safe.
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+        # ── Primary: FxTwitter API ──
+        try:
             resp = await client.get(
                 f"https://api.fxtwitter.com/{username}/status/{tweet_id}"
             )
@@ -89,13 +97,12 @@ async def clip_twitter(bookmark: Bookmark, log_and_publish_fn) -> None:
                     for video in media.get("videos", []):
                         if video.get("thumbnail_url"):
                             photos.append(video["thumbnail_url"])
-    except Exception:
-        logger.warning("FxTwitter API failed for %s, trying oEmbed", bookmark.url)
+        except Exception:
+            logger.warning("FxTwitter API failed for %s, trying oEmbed", bookmark.url)
 
-    # ── Fallback: oEmbed API ──
-    if not tweet_text:
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
+        # ── Fallback: oEmbed API ──
+        if not tweet_text:
+            try:
                 resp = await client.get(
                     "https://publish.twitter.com/oembed",
                     params={"url": canonical_url},
@@ -117,35 +124,34 @@ async def clip_twitter(bookmark: Bookmark, log_and_publish_fn) -> None:
                     )
                     if date_match:
                         date_str = date_match.group(1).strip()
-        except Exception:
-            logger.warning("oEmbed API also failed for %s", bookmark.url)
+            except Exception:
+                logger.warning("oEmbed API also failed for %s", bookmark.url)
 
-    if not tweet_text:
-        raise ValueError("Could not fetch tweet content from any source")
+        if not tweet_text:
+            raise ValueError("Could not fetch tweet content from any source")
 
-    # ── Update bookmark metadata ──
-    if not bookmark.metadata.meta_title:
-        bookmark.metadata = BookmarkMetadata(
-            meta_title=f"{author_name} ({author_handle})",
-            meta_description=tweet_text[:200],
-            og_image_url=photos[0] if photos else "",
-            site_name="X (Twitter)",
-            author=author_name,
-        )
-    if bookmark.title == bookmark.url:
-        bookmark.title = f"{author_name}: {tweet_text[:80]}"
+        # ── Update bookmark metadata ──
+        if not bookmark.metadata.meta_title:
+            bookmark.metadata = BookmarkMetadata(
+                meta_title=f"{author_name} ({author_handle})",
+                meta_description=tweet_text[:200],
+                og_image_url=photos[0] if photos else "",
+                site_name="X (Twitter)",
+                author=author_name,
+            )
+        if bookmark.title == bookmark.url:
+            bookmark.title = f"{author_name}: {tweet_text[:80]}"
 
-    # ── Download thumbnail (first photo, avatar, or syndication screenshot) ──
-    asset_dir = Path(settings.BOOKMARK_ASSETS_DIR) / str(bookmark.id)
-    asset_dir.mkdir(parents=True, exist_ok=True)
+        # ── Download thumbnail (first photo, avatar, or syndication screenshot) ──
+        asset_dir = Path(settings.BOOKMARK_ASSETS_DIR) / str(bookmark.id)
+        asset_dir.mkdir(parents=True, exist_ok=True)
 
-    # If no photos from FxTwitter, try Twitter syndication API for a tweet screenshot
-    if not photos and not avatar_url:
-        syndication_url = (
-            f"https://cdn.syndication.twimg.com/tweet-result?id={tweet_id}&token=0"
-        )
-        try:
-            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+        # If no photos from FxTwitter, try Twitter syndication API for a tweet screenshot
+        if not photos and not avatar_url:
+            syndication_url = (
+                f"https://cdn.syndication.twimg.com/tweet-result?id={tweet_id}&token=0"
+            )
+            try:
                 resp = await client.get(syndication_url)
                 if resp.status_code == 200:
                     synd_data = resp.json()
@@ -165,26 +171,24 @@ async def clip_twitter(bookmark: Bookmark, log_and_publish_fn) -> None:
                         author_name = synd_user["name"]
                     if author_handle == f"@{username}" and synd_user.get("screen_name"):
                         author_handle = f"@{synd_user['screen_name']}"
-        except Exception:
-            logger.debug("Syndication API failed for tweet %s", tweet_id)
+            except Exception:
+                logger.debug("Syndication API failed for tweet %s", tweet_id)
 
-    thumb_source = photos[0] if photos else avatar_url
-    if thumb_source:
-        try:
-            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+        thumb_source = photos[0] if photos else avatar_url
+        if thumb_source:
+            try:
                 resp = await client.get(thumb_source)
                 if resp.status_code == 200 and len(resp.content) > 1024:
                     thumb_path = asset_dir / "thumb.jpg"
                     await asyncio.to_thread(thumb_path.write_bytes, resp.content)
                     bookmark.thumbnail_path = "thumb.jpg"
-        except Exception:
-            logger.debug("Failed to download tweet thumbnail for %s", bookmark.id)
+            except Exception:
+                logger.debug("Failed to download tweet thumbnail for %s", bookmark.id)
 
-    # ── Download media images ──
-    local_images: dict[str, str] = {}
-    for photo_url in photos:
-        try:
-            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+        # ── Download media images ──
+        local_images: dict[str, str] = {}
+        for photo_url in photos:
+            try:
                 resp = await client.get(photo_url)
                 if (
                     resp.status_code == 200
@@ -196,8 +200,8 @@ async def clip_twitter(bookmark: Bookmark, log_and_publish_fn) -> None:
                     filepath = asset_dir / filename
                     await asyncio.to_thread(filepath.write_bytes, resp.content)
                     local_images[photo_url] = filename
-        except Exception:
-            logger.debug("Failed to download tweet image: %s", photo_url)
+            except Exception:
+                logger.debug("Failed to download tweet image: %s", photo_url)
 
     # ── Build clip content as tweet marker ──
     text_escaped = tweet_text.replace("|", "｜").replace("\n", " ")
