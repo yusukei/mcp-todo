@@ -1,11 +1,10 @@
-import React, { Suspense, useEffect } from 'react'
+import React, { Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { api } from './api/client'
-import { useAuthStore } from './store/auth'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import { useGlobalErrorHandler } from './hooks/useGlobalErrorHandler'
 import Layout from './components/common/Layout'
+import AppInit from './components/common/AppInit'
 import ToastContainer from './components/common/Toast'
 import ConfirmDialog from './components/common/ConfirmDialog'
 import ProtectedRoute from './components/common/ProtectedRoute'
@@ -41,28 +40,6 @@ const LoadingFallback = () => (
 const lazy = (node: React.ReactNode) => (
   <Suspense fallback={<LoadingFallback />}>{node}</Suspense>
 )
-
-function AppInit({ children }: { children: React.ReactNode }) {
-  const setUser = useAuthStore((s) => s.setUser)
-  const setInitialized = useAuthStore((s) => s.setInitialized)
-
-  useEffect(() => {
-    const token = localStorage.getItem('access_token')
-    if (token) {
-      api.get('/auth/me')
-        .then((r) => setUser(r.data))
-        .catch(() => {
-          localStorage.removeItem('access_token')
-          localStorage.removeItem('refresh_token')
-        })
-        .finally(() => setInitialized(true))
-    } else {
-      setInitialized(true)
-    }
-  }, [setUser, setInitialized])
-
-  return <>{children}</>
-}
 
 function AppRoutes() {
   const location = useLocation()
