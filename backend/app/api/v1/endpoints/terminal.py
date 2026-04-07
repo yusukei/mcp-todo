@@ -16,6 +16,8 @@ import secrets
 import uuid
 from datetime import UTC, datetime
 
+from bson import ObjectId
+from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, Field
 
@@ -190,10 +192,16 @@ def _agent_dict(a: TerminalAgent) -> dict:
     }
 
 
-async def _workspace_dict(w: RemoteWorkspace) -> dict:
-    agent = await TerminalAgent.get(w.agent_id)
-    from ....models import Project
-    project = await Project.get(w.project_id)
+def _build_workspace_dict(
+    w: RemoteWorkspace,
+    agent: TerminalAgent | None,
+    project,  # Project | None — typed as Any to avoid a circular import
+) -> dict:
+    """Build a workspace response dict from already-fetched related entities.
+
+    Synchronous on purpose so it can be reused inside batched loops without
+    triggering extra DB round-trips.
+    """
     return {
         "id": str(w.id),
         "agent_id": w.agent_id,
@@ -206,6 +214,30 @@ async def _workspace_dict(w: RemoteWorkspace) -> dict:
         "created_at": w.created_at.isoformat(),
         "updated_at": w.updated_at.isoformat(),
     }
+
+
+def _to_object_ids(ids: list[str]) -> list[ObjectId]:
+    """Convert string IDs to ObjectId, silently dropping invalid ones."""
+    out: list[ObjectId] = []
+    for s in ids:
+        try:
+            out.append(ObjectId(s))
+        except (InvalidId, TypeError):
+            continue
+    return out
+
+
+async def _workspace_dict(w: RemoteWorkspace) -> dict:
+    """Single-workspace variant: fetches the related agent and project.
+
+    Used by create/update endpoints that operate on one workspace at a time.
+    For list endpoints, use the batched path inside ``list_workspaces`` to
+    avoid the 2N round-trips this helper would otherwise incur.
+    """
+    agent = await TerminalAgent.get(w.agent_id)
+    from ....models import Project
+    project = await Project.get(w.project_id)
+    return _build_workspace_dict(w, agent, project)
 
 
 # ── Health check ─────────────────────────────────────────────
@@ -253,8 +285,53 @@ async def delete_agent(agent_id: str, user: User = Depends(get_admin_user)) -> N
 
 @router.get("/workspaces")
 async def list_workspaces(user: User = Depends(get_admin_user)) -> list[dict]:
+    """List all workspaces with their agent / project details.
+
+    Performs at most three database queries regardless of workspace count:
+      1. RemoteWorkspace.find_all()
+      2. TerminalAgent.find({_id: {$in: [...]}})
+      3. Project.find({_id: {$in: [...]}})
+
+    Previously this used ``[await _workspace_dict(w) ...]`` which fired
+    ``2 * N`` extra round-trips (1 agent + 1 project per workspace).
+    """
     workspaces = await RemoteWorkspace.find_all().sort("-created_at").to_list()
-    return [await _workspace_dict(w) for w in workspaces]
+    if not workspaces:
+        return []
+
+    # Collect unique foreign-key strings, preserve dedup so the $in queries
+    # don't ship duplicates to MongoDB.
+    agent_id_strs = {w.agent_id for w in workspaces if w.agent_id}
+    project_id_strs = {w.project_id for w in workspaces if w.project_id}
+
+    from ....models import Project
+
+    agent_oids = _to_object_ids(list(agent_id_strs))
+    project_oids = _to_object_ids(list(project_id_strs))
+
+    agents_task = (
+        TerminalAgent.find({"_id": {"$in": agent_oids}}).to_list()
+        if agent_oids
+        else asyncio.sleep(0, result=[])
+    )
+    projects_task = (
+        Project.find({"_id": {"$in": project_oids}}).to_list()
+        if project_oids
+        else asyncio.sleep(0, result=[])
+    )
+    agents, projects = await asyncio.gather(agents_task, projects_task)
+
+    agent_by_id: dict[str, TerminalAgent] = {str(a.id): a for a in agents}
+    project_by_id: dict[str, object] = {str(p.id): p for p in projects}
+
+    return [
+        _build_workspace_dict(
+            w,
+            agent_by_id.get(w.agent_id),
+            project_by_id.get(w.project_id),
+        )
+        for w in workspaces
+    ]
 
 
 @router.post("/workspaces", status_code=status.HTTP_201_CREATED)
@@ -285,7 +362,8 @@ async def create_workspace(
         label=body.label,
     )
     await workspace.insert()
-    return await _workspace_dict(workspace)
+    # Reuse the already-fetched agent/project to avoid two extra round-trips.
+    return _build_workspace_dict(workspace, agent, project)
 
 
 @router.patch("/workspaces/{workspace_id}")
