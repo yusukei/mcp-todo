@@ -109,7 +109,6 @@ def build_workspace_dict(
         "id": str(w.id),
         "agent_id": w.agent_id,
         "agent_name": agent.name if agent else "",
-        "agent_version": agent.agent_version if agent else None,
         "project_id": w.project_id,
         "project_name": project.name if project else "",
         "remote_path": w.remote_path,

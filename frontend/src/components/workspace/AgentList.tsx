@@ -9,6 +9,7 @@ interface Agent {
   is_online: boolean
   last_seen_at: string | null
   created_at: string
+  agent_version: string | null
 }
 
 interface AgentListProps {
@@ -67,6 +68,11 @@ export default function AgentList({ agents, selectedAgentId, onSelect, onDelete 
               <span className="text-xs text-gray-400 dark:text-gray-500">
                 {osLabel(agent.os_type)}
               </span>
+              {agent.agent_version && (
+                <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 font-mono text-[10px]">
+                  v{agent.agent_version}
+                </span>
+              )}
             </div>
             {agent.hostname && (
               <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
