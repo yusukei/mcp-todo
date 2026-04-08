@@ -1004,6 +1004,25 @@ _HANDLERS = {
 
 # ── ChatManager ─────────────────────────────────────────────
 
+# Tools claude must NOT use inside a Web Chat session.
+#
+# Rationale: the Web Chat runs `claude -p` with --permission-mode=
+# bypassPermissions so tool calls are auto-approved. Without further
+# restriction the spawned claude process could read/write/execute
+# anywhere on the agent host. We disable every claude built-in that
+# touches the local filesystem or runs arbitrary shell commands so the
+# session can only reach files via mcp-todo's `remote_*` tools, where
+# the workspace boundary is enforced server-side by the agent itself.
+#
+# Kept on purpose:
+#   - Task / TaskOutput / TaskStop  (subagent dispatch — inherits this list)
+#   - WebFetch / WebSearch          (external HTTP only)
+#   - TodoWrite / AskUserQuestion   (no FS / no exec)
+#   - mcp__* tools                  (boundary enforced agent-side)
+CHAT_DISALLOWED_TOOLS = (
+    "Read Write Edit NotebookEdit Bash Glob Grep LSP EnterWorktree"
+)
+
 
 class ChatManager:
     """Manages Claude Code chat sessions via stream-json CLI."""
@@ -1033,7 +1052,13 @@ class ChatManager:
         return "claude"
 
     def _build_command(self, content: str, claude_session_id: str | None = None, model: str = "") -> list[str]:
-        cmd = [self._find_claude(), "-p", content, "--output-format", "stream-json"]
+        cmd = [
+            self._find_claude(), "-p", content,
+            "--output-format", "stream-json",
+            "--verbose",
+            "--permission-mode", "bypassPermissions",
+            "--disallowed-tools", CHAT_DISALLOWED_TOOLS,
+        ]
         if claude_session_id:
             cmd.extend(["--resume", claude_session_id])
         if model:
@@ -1099,7 +1124,7 @@ class ChatManager:
 
                 if event.get("type") == "result":
                     new_session_id = event.get("session_id", new_session_id)
-                    cost_usd = event.get("cost_usd", cost_usd)
+                    cost_usd = event.get("total_cost_usd", event.get("cost_usd", cost_usd))
                     duration_ms = event.get("duration_ms", duration_ms)
                     if event.get("subtype") == "error":
                         await send_fn(json.dumps({

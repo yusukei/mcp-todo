@@ -41,6 +41,45 @@ class TestListProjects:
         names = [p["name"] for p in resp.json()]
         assert "Archived" not in names
 
+    async def test_hidden_project_is_excluded_by_default(
+        self, client, admin_user, admin_headers
+    ):
+        """`hidden=True` プロジェクトは通常の一覧から除外される。"""
+        common = Project(
+            name="Common",
+            created_by=admin_user,
+            members=[ProjectMember(user_id=str(admin_user.id), role=MemberRole.owner)],
+            hidden=True,
+        )
+        await common.insert()
+
+        resp = await client.get("/api/v1/projects", headers=admin_headers)
+        assert resp.status_code == 200
+        names = [p["name"] for p in resp.json()]
+        assert "Common" not in names
+
+    async def test_hidden_project_returned_with_include_hidden(
+        self, client, admin_user, admin_headers
+    ):
+        """`include_hidden=true` を渡すと hidden プロジェクトも返る。"""
+        common = Project(
+            name="Common",
+            created_by=admin_user,
+            members=[ProjectMember(user_id=str(admin_user.id), role=MemberRole.owner)],
+            hidden=True,
+        )
+        await common.insert()
+
+        resp = await client.get(
+            "/api/v1/projects", params={"include_hidden": "true"}, headers=admin_headers
+        )
+        assert resp.status_code == 200
+        items = resp.json()
+        names = [p["name"] for p in items]
+        assert "Common" in names
+        common_dict = next(p for p in items if p["name"] == "Common")
+        assert common_dict["hidden"] is True
+
     @needs_real
     async def test_regular_user_sees_only_member_projects(
         self, client, admin_user, regular_user, test_project, user_headers
@@ -62,6 +101,61 @@ class TestListProjects:
     async def test_unauthenticated_returns_401(self, client):
         resp = await client.get("/api/v1/projects")
         assert resp.status_code == 401
+
+
+class TestCommonProject:
+    """`/projects/common` エンドポイント — 隠し Common プロジェクトの解決。"""
+
+    async def test_returns_404_when_not_provisioned(self, client, admin_headers):
+        resp = await client.get("/api/v1/projects/common", headers=admin_headers)
+        assert resp.status_code == 404
+
+    async def test_returns_common_project_when_present(
+        self, client, admin_user, admin_headers
+    ):
+        common = Project(
+            name="Common",
+            created_by=admin_user,
+            members=[ProjectMember(user_id=str(admin_user.id), role=MemberRole.owner)],
+            hidden=True,
+        )
+        await common.insert()
+
+        resp = await client.get("/api/v1/projects/common", headers=admin_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == "Common"
+        assert data["hidden"] is True
+        assert data["id"] == str(common.id)
+
+    async def test_archived_common_is_ignored(self, client, admin_user, admin_headers):
+        """`status=archived` の Common は 404 扱い。"""
+        common = Project(
+            name="Common",
+            created_by=admin_user,
+            members=[ProjectMember(user_id=str(admin_user.id), role=MemberRole.owner)],
+            hidden=True,
+            status=ProjectStatus.archived,
+        )
+        await common.insert()
+
+        resp = await client.get("/api/v1/projects/common", headers=admin_headers)
+        assert resp.status_code == 404
+
+    async def test_non_member_regular_user_gets_403(
+        self, client, admin_user, regular_user, user_headers
+    ):
+        """admin が作った Common にメンバーでない一般ユーザは 403。"""
+        common = Project(
+            name="Common",
+            created_by=admin_user,
+            members=[ProjectMember(user_id=str(admin_user.id), role=MemberRole.owner)],
+            hidden=True,
+        )
+        await common.insert()
+
+        resp = await client.get("/api/v1/projects/common", headers=user_headers)
+        assert resp.status_code == 403
 
 
 class TestCreateProject:

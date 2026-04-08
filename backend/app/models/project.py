@@ -30,6 +30,10 @@ class Project(Document):
     status: ProjectStatus = ProjectStatus.active
     is_locked: bool = False
     sort_order: int = 0
+    # Hidden from the main project list / sidebar. Used by the singleton
+    # "Common" project that hosts cross-cutting features like Chat and
+    # Bookmarks without bloating the visible project list.
+    hidden: bool = False
     members: list[ProjectMember] = Field(default_factory=list)
     created_by: Link[User]
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

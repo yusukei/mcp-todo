@@ -9,7 +9,7 @@ import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { FolderOpen, LogOut, Settings, UserCog, CheckSquare, Menu, X, BookOpen, Library, TerminalSquare, GripVertical, MessageSquareText } from 'lucide-react'
+import { FolderOpen, LogOut, Settings, UserCog, CheckSquare, Menu, X, BookOpen, Bookmark, Library, TerminalSquare, GripVertical, MessageSquareText } from 'lucide-react'
 import { api } from '../../api/client'
 import { useAuthStore } from '../../store/auth'
 import { useSSE } from '../../hooks/useSSE'
@@ -176,6 +176,14 @@ export default function Layout() {
         >
           <MessageSquareText className="w-4 h-4" />
           Chat
+        </Link>
+        <Link
+          to="/bookmarks"
+          onClick={closeSidebar}
+          className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+        >
+          <Bookmark className="w-4 h-4" />
+          ブックマーク
         </Link>
         <Link
           to="/knowledge"

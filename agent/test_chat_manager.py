@@ -33,7 +33,14 @@ class TestBuildCommand:
     def test_basic_command(self, chat_manager):
         with patch.object(chat_manager, "_find_claude", return_value="claude"):
             cmd = chat_manager._build_command("hello")
-        assert cmd == ["claude", "-p", "hello", "--output-format", "stream-json"]
+        assert cmd == [
+            "claude", "-p", "hello",
+            "--output-format", "stream-json",
+            "--verbose",
+            "--permission-mode", "bypassPermissions",
+            "--disallowed-tools",
+            "Read Write Edit NotebookEdit Bash Glob Grep LSP EnterWorktree",
+        ]
 
     def test_with_resume(self, chat_manager):
         with patch.object(chat_manager, "_find_claude", return_value="claude"):
@@ -51,7 +58,12 @@ class TestBuildCommand:
         with patch.object(chat_manager, "_find_claude", return_value="claude"):
             cmd = chat_manager._build_command("fix bug", claude_session_id="s1", model="opus")
         assert cmd == [
-            "claude", "-p", "fix bug", "--output-format", "stream-json",
+            "claude", "-p", "fix bug",
+            "--output-format", "stream-json",
+            "--verbose",
+            "--permission-mode", "bypassPermissions",
+            "--disallowed-tools",
+            "Read Write Edit NotebookEdit Bash Glob Grep LSP EnterWorktree",
             "--resume", "s1", "--model", "opus",
         ]
 

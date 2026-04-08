@@ -38,6 +38,12 @@ interface ChatMessage {
   created_at: string
 }
 
+interface CommonProject {
+  id: string
+  name: string
+  hidden?: boolean
+}
+
 interface WsEvent {
   type: string
   [key: string]: unknown
@@ -157,7 +163,7 @@ function useChatWs(sessionId: string | null) {
   return { connected, sessionStatus, messages, streamingText, streamingTools, sendMessage, cancel }
 }
 
-// ── Tool Call Card ────────────────────���───────────────
+// ── Tool Call Card ─────────────────────────────────────
 
 function ToolCallCard({ tool }: { tool: { tool_name?: string; tool?: string; input: Record<string, unknown>; output?: string | null } }) {
   const [expanded, setExpanded] = useState(false)
@@ -373,12 +379,16 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [input, setInput] = useState('')
 
-  // Get first project for now (could be a selector later)
-  const { data: projects = [] } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => api.get('/projects').then(r => r.data),
+  // Chat sessions are bound to the singleton hidden "Common" project,
+  // so we resolve it once via /projects/common instead of guessing
+  // projects[0]. If the Common project has not been provisioned yet
+  // the API returns 404 and we show a setup hint.
+  const { data: commonProject, isError: commonError, isLoading: commonLoading } = useQuery<CommonProject>({
+    queryKey: ['common-project'],
+    queryFn: () => api.get('/projects/common').then(r => r.data),
+    retry: false,
   })
-  const projectId = projects[0]?.id
+  const projectId = commonProject?.id
 
   const { connected, sessionStatus, messages, streamingText, streamingTools, sendMessage, cancel } = useChatWs(sessionId)
 
@@ -388,7 +398,7 @@ export default function ChatPage() {
       qc.invalidateQueries({ queryKey: ['chat-sessions'] })
       setSearchParams({ session: r.data.id })
     },
-    onError: () => showErrorToast('��ッション作成に失敗しました'),
+    onError: () => showErrorToast('セッション作成に失敗しました'),
   })
 
   // Auto-scroll
@@ -410,10 +420,23 @@ export default function ChatPage() {
     }
   }
 
-  if (!projectId) {
+  if (commonLoading) {
     return (
       <div className="flex items-center justify-center h-full text-gray-400">
-        プロジェクトがありません
+        読み込み中...
+      </div>
+    )
+  }
+
+  if (commonError || !projectId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-gray-500 dark:text-gray-400 gap-3 px-6 text-center">
+        <AlertTriangle className="w-10 h-10 text-amber-500" />
+        <p className="text-sm font-medium">Common プロジェクトが未設定です</p>
+        <p className="text-xs max-w-md">
+          Chat 機能は隠しの "Common" プロジェクトを使用します。<br />
+          管理者に <code className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-mono">python -m app.cli setup-common-project --rename-from &lt;legacy_project_id&gt;</code> の実行と、ワークスペース設定での Agent / リモートパス bind を依頼してください。
+        </p>
       </div>
     )
   }

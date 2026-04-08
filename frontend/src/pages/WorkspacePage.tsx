@@ -23,6 +23,7 @@ interface Workspace {
 interface Project {
   id: string
   name: string
+  hidden?: boolean
 }
 
 export default function WorkspacePage() {
@@ -46,9 +47,12 @@ export default function WorkspacePage() {
     queryFn: () => api.get('/workspaces').then((r) => r.data),
   })
 
+  // Workspace settings deliberately include hidden projects (i.e. the
+  // singleton "Common" project) so admins can bind a remote path to it.
   const { data: projects = [] } = useQuery<Project[]>({
-    queryKey: ['projects'],
-    queryFn: () => api.get('/projects').then((r) => r.data),
+    queryKey: ['projects', 'include-hidden'],
+    queryFn: () =>
+      api.get('/projects', { params: { include_hidden: true } }).then((r) => r.data),
   })
 
   // ── Mutations ────────────────────────────────────────
@@ -377,7 +381,9 @@ function WorkspaceCreateDialog({
               className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
             >
               {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
+                <option key={p.id} value={p.id}>
+                  {p.name}{p.hidden ? ' (共通)' : ''}
+                </option>
               ))}
             </select>
           </div>

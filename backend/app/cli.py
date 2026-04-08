@@ -225,6 +225,74 @@ async def _reset_password(email: str, password: str) -> None:
         await close_db()
 
 
+async def _setup_common_project(rename_from: str | None) -> None:
+    """Provision (or rename) the singleton hidden Common project.
+
+    The Common project hosts cross-cutting features (Chat, Bookmarks) that
+    historically lived inside an arbitrary visible project. After this
+    command runs, exactly one project document satisfies
+    `{hidden: True, status: active}`.
+
+    Behaviour:
+    - If a hidden project already exists, do nothing (idempotent).
+    - Else, if `--rename-from <project_id>` is given, look up that project
+      and update its `name` to "Common" and `hidden` to True. This is the
+      preferred path because it preserves all `bookmark.project_id`
+      references that already point at the legacy bookmark project.
+    - Else, fail loudly. We refuse to create a fresh Common project from
+      scratch because it would orphan existing bookmark documents that
+      still reference the legacy project_id.
+    """
+    from bson import ObjectId
+
+    from .models import Project
+    from .models.project import ProjectStatus
+
+    await connect()
+    try:
+        existing = await Project.find_one(
+            {"hidden": True, "status": ProjectStatus.active.value},
+        )
+        if existing:
+            print(
+                f"Common project already exists: id={existing.id} "
+                f"name={existing.name!r} hidden={existing.hidden}",
+            )
+            return
+
+        if not rename_from:
+            print(
+                "Error: no hidden project found and --rename-from was not "
+                "supplied. Pass the legacy bookmark project ID to convert "
+                "it in-place (preserves bookmark.project_id references).",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        try:
+            oid = ObjectId(rename_from)
+        except Exception:
+            print(f"Error: invalid project id: {rename_from}", file=sys.stderr)
+            sys.exit(1)
+
+        legacy = await Project.get(oid)
+        if not legacy:
+            print(f"Error: project not found: {rename_from}", file=sys.stderr)
+            sys.exit(1)
+
+        old_name = legacy.name
+        legacy.name = "Common"
+        legacy.hidden = True
+        legacy.sort_order = 0
+        await legacy.save_updated()
+        print(
+            f"Renamed project {legacy.id} from {old_name!r} to 'Common' "
+            f"and set hidden=True.",
+        )
+    finally:
+        await close_db()
+
+
 def _resolve_value(args_val: str | None, env_val: str, prompt_msg: str, *, secret: bool = False) -> str:
     """Resolve value from: CLI arg > env var > interactive prompt."""
     if args_val:
@@ -270,6 +338,18 @@ def main() -> None:
     import_ds_cmd.add_argument("--source-url", default="", help="Original source URL")
     import_ds_cmd.add_argument("--description", default="", help="Site description")
 
+    common_cmd = sub.add_parser(
+        "setup-common-project",
+        help="Provision the singleton hidden Common project (rename existing project to 'Common' with hidden=True)",
+    )
+    common_cmd.add_argument(
+        "--rename-from",
+        help=(
+            "Project ID to convert in place (preferred). "
+            "Preserves bookmark.project_id references."
+        ),
+    )
+
     args = parser.parse_args()
 
     if args.command == "init-admin":
@@ -309,6 +389,9 @@ def main() -> None:
             source_url=args.source_url,
             description=args.description,
         ))
+
+    elif args.command == "setup-common-project":
+        asyncio.run(_setup_common_project(args.rename_from))
 
     else:
         parser.print_help()

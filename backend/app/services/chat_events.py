@@ -218,88 +218,143 @@ async def handle_chat_event(msg: dict) -> None:
             await complete_with_error(session, msg.get("error", "Unknown error"))
 
 
+async def _ensure_streaming_message(session_id: str) -> ChatMessage:
+    """Find or create the in-progress assistant message for this session."""
+    streaming_msg = await ChatMessage.find_one({
+        "session_id": session_id,
+        "role": MessageRole.assistant,
+        "status": MessageStatus.streaming,
+    })
+    if streaming_msg:
+        return streaming_msg
+
+    streaming_msg = ChatMessage(
+        session_id=session_id,
+        role=MessageRole.assistant,
+        status=MessageStatus.streaming,
+    )
+    await streaming_msg.insert()
+    await chat_manager.broadcast(session_id, {
+        "type": "assistant_start",
+        "message_id": str(streaming_msg.id),
+    })
+    return streaming_msg
+
+
 async def _process_stream_event(session_id: str, event: dict) -> None:
-    """Parse a single stream-json event from the claude CLI and broadcast."""
+    """Parse a single stream-json event from the claude CLI and broadcast.
+
+    The claude CLI v2 emits SDKMessage-shaped events when run with
+    `--output-format=stream-json --verbose`:
+
+        {"type":"system","subtype":"init", ...}
+        {"type":"assistant","message":{"content":[{"type":"text","text":"..."},
+                                                  {"type":"tool_use","name":"...","input":{...}}]}}
+        {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"...","content":"..."}]}}
+        {"type":"result", ...}
+
+    Each `assistant` event represents a *complete* assistant turn (it is not
+    a delta). When claude needs multiple turns to satisfy a request — e.g.
+    text → tool_use → tool_result → text — claude emits one `assistant`
+    event per turn. We append text/tool blocks to the same in-progress
+    streaming ChatMessage so the browser sees a single assistant bubble
+    that grows over time, then `chat_complete` finalises it.
+    """
     event_type = event.get("type", "")
 
-    # Text content delta
-    if event_type == "content_block_delta":
-        delta = event.get("delta", {})
-        if delta.get("type") == "text_delta":
-            text = delta.get("text", "")
+    if event_type == "assistant":
+        from ..models.chat import ToolCallData
+
+        message = event.get("message", {}) or {}
+        content_blocks = message.get("content", []) or []
+
+        streaming_msg = await _ensure_streaming_message(session_id)
+
+        for block in content_blocks:
+            if not isinstance(block, dict):
+                continue
+            block_type = block.get("type")
+
+            if block_type == "text":
+                text = block.get("text", "") or ""
+                if not text:
+                    continue
+                streaming_msg.content += text
+                await chat_manager.broadcast(session_id, {
+                    "type": "text_delta",
+                    "message_id": str(streaming_msg.id),
+                    "text": text,
+                })
+
+            elif block_type == "tool_use":
+                tool_name = block.get("name", "") or ""
+                tool_input = block.get("input", {}) or {}
+                tool_use_id = block.get("id", "") or ""
+                streaming_msg.tool_calls.append(ToolCallData(
+                    tool_name=tool_name,
+                    input=tool_input,
+                ))
+                await chat_manager.broadcast(session_id, {
+                    "type": "tool_use",
+                    "message_id": str(streaming_msg.id),
+                    "tool": tool_name,
+                    "tool_use_id": tool_use_id,
+                    "input": tool_input,
+                })
+
+        await streaming_msg.save()
+
+    elif event_type == "user":
+        # SDKUserMessage typically wraps tool_result blocks emitted after
+        # claude executed a tool. There is no user-facing text in this
+        # event — it just carries tool outputs back into the transcript.
+        message = event.get("message", {}) or {}
+        content_blocks = message.get("content", []) or []
+        for block in content_blocks:
+            if not isinstance(block, dict) or block.get("type") != "tool_result":
+                continue
+
+            raw_content = block.get("content", "")
+            if isinstance(raw_content, list):
+                # Tool results may be a list of typed parts; flatten text parts.
+                text_parts = []
+                for part in raw_content:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        text_parts.append(part.get("text", ""))
+                    elif isinstance(part, str):
+                        text_parts.append(part)
+                content_str = "\n".join(text_parts)
+            elif isinstance(raw_content, str):
+                content_str = raw_content
+            else:
+                content_str = str(raw_content)
+            content_str = content_str[:5000]
+
+            tool_use_id = block.get("tool_use_id", "") or ""
 
             streaming_msg = await ChatMessage.find_one({
                 "session_id": session_id,
                 "role": MessageRole.assistant,
                 "status": MessageStatus.streaming,
             })
-            if not streaming_msg:
-                streaming_msg = ChatMessage(
-                    session_id=session_id,
-                    role=MessageRole.assistant,
-                    status=MessageStatus.streaming,
-                )
-                await streaming_msg.insert()
-                await chat_manager.broadcast(session_id, {
-                    "type": "assistant_start",
-                    "message_id": str(streaming_msg.id),
-                })
-
-            streaming_msg.content += text
-            await streaming_msg.save()
+            if streaming_msg:
+                # Attach the output to the most recent matching tool_call
+                # whose output is still empty.
+                for tc in reversed(streaming_msg.tool_calls):
+                    if not tc.output:
+                        tc.output = content_str
+                        break
+                await streaming_msg.save()
 
             await chat_manager.broadcast(session_id, {
-                "type": "text_delta",
-                "message_id": str(streaming_msg.id),
-                "text": text,
+                "type": "tool_result",
+                "tool_use_id": tool_use_id,
+                "output": content_str,
             })
 
-    elif event_type == "content_block_start":
-        block = event.get("content_block", {})
-        if block.get("type") == "tool_use":
-            await chat_manager.broadcast(session_id, {
-                "type": "tool_use",
-                "message_id": "",
-                "tool": block.get("name", ""),
-                "tool_use_id": block.get("id", ""),
-                "input": block.get("input", {}),
-            })
-
-    # NOTE: content_block_delta input_json_delta is unreachable today
-    # because the earlier `if event_type == "content_block_delta"` branch
-    # consumes the same event type. Kept here intentionally so the
-    # behaviour matches the pre-refactor file; cleanup is a separate task.
-    elif event_type == "content_block_delta":  # pragma: no cover
-        delta = event.get("delta", {})
-        if delta.get("type") == "input_json_delta":
-            await chat_manager.broadcast(session_id, {
-                "type": "tool_input_delta",
-                "partial_json": delta.get("partial_json", ""),
-            })
-
-    elif event_type == "tool_result":
-        content = event.get("content", "")
-        tool_use_id = event.get("tool_use_id", "")
-
-        streaming_msg = await ChatMessage.find_one({
-            "session_id": session_id,
-            "role": MessageRole.assistant,
-            "status": MessageStatus.streaming,
-        })
-        if streaming_msg:
-            from ..models.chat import ToolCallData
-            streaming_msg.tool_calls.append(ToolCallData(
-                tool_name=tool_use_id,
-                output=content[:5000] if isinstance(content, str) else str(content)[:5000],
-            ))
-            await streaming_msg.save()
-
-        await chat_manager.broadcast(session_id, {
-            "type": "tool_result",
-            "tool_use_id": tool_use_id,
-            "output": content[:5000] if isinstance(content, str) else str(content)[:5000],
-        })
-
-    elif event_type == "result":
-        # Final summary handled by handle_chat_event via chat_complete message
-        pass
+    elif event_type in ("system", "rate_limit_event", "result"):
+        # system: init metadata — no UI work needed.
+        # rate_limit_event: informational; intentionally ignored.
+        # result: finalisation is performed by handle_chat_event via the
+        #         chat_complete envelope sent by the agent.
+        return

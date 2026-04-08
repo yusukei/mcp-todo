@@ -1,7 +1,7 @@
 import asyncio
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from ....core.deps import get_current_user
@@ -40,7 +40,12 @@ class UpdateMemberRequest(BaseModel):
 
 
 async def _check_project_access(project_id: str, user: User) -> Project:
-    """Return project if user is admin or member; raise 403 otherwise."""
+    """Return project if user is admin or member; raise 403 otherwise.
+
+    Hidden projects (e.g. the singleton "Common" project) are accepted —
+    they are intentionally hidden from listings but remain reachable for
+    members so cross-cutting features like Chat / Bookmarks can use them.
+    """
     valid_object_id(project_id)
     project = await Project.get(project_id)
     if not project or project.status == ProjectStatus.archived:
@@ -65,17 +70,52 @@ async def _check_owner_or_admin(project_id: str, user: User) -> Project:
 
 
 @router.get("")
-async def list_projects(user: User = Depends(get_current_user)) -> list[dict]:
-    if user.is_admin:
-        projects = await Project.find(
-            Project.status == ProjectStatus.active,
-        ).sort("+sort_order", "+created_at").to_list()
-    else:
-        projects = await Project.find(
-            Project.status == ProjectStatus.active,
-            Project.members.user_id == str(user.id),
-        ).sort("+sort_order", "+created_at").to_list()
+async def list_projects(
+    user: User = Depends(get_current_user),
+    include_hidden: bool = Query(
+        False,
+        description=(
+            "Include hidden projects (the Common singleton). "
+            "Used by the Workspaces / Chat / Bookmarks pages so they can "
+            "still resolve the Common project."
+        ),
+    ),
+) -> list[dict]:
+    base_filters: list = [Project.status == ProjectStatus.active]
+    if not user.is_admin:
+        base_filters.append(Project.members.user_id == str(user.id))
+
+    projects = await Project.find(*base_filters).sort("+sort_order", "+created_at").to_list()
+    if not include_hidden:
+        # Default behaviour: exclude hidden projects from sidebar/list views.
+        projects = [p for p in projects if not getattr(p, "hidden", False)]
     return [_project_dict(p) for p in projects]
+
+
+@router.get("/common")
+async def get_common_project(user: User = Depends(get_current_user)) -> dict:
+    """Return the singleton hidden Common project.
+
+    The Common project hosts cross-cutting features (Chat, Bookmarks) that
+    historically lived inside an arbitrary project. By being hidden it does
+    not appear in the project sidebar but remains a real Project document
+    so existing code paths (RemoteWorkspace binding, bookmark project_id,
+    chat session project_id) keep working unchanged.
+
+    Returns 404 if the Common project has not been provisioned yet
+    (run `python -m app.cli setup-common-project`).
+    """
+    project = await Project.find_one(
+        {"hidden": True, "status": ProjectStatus.active.value},
+    )
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Common project not provisioned",
+        )
+    if not user.is_admin and not project.has_member(str(user.id)):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No access")
+    return _project_dict(project)
 
 
 class ReorderProjectsRequest(BaseModel):

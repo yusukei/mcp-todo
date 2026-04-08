@@ -23,6 +23,7 @@ const KnowledgePage = React.lazy(() => import('./pages/KnowledgePage'))
 const DocSiteViewerPage = React.lazy(() => import('./pages/DocSiteViewerPage'))
 const WorkspacePage = React.lazy(() => import('./pages/WorkspacePage'))
 const ChatPage = React.lazy(() => import('./pages/ChatPage'))
+const BookmarksPage = React.lazy(() => import('./pages/BookmarksPage'))
 
 const GoogleCallbackPage = React.lazy(() => import('./pages/GoogleCallbackPage'))
 const AdminPage = React.lazy(() => import('./pages/AdminPage'))
@@ -70,6 +71,8 @@ function AppRoutes() {
             <Route path="docsites" element={<DocSitesPage />} />
             <Route path="docsites/:siteId/*" element={lazy(<DocSiteViewerPage />)} />
             <Route path="chat" element={lazy(<ChatPage />)} />
+            <Route path="bookmarks" element={lazy(<BookmarksPage />)} />
+            <Route path="bookmarks/:bookmarkId" element={lazy(<BookmarksPage />)} />
             <Route
               path="workspaces"
               element={

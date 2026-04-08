@@ -421,23 +421,30 @@ class TestHandleChatEvent:
         chat_manager.connect(session_id, ws)
 
         try:
-            # First text delta should create assistant message
+            # First assistant event should create the streaming message.
+            # claude CLI v2 emits SDKMessage-shaped events: each `assistant`
+            # event is a complete message snapshot for one turn.
             await _process_stream_event(session_id, {
-                "type": "content_block_delta",
-                "delta": {"type": "text_delta", "text": "Hello "},
+                "type": "assistant",
+                "message": {
+                    "content": [{"type": "text", "text": "Hello "}],
+                },
             })
 
-            # Verify message created
             msgs = await ChatMessage.find({"session_id": session_id}).to_list()
             assert len(msgs) == 1
             assert msgs[0].role == MessageRole.assistant
             assert msgs[0].status == MessageStatus.streaming
             assert msgs[0].content == "Hello "
 
-            # Second delta appends
+            # A second assistant event in the same turn appends to the
+            # same streaming message (multi-turn case: text → tool_use →
+            # tool_result → text).
             await _process_stream_event(session_id, {
-                "type": "content_block_delta",
-                "delta": {"type": "text_delta", "text": "world!"},
+                "type": "assistant",
+                "message": {
+                    "content": [{"type": "text", "text": "world!"}],
+                },
             })
 
             msgs = await ChatMessage.find({"session_id": session_id}).to_list()

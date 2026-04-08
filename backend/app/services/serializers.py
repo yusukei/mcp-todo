@@ -85,6 +85,7 @@ def project_to_dict(p: Project) -> dict:
         "status": p.status,
         "is_locked": p.is_locked,
         "sort_order": p.sort_order,
+        "hidden": getattr(p, "hidden", False),
         "members": [
             {"user_id": m.user_id, "role": m.role, "joined_at": m.joined_at.isoformat()}
             for m in p.members
