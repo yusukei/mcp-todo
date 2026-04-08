@@ -447,4 +447,69 @@ class TestAtomicRegister:
         await asyncio.wait_for(task, timeout=1.0)
 
 
+class TestPrometheusMetrics:
+    """Smoke tests for the Prometheus instrumentation in agent_manager.
+
+    These tests touch the global default registry, so they assert on
+    relative deltas (before/after) rather than absolute values — that
+    way other tests in the suite that also exercise agent_manager do
+    not cause spurious failures here.
+    """
+
+    async def test_connection_gauge_tracks_register_unregister(self, manager):
+        from app.core.metrics import agent_connections
+
+        before = agent_connections._value.get()  # type: ignore[attr-defined]
+        ws = FakeWebSocket()
+        await manager.register("metrics-agent", ws)
+        assert agent_connections._value.get() == before + 1  # type: ignore[attr-defined]
+
+        await manager.unregister("metrics-agent", ws)
+        assert agent_connections._value.get() == before  # type: ignore[attr-defined]
+
+    async def test_reconnect_does_not_double_count_connections(self, manager):
+        """Replacing a connection must not bump the gauge twice."""
+        from app.core.metrics import agent_connections
+
+        before = agent_connections._value.get()  # type: ignore[attr-defined]
+        await manager.register("metrics-agent", FakeWebSocket())
+        await manager.register("metrics-agent", FakeWebSocket())  # reconnect
+        assert agent_connections._value.get() == before + 1  # type: ignore[attr-defined]
+
+        await manager.unregister("metrics-agent")
+        assert agent_connections._value.get() == before  # type: ignore[attr-defined]
+
+    async def test_request_duration_recorded_on_success(self, manager):
+        from app.core.metrics import agent_request_duration_seconds
+
+        sample_before = agent_request_duration_seconds.labels(op="exec")._sum.get()  # type: ignore[attr-defined]
+
+        ws = FakeWebSocket()
+        await manager.register("metrics-agent", ws)
+
+        async def respond():
+            await asyncio.sleep(0.01)
+            request_id = json.loads(ws.sent[0])["request_id"]
+            manager.resolve_request({
+                "type": "exec_result",
+                "request_id": request_id,
+                "payload": {"exit_code": 0},
+            })
+
+        responder = asyncio.create_task(respond())
+        await manager.send_request("metrics-agent", "exec", {}, timeout=2.0)
+        await responder
+
+        sample_after = agent_request_duration_seconds.labels(op="exec")._sum.get()  # type: ignore[attr-defined]
+        assert sample_after > sample_before
+
+    async def test_offline_increments_error_counter(self, manager):
+        from app.core.metrics import agent_request_errors_total
+
+        before = agent_request_errors_total.labels(reason="offline")._value.get()  # type: ignore[attr-defined]
+        with pytest.raises(AgentOfflineError):
+            await manager.send_request("ghost", "exec", {})
+        after = agent_request_errors_total.labels(reason="offline")._value.get()  # type: ignore[attr-defined]
+        assert after == before + 1
+
 

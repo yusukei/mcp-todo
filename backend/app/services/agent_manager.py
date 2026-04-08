@@ -50,10 +50,18 @@ import asyncio
 import contextlib
 import json
 import logging
+import time
 import uuid
 from typing import Any
 
 from fastapi import WebSocket
+
+from ..core.metrics import (
+    agent_connections,
+    agent_pending_requests,
+    agent_request_duration_seconds,
+    agent_request_errors_total,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +155,7 @@ class AgentConnectionManager:
 
     def _increment_pending(self, agent_id: str) -> None:
         self._pending_count[agent_id] = self._pending_count.get(agent_id, 0) + 1
+        agent_pending_requests.labels(agent_id=agent_id).inc()
 
     def _decrement_pending(self, agent_id: str) -> None:
         cur = self._pending_count.get(agent_id, 0)
@@ -154,6 +163,7 @@ class AgentConnectionManager:
             self._pending_count.pop(agent_id, None)
         else:
             self._pending_count[agent_id] = cur - 1
+        agent_pending_requests.labels(agent_id=agent_id).dec()
 
     def _global_pending(self) -> int:
         return sum(self._pending_count.values())
@@ -186,10 +196,16 @@ class AgentConnectionManager:
         async with self._register_lock:
             old_ws = self._connections.get(agent_id)
             old_ping_task = self._ping_tasks.get(agent_id)
+            is_new_agent = old_ws is None
 
             # (1) Publish new connection immediately so observers see
             # the reconnect before we start the cleanup of the old one.
             self._connections[agent_id] = ws
+            if is_new_agent:
+                # On reconnect (old_ws was set) the gauge already
+                # counts this agent — only bump it for genuinely new
+                # registrations to keep the gauge equal to len(_connections).
+                agent_connections.inc()
             if ping_task is not None:
                 self._ping_tasks[agent_id] = ping_task
             else:
@@ -254,7 +270,13 @@ class AgentConnectionManager:
                     # This is a stale handler — the agent already reconnected
                     logger.debug("Agent %s: skipping stale unregister", agent_id)
                     return
-            self._connections.pop(agent_id, None)
+            removed = self._connections.pop(agent_id, None)
+            if removed is not None:
+                agent_connections.dec()
+                # Drop the per-agent pending gauge label so a long-gone
+                # agent does not keep emitting a stale 0 forever.
+                with contextlib.suppress(KeyError):
+                    agent_pending_requests.remove(agent_id)
             # The handler that owned this ws will cancel its own
             # ping_task in its finally clause; we just drop our
             # reference so we don't touch it after replace.
@@ -376,6 +398,43 @@ class AgentConnectionManager:
         Future-holders, so a runaway producer cannot starve the
         manager into unbounded memory growth.
         """
+        started = time.monotonic()
+        try:
+            return await self._send_request_inner(
+                agent_id, msg_type, payload, timeout, wait_for_agent,
+            )
+        except AgentBusyError:
+            agent_request_errors_total.labels(reason="busy").inc()
+            raise
+        except AgentOfflineError:
+            agent_request_errors_total.labels(reason="offline").inc()
+            raise
+        except CommandTimeoutError:
+            agent_request_errors_total.labels(reason="timeout").inc()
+            raise
+        except RuntimeError:
+            # RuntimeError covers both wire-contract violations and
+            # explicit ``error`` payloads from the agent. Both are
+            # "the agent did not return a usable result" from the
+            # operator's perspective, so they share the same bucket.
+            agent_request_errors_total.labels(reason="agent_error").inc()
+            raise
+        except Exception:
+            agent_request_errors_total.labels(reason="internal").inc()
+            raise
+        finally:
+            agent_request_duration_seconds.labels(op=msg_type).observe(
+                time.monotonic() - started
+            )
+
+    async def _send_request_inner(
+        self,
+        agent_id: str,
+        msg_type: str,
+        payload: dict,
+        timeout: float,
+        wait_for_agent: float,
+    ) -> dict:
         # Back-pressure admission control BEFORE any waiting. This
         # keeps failures fast: callers see the rejection right away
         # instead of hanging inside wait_for_connection.

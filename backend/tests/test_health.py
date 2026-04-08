@@ -128,3 +128,24 @@ class TestHealthEndpoint:
         assert data["status"] == "ok"
         assert data["mongo"] == "ok"
         assert data["redis"] == "ok"
+
+
+class TestMetricsEndpoint:
+    """GET /metrics — Prometheus exposition smoke test."""
+
+    async def test_metrics_returns_prometheus_text(self):
+        from app.main import metrics
+
+        response = await metrics()
+        assert response.status_code == 200
+        # CONTENT_TYPE_LATEST is the v0.0.4 text format used by Prometheus.
+        assert response.media_type.startswith("text/plain")
+        body = response.body.decode()
+        # Default registry always exposes process / gc collectors —
+        # use them as a smoke signal that the exporter actually ran.
+        assert "python_gc_objects_collected_total" in body
+        # Our agent metrics are registered at module import. The HELP
+        # lines are emitted even when no samples have been recorded.
+        assert "agent_connections" in body
+        assert "agent_request_duration_seconds" in body
+        assert "agent_request_errors_total" in body
