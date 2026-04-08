@@ -856,6 +856,182 @@ class TestGrepRgErrorSurfacing:
             }))
 
 
+# ──────────────────────────────────────────────
+# Envelope contract — every handler MUST emit the right envelope ``type``
+# and propagate the caller's ``request_id`` unchanged.
+#
+# This is the regression net for the 2026-04-08 shadowing bug: ``handle_stat``
+# / ``handle_delete`` returned an inner dict containing ``"type"``, which
+# spread on top of the envelope and silently shadowed it. The dispatcher
+# then dropped the response and the caller's Future hung until the MCP
+# timeout. The static ``_RESPONSE_TYPES`` whitelist that used to catch
+# this was deleted because the new request_id-based dispatcher made it
+# unnecessary — but we still want a *positive* contract test that says
+# "for every handler, hit happy path, prove the envelope is intact".
+#
+# When you add a new handler:
+#   1. Add it to ``_ENVELOPE_CASES`` below with happy-path inputs and the
+#      expected envelope type.
+#   2. The parametrized test will assert: response is a dict with
+#      ``type == <expected>`` and ``request_id == "<sentinel>"``, and that
+#      no inner key has shadowed either field.
+# ──────────────────────────────────────────────
+
+
+_CONTRACT_REQ_ID = "envelope-contract-sentinel-9f3a"
+
+
+def _build_contract_cases(tmp_path):
+    """Return a list of (label, handler, msg, expected_envelope_type).
+
+    Each case sets up just enough state in ``tmp_path`` to make the handler
+    take its happy path. We build the cases inside a function (rather than
+    at module scope) so each case gets a clean filesystem and the side
+    effects of one handler can't interfere with another.
+    """
+    # Sandbox seed
+    (tmp_path / "f.txt").write_text("hello world")
+    (tmp_path / "to_delete.txt").write_text("bye")
+    (tmp_path / "to_move.txt").write_text("mv")
+    (tmp_path / "to_copy.txt").write_text("cp")
+    (tmp_path / "src_dir").mkdir()
+    (tmp_path / "src_dir" / "a.py").write_text("import os")
+
+    cwd = str(tmp_path)
+    echo_cmd = "echo hi"  # portable on cmd.exe and POSIX shells alike
+
+    return [
+        (
+            "handle_exec",
+            main.handle_exec,
+            {"request_id": _CONTRACT_REQ_ID, "command": echo_cmd, "cwd": cwd, "timeout": 10},
+            "exec_result",
+        ),
+        (
+            "handle_read_file",
+            main.handle_read_file,
+            {"request_id": _CONTRACT_REQ_ID, "path": "f.txt", "cwd": cwd},
+            "file_content",
+        ),
+        (
+            "handle_write_file",
+            main.handle_write_file,
+            {"request_id": _CONTRACT_REQ_ID, "path": "new.txt", "content": "x", "cwd": cwd},
+            "write_result",
+        ),
+        (
+            "handle_list_dir",
+            main.handle_list_dir,
+            {"request_id": _CONTRACT_REQ_ID, "path": ".", "cwd": cwd},
+            "dir_listing",
+        ),
+        (
+            "handle_stat (file)",
+            main.handle_stat,
+            {"request_id": _CONTRACT_REQ_ID, "path": "f.txt", "cwd": cwd},
+            "stat_result",
+        ),
+        (
+            "handle_stat (missing)",
+            main.handle_stat,
+            {"request_id": _CONTRACT_REQ_ID, "path": "nope.txt", "cwd": cwd},
+            "stat_result",
+        ),
+        (
+            "handle_mkdir",
+            main.handle_mkdir,
+            {"request_id": _CONTRACT_REQ_ID, "path": "newdir", "cwd": cwd},
+            "mkdir_result",
+        ),
+        (
+            "handle_delete (file)",
+            main.handle_delete,
+            {"request_id": _CONTRACT_REQ_ID, "path": "to_delete.txt", "cwd": cwd},
+            "delete_result",
+        ),
+        (
+            "handle_delete (dir)",
+            main.handle_delete,
+            {"request_id": _CONTRACT_REQ_ID, "path": "src_dir", "cwd": cwd, "recursive": True},
+            "delete_result",
+        ),
+        (
+            "handle_move",
+            main.handle_move,
+            {"request_id": _CONTRACT_REQ_ID, "src": "to_move.txt", "dst": "moved.txt", "cwd": cwd},
+            "move_result",
+        ),
+        (
+            "handle_copy",
+            main.handle_copy,
+            {"request_id": _CONTRACT_REQ_ID, "src": "to_copy.txt", "dst": "copied.txt", "cwd": cwd},
+            "copy_result",
+        ),
+        (
+            "handle_glob",
+            main.handle_glob,
+            {"request_id": _CONTRACT_REQ_ID, "pattern": "**/*.txt", "path": ".", "cwd": cwd},
+            "glob_result",
+        ),
+        # handle_grep happy path needs ripgrep mocked — exercise the
+        # error path instead (which still goes through the envelope wrap).
+        (
+            "handle_grep (missing rg)",
+            main.handle_grep,
+            {"request_id": _CONTRACT_REQ_ID, "pattern": "x", "path": ".", "cwd": cwd},
+            "grep_result",
+        ),
+    ]
+
+
+class TestEnvelopeContract:
+    """Every handler must produce ``{type: <kind>_result, request_id: <id>, ...}``.
+
+    Whatever else they put in the response, ``type`` and ``request_id``
+    are reserved envelope fields and must NOT be shadowed by inner data.
+    This catches the 2026-04-08 shadowing bug class statically — if any
+    future handler returns an inner ``"type"`` or ``"request_id"`` key,
+    this test fails loudly instead of letting the MCP layer time out.
+    """
+
+    def test_every_handler_emits_correct_envelope(self, tmp_path, monkeypatch):
+        # Force handle_grep down its "ripgrep missing" branch so we don't
+        # need a real binary to validate the envelope wrap. The error path
+        # still goes through the same return statement.
+        monkeypatch.setattr(main, "RG_PATH", None)
+
+        cases = _build_contract_cases(tmp_path)
+        # Sanity: catch a typo in the cases list itself.
+        assert len(cases) >= 11
+
+        failures: list[str] = []
+        for label, handler, msg, expected_type in cases:
+            try:
+                result = _run(handler(msg))
+            except Exception as e:
+                failures.append(f"{label}: handler raised {type(e).__name__}: {e}")
+                continue
+
+            if not isinstance(result, dict):
+                failures.append(f"{label}: result is {type(result).__name__}, not dict")
+                continue
+            if result.get("type") != expected_type:
+                failures.append(
+                    f"{label}: envelope ``type`` is {result.get('type')!r}, "
+                    f"expected {expected_type!r} — likely an inner-dict "
+                    f"key shadowed the envelope (see 2026-04-08 bug)"
+                )
+            if result.get("request_id") != _CONTRACT_REQ_ID:
+                failures.append(
+                    f"{label}: ``request_id`` is {result.get('request_id')!r}, "
+                    f"expected {_CONTRACT_REQ_ID!r} — handler dropped or "
+                    f"overwrote the correlation id; backend dispatcher "
+                    f"will not be able to resolve the caller's Future"
+                )
+
+        assert not failures, "envelope contract violations:\n  - " + "\n  - ".join(failures)
+
+
 class TestDecodeRgTextField:
     def test_decode_text(self):
         assert main._decode_rg_text_field({"text": "hello"}) == "hello"
