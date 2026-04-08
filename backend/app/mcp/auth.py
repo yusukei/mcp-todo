@@ -19,13 +19,15 @@ from collections import OrderedDict
 from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_request
 
+from ..core.config import settings
 from ..core.security import hash_api_key
 from ..models import McpApiKey, Project, User
 
 logger = logging.getLogger(__name__)
 
 # Auth cache: sha256(api_key) -> (result_dict, expiry_timestamp)
-AUTH_CACHE_TTL = 300  # 5 minutes
+# TTL is operator-tunable via Settings; max-size is a code-level
+# memory bound and stays a module constant.
 AUTH_CACHE_MAX_SIZE = 1000
 
 
@@ -186,7 +188,10 @@ async def _resolve_api_key_user(api_key: str) -> dict:
         "is_admin": owner.is_admin,
         "auth_kind": "api_key",
     }
-    await _auth_cache.aput(cache_key, (result, time.monotonic() + AUTH_CACHE_TTL))
+    await _auth_cache.aput(
+        cache_key,
+        (result, time.monotonic() + settings.MCP_AUTH_CACHE_TTL_SECONDS),
+    )
     return result
 
 

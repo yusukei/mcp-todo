@@ -10,6 +10,7 @@ from typing import Any
 
 from fastmcp.exceptions import ToolError
 
+from ...core.config import settings
 from ...models import Project
 from ...models.remote import RemoteAgent, RemoteExecLog
 
@@ -37,12 +38,11 @@ from .projects import _resolve_project_id
 
 logger = logging.getLogger(__name__)
 
-MAX_OUTPUT_BYTES = 2 * 1024 * 1024  # 2 MB
-MAX_FILE_BYTES = 5 * 1024 * 1024  # 5 MB
-MAX_TIMEOUT = 300  # seconds
+# Per-call constants kept inline because they describe protocol-level
+# byte limits that are not operator-tunable; promoting them to Settings
+# would imply a knob we do not actually support.
 MAX_COMMAND_BYTES = 8 * 1024  # 8 KB — upper bound for a single shell command
 MAX_PATTERN_BYTES = 4 * 1024  # 4 KB — upper bound for grep/glob patterns
-DEFAULT_AGENT_WAIT = 5.0  # seconds to wait for a flickering agent
 
 
 # ── Env override denylist (Security H-2) ─────────────────────
@@ -391,7 +391,7 @@ async def _send_to_agent(
             msg_type,
             payload,
             timeout=timeout,
-            wait_for_agent=DEFAULT_AGENT_WAIT,
+            wait_for_agent=settings.REMOTE_DEFAULT_AGENT_WAIT_SECONDS,
         )
     except AgentOfflineError:
         await _log_operation(binding, operation, detail, key_info["key_id"], error="agent_offline")
@@ -484,7 +484,7 @@ async def remote_exec(
     key_info = audit.key_info
     binding = audit.binding
 
-    timeout = max(1, min(timeout, MAX_TIMEOUT))
+    timeout = max(1, min(timeout, settings.REMOTE_MAX_TIMEOUT_SECONDS))
     payload: dict = {
         "command": command,
         "cwd": binding.remote_path,
@@ -606,8 +606,10 @@ async def remote_write_file(
         audit.key_info = await authenticate()
         audit.binding = await _resolve_binding(project_id, audit.key_info)
         _validate_remote_path(path)
-        if len(content.encode("utf-8")) > MAX_FILE_BYTES:
-            raise ToolError(f"Content too large (max {MAX_FILE_BYTES // 1024 // 1024} MB)")
+        if len(content.encode("utf-8")) > settings.REMOTE_MAX_FILE_BYTES:
+            raise ToolError(
+                f"Content too large (max {settings.REMOTE_MAX_FILE_BYTES // 1024 // 1024} MB)"
+            )
     key_info = audit.key_info
     binding = audit.binding
 

@@ -29,7 +29,6 @@ from .....core.security import hash_api_key
 from .....models.remote import RemoteAgent
 from .....services.agent_manager import agent_manager
 from ._releases_util import maybe_push_update
-from ._shared import PING_INTERVAL, PING_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -60,11 +59,11 @@ async def _server_ping_loop(ws: WebSocket, agent_id: str) -> None:
     vs. WS state drift) when debugging agents that keep disconnecting.
     """
     while True:
-        await asyncio.sleep(PING_INTERVAL)
+        await asyncio.sleep(settings.AGENT_WS_PING_INTERVAL_SECONDS)
         try:
             await asyncio.wait_for(
                 ws.send_text(json.dumps({"type": "ping"})),
-                timeout=PING_TIMEOUT,
+                timeout=settings.AGENT_WS_PING_TIMEOUT_SECONDS,
             )
         except (asyncio.TimeoutError, WebSocketDisconnect, RuntimeError, OSError) as e:
             logger.info(

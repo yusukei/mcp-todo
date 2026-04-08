@@ -23,10 +23,6 @@ logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────
 
-# Server-side ping interval for dead connection detection
-PING_INTERVAL = 30  # seconds
-PING_TIMEOUT = 10  # seconds
-
 # Allowed values for agent release fields
 ALLOWED_OS_TYPES = {"win32", "linux", "darwin"}
 ALLOWED_CHANNELS = {"stable", "beta", "canary"}

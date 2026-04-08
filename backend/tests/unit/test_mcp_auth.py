@@ -10,7 +10,6 @@ import pytest_asyncio
 from app.core.security import hash_api_key
 from app.mcp.auth import (
     AUTH_CACHE_MAX_SIZE,
-    AUTH_CACHE_TTL,
     McpAuthError,
     _BoundedTTLCache,
     _auth_cache,

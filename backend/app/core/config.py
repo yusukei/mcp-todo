@@ -79,6 +79,30 @@ class Settings(BaseSettings):
     MCP_USAGE_SAMPLING_RATE: float = 0.05  # 5% sampling for non-error/non-slow events
     MCP_USAGE_SLOW_CALL_MS: int = 2000  # threshold for "slow call" event capture
 
+    # ── MCP auth cache ────────────────────────────────────────
+    # X-API-Key authentication result is cached in-process to avoid
+    # hashing + DB lookup on every MCP call. Short TTL keeps the
+    # window of stale "is_admin" flips small.
+    MCP_AUTH_CACHE_TTL_SECONDS: int = 300
+
+    # ── Remote agent: WebSocket keepalive ─────────────────────
+    # Server-side ping cadence used to detect dead agent connections.
+    # Defaults are intentionally conservative — most agents are on
+    # stable LANs, but laptop agents over flaky Wi-Fi need this to
+    # surface broken sockets within ~PING_INTERVAL+PING_TIMEOUT.
+    AGENT_WS_PING_INTERVAL_SECONDS: int = 30
+    AGENT_WS_PING_TIMEOUT_SECONDS: int = 10
+
+    # ── Remote agent: MCP tool guards ─────────────────────────
+    # Upper bounds applied by the backend MCP layer before forwarding
+    # a request to the agent. The agent enforces its own equivalent
+    # limits; these mirror them so we reject oversized payloads early
+    # and so a misbehaving agent cannot drown the backend in output.
+    REMOTE_MAX_OUTPUT_BYTES: int = 2 * 1024 * 1024  # 2 MB stdout/stderr cap
+    REMOTE_MAX_FILE_BYTES: int = 5 * 1024 * 1024  # 5 MB single-file cap
+    REMOTE_MAX_TIMEOUT_SECONDS: int = 300  # hard ceiling for remote_exec timeout
+    REMOTE_DEFAULT_AGENT_WAIT_SECONDS: float = 5.0  # tolerate brief reconnects
+
     model_config = {"env_file": ("../.env", ".env"), "extra": "ignore"}
 
     # ── Derived URL properties ────────────────────────────────
