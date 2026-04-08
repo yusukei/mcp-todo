@@ -81,12 +81,10 @@ async def create_session(
     body: CreateSessionRequest,
     user: User = Depends(get_current_user),
 ) -> dict:
-    await _check_project_access(body.project_id, user)
+    project = await _check_project_access(body.project_id, user)
 
-    # Resolve working_dir from RemoteWorkspace
-    from ....models.remote import RemoteWorkspace
-    workspace = await RemoteWorkspace.find_one({"project_id": body.project_id})
-    working_dir = workspace.remote_path if workspace else ""
+    # Resolve working_dir from the project's embedded remote binding.
+    working_dir = project.remote.remote_path if project.remote else ""
 
     session = ChatSession(
         project_id=body.project_id,

@@ -27,7 +27,7 @@ from ..models.chat import (
     MessageStatus,
     SessionStatus,
 )
-from ..models.remote import RemoteWorkspace
+from ..models.project import Project
 from .agent_manager import AgentOfflineError, agent_manager
 from .chat_manager import chat_manager
 
@@ -58,12 +58,12 @@ async def dispatch_to_agent(session: ChatSession, content: str) -> None:
     The agent will spawn `claude` CLI and stream events back. Events are
     handled by `handle_chat_event()` which broadcasts to all browsers.
     """
-    workspace = await RemoteWorkspace.find_one({"project_id": session.project_id})
-    if not workspace:
-        await complete_with_error(session, "No workspace configured for this project")
+    project = await Project.get(session.project_id)
+    if not project or not project.remote:
+        await complete_with_error(session, "No remote agent bound to this project")
         return
 
-    agent_id = workspace.agent_id
+    agent_id = project.remote.agent_id
     if not agent_manager.is_connected(agent_id):
         await complete_with_error(session, "Agent is offline")
         return
@@ -89,11 +89,11 @@ async def dispatch_to_agent(session: ChatSession, content: str) -> None:
 
 async def cancel_agent_task(session: ChatSession) -> None:
     """Send cancel request to the Agent."""
-    workspace = await RemoteWorkspace.find_one({"project_id": session.project_id})
-    if not workspace:
+    project = await Project.get(session.project_id)
+    if not project or not project.remote:
         return
 
-    agent_id = workspace.agent_id
+    agent_id = project.remote.agent_id
     try:
         await agent_manager.send_raw(agent_id, {
             "type": "chat_cancel",
@@ -141,8 +141,12 @@ async def recover_stale_sessions() -> int:
     count = 0
     busy_sessions = await ChatSession.find({"status": "busy"}).to_list()
     for session in busy_sessions:
-        workspace = await RemoteWorkspace.find_one({"project_id": session.project_id})
-        agent_online = workspace and agent_manager.is_connected(workspace.agent_id)
+        project = await Project.get(session.project_id)
+        agent_online = (
+            project is not None
+            and project.remote is not None
+            and agent_manager.is_connected(project.remote.agent_id)
+        )
 
         if not agent_online:
             session.status = SessionStatus.idle

@@ -1,4 +1,5 @@
 import asyncio
+from datetime import UTC, datetime
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -7,7 +8,8 @@ from pydantic import BaseModel, Field
 from ....core.deps import get_current_user
 from ....core.validators import valid_object_id
 from ....models import Project, User
-from ....models.project import MemberRole, ProjectMember, ProjectStatus
+from ....models.project import MemberRole, ProjectMember, ProjectRemoteBinding, ProjectStatus
+from ....models.remote import RemoteAgent
 from ....services.serializers import project_to_dict as _project_dict
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -34,6 +36,18 @@ class AddMemberRequest(BaseModel):
 
 class UpdateMemberRequest(BaseModel):
     role: MemberRole
+
+
+class ProjectRemoteBindingRequest(BaseModel):
+    """Request body for PUT /projects/{id}/remote.
+
+    Use DELETE /projects/{id}/remote to clear the binding instead of
+    sending a null body — keeps the PUT semantics unambiguous.
+    """
+
+    agent_id: str
+    remote_path: str = Field(..., min_length=1, max_length=1000)
+    label: str = Field("", max_length=200)
 
 
 # ── Helpers ──────────────────────────────────────────────────
@@ -99,8 +113,8 @@ async def get_common_project(user: User = Depends(get_current_user)) -> dict:
     The Common project hosts cross-cutting features (Chat, Bookmarks) that
     historically lived inside an arbitrary project. By being hidden it does
     not appear in the project sidebar but remains a real Project document
-    so existing code paths (RemoteWorkspace binding, bookmark project_id,
-    chat session project_id) keep working unchanged.
+    so existing code paths (bookmark project_id, chat session
+    project_id, embedded remote binding) keep working unchanged.
 
     Returns 404 if the Common project has not been provisioned yet
     (run `python -m app.cli setup-common-project`).
@@ -269,6 +283,55 @@ async def remove_member(
             )
     project.members = [m for m in project.members if m.user_id != user_id]
     await project.save_updated()
+
+
+@router.put("/{project_id}/remote")
+async def set_project_remote(
+    project_id: str,
+    body: ProjectRemoteBindingRequest,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Bind this project to a remote agent + directory.
+
+    Replaces any existing binding (one project = one remote). Only the
+    project owner or an admin may configure this. The supplied
+    ``agent_id`` must reference an agent owned by the calling user
+    (admins can reference any agent).
+    """
+    project = await _check_owner_or_admin(project_id, user)
+    valid_object_id(body.agent_id)
+
+    agent = await RemoteAgent.get(body.agent_id)
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found"
+        )
+    if not user.is_admin and agent.owner_id != str(user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot bind to an agent you do not own",
+        )
+
+    project.remote = ProjectRemoteBinding(
+        agent_id=body.agent_id,
+        remote_path=body.remote_path,
+        label=body.label,
+        updated_at=datetime.now(UTC),
+    )
+    await project.save_updated()
+    return _project_dict(project)
+
+
+@router.delete("/{project_id}/remote")
+async def clear_project_remote(
+    project_id: str,
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Clear this project's remote agent binding."""
+    project = await _check_owner_or_admin(project_id, user)
+    project.remote = None
+    await project.save_updated()
+    return _project_dict(project)
 
 
 @router.get("/{project_id}/summary")

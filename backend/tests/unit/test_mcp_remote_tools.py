@@ -15,7 +15,7 @@ Coverage focuses on the new behavior added in 2026-04-07:
   `remote_copy_file` tools
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastmcp.exceptions import ToolError
@@ -26,22 +26,22 @@ from app.mcp.tools import remote
 _MOCK_KEY_INFO = {"key_id": "test-key", "project_scopes": []}
 
 
-def _fake_workspace():
-    ws = MagicMock()
-    ws.id = "ws-1"
-    ws.agent_id = "agent-1"
-    ws.remote_path = "/work"
-    return ws
+def _fake_binding():
+    return remote.ResolvedBinding(
+        project_id="p-1",
+        agent_id="agent-1",
+        remote_path="/work",
+    )
 
 
 @pytest.fixture
 def patch_auth():
-    """Patch authenticate + _resolve_workspace + _log_operation."""
-    workspace = _fake_workspace()
+    """Patch authenticate + _resolve_binding + _log_operation."""
+    binding = _fake_binding()
     with patch("app.mcp.tools.remote.authenticate", new=AsyncMock(return_value=_MOCK_KEY_INFO)), \
-         patch("app.mcp.tools.remote._resolve_workspace", new=AsyncMock(return_value=workspace)), \
+         patch("app.mcp.tools.remote._resolve_binding", new=AsyncMock(return_value=binding)), \
          patch("app.mcp.tools.remote._log_operation", new=AsyncMock(return_value=None)):
-        yield workspace
+        yield binding
 
 
 # ──────────────────────────────────────────────
@@ -321,14 +321,14 @@ class TestRemoteReadFile:
 
 class TestRemoteStat:
     async def test_stat_returns_metadata(self, patch_auth):
-        # Agent emits ``file_type`` (not ``type``) in stat responses to
-        # avoid shadowing the envelope ``type: "stat_result"`` — see
-        # _normalize_file_type in remote.py and the regression note in
-        # agent/main.py::_stat. The MCP layer renames it back to ``type``
-        # for the public API.
+        # ``send_request`` unwraps the envelope and returns the inner
+        # payload dict directly to the MCP tool. With the envelope
+        # redesign (2026-04-08), an inner ``type`` key is safe again
+        # because handler data is nested under ``payload`` at the wire
+        # level — no shadowing risk.
         send_request = AsyncMock(return_value={
             "exists": True,
-            "file_type": "file",
+            "type": "file",
             "size": 1234,
             "mtime": "2026-04-07T00:00:00+00:00",
             "mode": "0o644",
@@ -338,13 +338,12 @@ class TestRemoteStat:
             result = await remote.remote_stat(project_id="p", path="f.txt")
         assert result["exists"] is True
         assert result["type"] == "file"
-        assert "file_type" not in result  # renamed at the boundary
         assert result["size"] == 1234
 
     async def test_stat_nonexistent_returns_null_type(self, patch_auth):
         send_request = AsyncMock(return_value={
             "exists": False,
-            "file_type": None,
+            "type": None,
             "path": "/work/nope.txt",
         })
         with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
@@ -355,7 +354,7 @@ class TestRemoteStat:
     async def test_file_exists_strips_to_minimal_response(self, patch_auth):
         send_request = AsyncMock(return_value={
             "exists": True,
-            "file_type": "directory",
+            "type": "directory",
             "size": 0,
             "mtime": "2026-04-07T00:00:00+00:00",
             "mode": "0o755",
@@ -364,40 +363,6 @@ class TestRemoteStat:
         with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
             result = await remote.remote_file_exists(project_id="p", path="d")
         assert result == {"exists": True, "type": "directory"}
-
-    async def test_file_exists_backcompat_with_old_agent(self, patch_auth):
-        """Old agents (pre-2026-04-08) emit ``type`` instead of ``file_type``.
-
-        ``remote_file_exists`` must still report a usable ``type`` field for
-        them, otherwise mixed-version deployments break. This is the
-        regression that the code-review pass flagged: reading
-        ``result.get("file_type")`` directly silently dropped the value.
-        """
-        send_request = AsyncMock(return_value={
-            "exists": True,
-            "type": "file",  # legacy key
-            "size": 12,
-            "path": "/work/legacy.txt",
-        })
-        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
-            result = await remote.remote_file_exists(project_id="p", path="legacy.txt")
-        assert result == {"exists": True, "type": "file"}
-
-    async def test_stat_backcompat_with_old_agent(self, patch_auth):
-        """Same back-compat guarantee for ``remote_stat``."""
-        send_request = AsyncMock(return_value={
-            "exists": True,
-            "type": "directory",  # legacy key
-            "size": 0,
-            "mtime": "2026-04-07T00:00:00+00:00",
-            "mode": "0o755",
-            "path": "/work/legacy_d",
-        })
-        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
-            result = await remote.remote_stat(project_id="p", path="legacy_d")
-        assert result["exists"] is True
-        assert result["type"] == "directory"
-        assert "file_type" not in result
 
 
 # ──────────────────────────────────────────────
@@ -629,7 +594,7 @@ class TestListRemoteAgents:
         # Existing fields must still be present.
         assert entry["id"] == str(agent.id)
         assert entry["os_type"] == "win32"
-        assert "workspace_count" in entry
+        assert "project_count" in entry
         assert "is_online" in entry
 
     async def test_handles_agent_without_version(self, admin_user):

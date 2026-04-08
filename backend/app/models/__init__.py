@@ -6,9 +6,9 @@ from .document import DocumentCategory, DocumentVersion, ProjectDocument
 from .knowledge import Knowledge
 from .mcp_api_key import McpApiKey
 from .mcp_tool_usage import McpToolCallEvent, McpToolUsageBucket
-from .project import Project, ProjectMember
+from .project import Project, ProjectMember, ProjectRemoteBinding
 from .task import Attachment, Comment, Task
-from .remote import AgentRelease, RemoteAgent, RemoteExecLog, RemoteWorkspace
+from .remote import AgentRelease, RemoteAgent, RemoteExecLog
 from .user import AuthType, User
 
 __all__ = [
@@ -17,6 +17,7 @@ __all__ = [
     "AllowedEmail",
     "Project",
     "ProjectMember",
+    "ProjectRemoteBinding",
     "Task",
     "Attachment",
     "Comment",
@@ -35,7 +36,6 @@ __all__ = [
     "BookmarkMetadata",
     "ClipStatus",
     "RemoteAgent",
-    "RemoteWorkspace",
     "RemoteExecLog",
     "AgentRelease",
     "ChatSession",

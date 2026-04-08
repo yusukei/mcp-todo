@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Check, X, Pencil, Lock, Unlock } from 'lucide-react'
+import { ArrowLeft, Check, X, Pencil, Lock, Unlock, Server, Trash2 } from 'lucide-react'
 import { api } from '../api/client'
 import { useAuthStore } from '../store/auth'
 import ProjectMembersTab from '../components/project/ProjectMembersTab'
-import { showErrorToast } from '../components/common/Toast'
+import { showErrorToast, showSuccessToast } from '../components/common/Toast'
+import { showConfirm } from '../components/common/ConfirmDialog'
 
 const COLOR_PRESETS = [
   '#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#f97316',
@@ -73,6 +74,79 @@ export default function ProjectSettingsPage() {
     },
     onError: () => showErrorToast('カラーの変更に失敗しました'),
   })
+
+  // ── Remote binding ───────────────────────────────────
+  const { data: agents = [] } = useQuery<Array<{ id: string; name: string; hostname: string; is_online: boolean }>>({
+    queryKey: ['workspace-agents'],
+    queryFn: () => api.get('/workspaces/agents').then((r) => r.data),
+    enabled: isOwnerOrAdmin,
+  })
+
+  const [editingRemote, setEditingRemote] = useState(false)
+  const [remoteAgentId, setRemoteAgentId] = useState('')
+  const [remotePath, setRemotePath] = useState('')
+  const [remoteLabel, setRemoteLabel] = useState('')
+  const [remoteError, setRemoteError] = useState('')
+
+  const startEditRemote = () => {
+    if (project?.remote) {
+      setRemoteAgentId(project.remote.agent_id)
+      setRemotePath(project.remote.remote_path)
+      setRemoteLabel(project.remote.label || '')
+    } else {
+      setRemoteAgentId(agents[0]?.id || '')
+      setRemotePath('')
+      setRemoteLabel('')
+    }
+    setRemoteError('')
+    setEditingRemote(true)
+  }
+
+  const setRemoteMutation = useMutation({
+    mutationFn: (body: { agent_id: string; remote_path: string; label: string }) =>
+      api.put(`/projects/${projectId}/remote`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project', projectId] })
+      qc.invalidateQueries({ queryKey: ['projects'] })
+      setEditingRemote(false)
+      showSuccessToast('リモートエージェントを設定しました')
+    },
+    onError: (err: any) => {
+      setRemoteError(err?.response?.data?.detail || 'リモート設定の更新に失敗しました')
+    },
+  })
+
+  const clearRemoteMutation = useMutation({
+    mutationFn: () => api.delete(`/projects/${projectId}/remote`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project', projectId] })
+      qc.invalidateQueries({ queryKey: ['projects'] })
+      showSuccessToast('リモートエージェント設定を解除しました')
+    },
+    onError: () => showErrorToast('リモート設定の解除に失敗しました'),
+  })
+
+  const handleSaveRemote = () => {
+    if (!remoteAgentId || !remotePath.trim()) {
+      setRemoteError('エージェントとリモートパスは必須です')
+      return
+    }
+    setRemoteMutation.mutate({
+      agent_id: remoteAgentId,
+      remote_path: remotePath.trim(),
+      label: remoteLabel.trim(),
+    })
+  }
+
+  const handleClearRemote = async () => {
+    if (await showConfirm('このプロジェクトからリモートエージェント設定を解除しますか？')) {
+      clearRemoteMutation.mutate()
+    }
+  }
+
+  const boundAgent = project?.remote
+    ? agents.find((a) => a.id === project.remote.agent_id)
+    : null
 
   // ── Lock ─────────────────────────────────────────────
   const lockMutation = useMutation({
@@ -187,6 +261,145 @@ export default function ProjectSettingsPage() {
                   {project.is_locked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
                   {project.is_locked ? 'ロック中' : 'アンロック'}
                 </button>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Remote agent binding */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Server className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">リモートエージェント</h2>
+          </div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            このプロジェクトを特定のリモートエージェント＋ディレクトリに紐付けると、
+            Chat やリモート MCP ツール（<code className="text-xs">remote_exec</code> など）
+            がそのパスを作業ディレクトリとして動作します。
+          </p>
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-6 py-4">
+            {editingRemote ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    エージェント
+                  </label>
+                  <select
+                    value={remoteAgentId}
+                    onChange={(e) => setRemoteAgentId(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
+                  >
+                    <option value="">選択してください</option>
+                    {agents.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name} ({a.hostname || 'unknown'}) {a.is_online ? '● online' : '○ offline'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    リモートパス <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    value={remotePath}
+                    onChange={(e) => setRemotePath(e.target.value)}
+                    placeholder="/home/user/projects/my-project"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    ラベル（任意）
+                  </label>
+                  <input
+                    value={remoteLabel}
+                    onChange={(e) => setRemoteLabel(e.target.value)}
+                    placeholder="例: production server"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                {remoteError && (
+                  <p className="text-sm text-red-600 dark:text-red-400">{remoteError}</p>
+                )}
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setEditingRemote(false)}
+                    className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={handleSaveRemote}
+                    disabled={setRemoteMutation.isPending}
+                    className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {setRemoteMutation.isPending ? '保存中...' : '保存'}
+                  </button>
+                </div>
+              </div>
+            ) : project.remote ? (
+              <div className="flex items-start justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-gray-800 dark:text-gray-100">
+                      {boundAgent?.name || '(不明なエージェント)'}
+                    </span>
+                    {project.remote.label && (
+                      <span className="text-xs text-gray-400 dark:text-gray-500">
+                        ({project.remote.label})
+                      </span>
+                    )}
+                    {boundAgent && (
+                      <span
+                        className={`inline-flex items-center px-1.5 py-0.5 text-xs rounded-full ${
+                          boundAgent.is_online
+                            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                        }`}
+                      >
+                        {boundAgent.is_online ? 'online' : 'offline'}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 font-mono truncate">
+                    {project.remote.remote_path}
+                  </p>
+                </div>
+                {isOwnerOrAdmin && (
+                  <div className="flex items-center gap-1 flex-shrink-0 ml-4">
+                    <button
+                      onClick={startEditRemote}
+                      className="p-2 rounded-lg text-gray-400 hover:text-indigo-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      title="編集"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={handleClearRemote}
+                      className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      title="解除"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  リモートエージェント未設定
+                </p>
+                {isOwnerOrAdmin && (
+                  <button
+                    onClick={startEditRemote}
+                    disabled={agents.length === 0}
+                    className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={agents.length === 0 ? 'エージェントが登録されていません' : ''}
+                  >
+                    設定
+                  </button>
+                )}
               </div>
             )}
           </div>

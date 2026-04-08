@@ -77,6 +77,15 @@ def task_to_dict(t: Task) -> dict:
 
 def project_to_dict(p: Project) -> dict:
     """Convert a Project document to a plain dict for API/MCP responses."""
+    remote = getattr(p, "remote", None)
+    remote_dict: dict | None = None
+    if remote is not None:
+        remote_dict = {
+            "agent_id": remote.agent_id,
+            "remote_path": remote.remote_path,
+            "label": remote.label,
+            "updated_at": remote.updated_at.isoformat(),
+        }
     return {
         "id": str(p.id),
         "name": p.name,
@@ -86,6 +95,7 @@ def project_to_dict(p: Project) -> dict:
         "is_locked": p.is_locked,
         "sort_order": p.sort_order,
         "hidden": getattr(p, "hidden", False),
+        "remote": remote_dict,
         "members": [
             {"user_id": m.user_id, "role": m.role, "joined_at": m.joined_at.isoformat()}
             for m in p.members

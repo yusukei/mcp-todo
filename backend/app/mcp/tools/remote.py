@@ -2,11 +2,27 @@
 
 import logging
 import time
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from fastmcp.exceptions import ToolError
 
-from ...models.remote import RemoteAgent, RemoteExecLog, RemoteWorkspace
+from ...models import Project
+from ...models.remote import RemoteAgent, RemoteExecLog
+
+
+@dataclass(frozen=True)
+class ResolvedBinding:
+    """Resolved (project → agent → remote_path) triple for a remote operation.
+
+    Materialised from the ``Project.remote`` embedded field by
+    :func:`_resolve_binding`. Kept as a lightweight dataclass so the
+    per-tool call sites don't have to know about the Project document.
+    """
+
+    project_id: str
+    agent_id: str
+    remote_path: str
 from ...services.agent_manager import (
     AgentOfflineError,
     CommandTimeoutError,
@@ -52,7 +68,7 @@ def _validate_remote_command(command: str) -> str:
     blocking them would break legitimate use (``git log | head``,
     ``cd x && pytest``, …). The real security boundary for ``remote_exec``
     is API-key authentication × project_scopes × workspace path isolation,
-    enforced upstream by ``authenticate()`` / ``_resolve_workspace`` and on
+    enforced upstream by ``authenticate()`` / ``_resolve_binding`` and on
     the agent side by its own path/exec safeguards.
 
     What this function actually does:
@@ -119,19 +135,29 @@ def _validate_remote_pattern(pattern: str, *, kind: str) -> str:
     return pattern
 
 
-async def _resolve_workspace(project_id: str, scopes: list[str]) -> RemoteWorkspace:
-    """Resolve project_id to a RemoteWorkspace, with access checks."""
+async def _resolve_binding(project_id: str, scopes: list[str]) -> ResolvedBinding:
+    """Resolve project_id to a :class:`ResolvedBinding` with access checks.
+
+    Reads the embedded ``Project.remote`` field. Raises ``ToolError`` if
+    the project has no remote binding configured.
+    """
     project_id = await _resolve_project_id(project_id)
     check_project_access(project_id, scopes)
 
-    workspace = await RemoteWorkspace.find_one({"project_id": project_id})
-    if not workspace:
-        raise ToolError(f"No remote workspace configured for project {project_id}")
-    return workspace
+    project = await Project.get(project_id)
+    if not project:
+        raise ToolError(f"Project not found: {project_id}")
+    if not project.remote:
+        raise ToolError(f"No remote agent bound to project {project_id}")
+    return ResolvedBinding(
+        project_id=str(project.id),
+        agent_id=project.remote.agent_id,
+        remote_path=project.remote.remote_path,
+    )
 
 
 async def _log_operation(
-    workspace: RemoteWorkspace,
+    binding: ResolvedBinding,
     operation: str,
     detail: str,
     mcp_key_id: str,
@@ -144,8 +170,8 @@ async def _log_operation(
     """Record operation to audit log."""
     try:
         log = RemoteExecLog(
-            workspace_id=str(workspace.id),
-            agent_id=workspace.agent_id,
+            project_id=binding.project_id,
+            agent_id=binding.agent_id,
             operation=operation,
             detail=detail[:500],
             exit_code=exit_code,
@@ -161,7 +187,7 @@ async def _log_operation(
 
 
 async def _send_to_agent(
-    workspace: RemoteWorkspace,
+    binding: ResolvedBinding,
     msg_type: str,
     payload: dict,
     timeout: float,
@@ -177,23 +203,23 @@ async def _send_to_agent(
     t0 = time.monotonic()
     try:
         result = await agent_manager.send_request(
-            workspace.agent_id,
+            binding.agent_id,
             msg_type,
             payload,
             timeout=timeout,
             wait_for_agent=DEFAULT_AGENT_WAIT,
         )
     except AgentOfflineError:
-        await _log_operation(workspace, operation, detail, key_info["key_id"], error="agent_offline")
+        await _log_operation(binding, operation, detail, key_info["key_id"], error="agent_offline")
         raise ToolError("Agent is offline")
     except CommandTimeoutError:
         duration_ms = int((time.monotonic() - t0) * 1000)
-        await _log_operation(workspace, operation, detail, key_info["key_id"],
+        await _log_operation(binding, operation, detail, key_info["key_id"],
                              duration_ms=duration_ms, error="timeout")
         raise ToolError(f"Request timed out after {timeout}s")
     except RuntimeError as e:
         duration_ms = int((time.monotonic() - t0) * 1000)
-        await _log_operation(workspace, operation, detail, key_info["key_id"],
+        await _log_operation(binding, operation, detail, key_info["key_id"],
                              duration_ms=duration_ms, error=str(e))
         raise ToolError(str(e))
     return result
@@ -203,7 +229,8 @@ async def _send_to_agent(
 async def list_remote_agents() -> list[dict]:
     """List registered remote agents and their connection status.
 
-    Returns a list of agents with id, name, hostname, os_type, is_online, and workspace count.
+    Returns a list of agents with id, name, hostname, os_type, is_online,
+    and the number of projects bound to the agent.
     """
     await authenticate()
 
@@ -211,14 +238,14 @@ async def list_remote_agents() -> list[dict]:
     result = []
     for a in agents:
         aid = str(a.id)
-        ws_count = await RemoteWorkspace.find({"agent_id": aid}).count()
+        project_count = await Project.find({"remote.agent_id": aid}).count()
         result.append({
             "id": aid,
             "name": a.name,
             "hostname": a.hostname,
             "os_type": a.os_type,
             "is_online": agent_manager.is_connected(aid),
-            "workspace_count": ws_count,
+            "project_count": project_count,
             "last_seen_at": a.last_seen_at.isoformat() if a.last_seen_at else None,
             "agent_version": a.agent_version,
             "auto_update": a.auto_update,
@@ -258,13 +285,13 @@ async def remote_exec(
         can detect output that exceeded the 2MB agent buffer.
     """
     key_info = await authenticate()
-    workspace = await _resolve_workspace(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info["project_scopes"])
     _validate_remote_command(command)
 
     timeout = max(1, min(timeout, MAX_TIMEOUT))
     payload: dict = {
         "command": command,
-        "cwd": workspace.remote_path,
+        "cwd": binding.remote_path,
         "timeout": timeout,
     }
     if cwd is not None:
@@ -280,13 +307,13 @@ async def remote_exec(
 
     t0 = time.monotonic()
     result = await _send_to_agent(
-        workspace, "exec", payload, timeout=timeout + 5,
+        binding, "exec", payload, timeout=timeout + 5,
         operation="exec", detail=command, key_info=key_info,
     )
     duration_ms = int((time.monotonic() - t0) * 1000)
 
     await _log_operation(
-        workspace, "exec", command, key_info["key_id"],
+        binding, "exec", command, key_info["key_id"],
         duration_ms=duration_ms,
         exit_code=result.get("exit_code"),
         stdout_len=len(result.get("stdout", "")),
@@ -332,10 +359,10 @@ async def remote_read_file(
         ``is_binary``, ``total_lines``, ``truncated``.
     """
     key_info = await authenticate()
-    workspace = await _resolve_workspace(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info["project_scopes"])
     _validate_remote_path(path)
 
-    payload: dict = {"path": path, "cwd": workspace.remote_path}
+    payload: dict = {"path": path, "cwd": binding.remote_path}
     if offset is not None:
         if offset < 1:
             raise ToolError("offset must be >= 1")
@@ -349,14 +376,14 @@ async def remote_read_file(
 
     t0 = time.monotonic()
     result = await _send_to_agent(
-        workspace, "read_file", payload, timeout=30,
+        binding, "read_file", payload, timeout=30,
         operation="read_file", detail=path, key_info=key_info,
     )
     duration_ms = int((time.monotonic() - t0) * 1000)
     content = result.get("content", "")
 
     await _log_operation(
-        workspace, "read_file", path, key_info["key_id"],
+        binding, "read_file", path, key_info["key_id"],
         duration_ms=duration_ms, stdout_len=len(content),
     )
 
@@ -383,7 +410,7 @@ async def remote_write_file(
     Parent directories are created automatically.
     """
     key_info = await authenticate()
-    workspace = await _resolve_workspace(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info["project_scopes"])
     _validate_remote_path(path)
 
     if len(content.encode("utf-8")) > MAX_FILE_BYTES:
@@ -391,13 +418,13 @@ async def remote_write_file(
 
     t0 = time.monotonic()
     result = await _send_to_agent(
-        workspace, "write_file",
-        {"path": path, "cwd": workspace.remote_path, "content": content},
+        binding, "write_file",
+        {"path": path, "cwd": binding.remote_path, "content": content},
         timeout=30, operation="write_file", detail=path, key_info=key_info,
     )
     duration_ms = int((time.monotonic() - t0) * 1000)
     await _log_operation(
-        workspace, "write_file", path, key_info["key_id"],
+        binding, "write_file", path, key_info["key_id"],
         duration_ms=duration_ms, stdout_len=result.get("bytes_written", 0),
     )
 
@@ -418,19 +445,19 @@ async def remote_list_dir(
     Path is relative to the project's remote directory, or absolute.
     """
     key_info = await authenticate()
-    workspace = await _resolve_workspace(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info["project_scopes"])
     _validate_remote_path(path)
 
     t0 = time.monotonic()
     result = await _send_to_agent(
-        workspace, "list_dir",
-        {"path": path, "cwd": workspace.remote_path},
+        binding, "list_dir",
+        {"path": path, "cwd": binding.remote_path},
         timeout=15, operation="list_dir", detail=path, key_info=key_info,
     )
     duration_ms = int((time.monotonic() - t0) * 1000)
     entries = result.get("entries", [])
     await _log_operation(
-        workspace, "list_dir", path, key_info["key_id"],
+        binding, "list_dir", path, key_info["key_id"],
         duration_ms=duration_ms, stdout_len=len(entries),
     )
 
@@ -444,26 +471,6 @@ async def remote_list_dir(
 # ── New tools (stat / file_exists / mkdir / delete / move / copy / glob / grep) ──
 
 
-def _normalize_file_type(result: dict) -> dict:
-    """Translate the agent's ``file_type`` field back to ``type`` for the
-    public MCP API surface.
-
-    The agent payload uses ``file_type`` because the response envelope
-    is built by spreading the inner result dict on top of
-    ``{"type": "stat_result", ...}`` — a key named ``type`` inside the
-    inner dict would shadow the envelope and the WebSocket dispatcher
-    would silently drop the response (the bug fixed 2026-04-08). The
-    MCP-facing API still exposes ``type`` for stability with existing
-    consumers, so we rename here at the boundary.
-    """
-    if "file_type" in result:
-        # Build a new dict so we don't mutate the agent's response in place.
-        out = {k: v for k, v in result.items() if k != "file_type"}
-        out["type"] = result["file_type"]
-        return out
-    return result
-
-
 @mcp.tool()
 async def remote_stat(project_id: str, path: str) -> dict:
     """Return metadata for a remote path: type / size / mtime / mode.
@@ -473,16 +480,16 @@ async def remote_stat(project_id: str, path: str) -> dict:
     full ``remote_read_file``.
     """
     key_info = await authenticate()
-    workspace = await _resolve_workspace(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info["project_scopes"])
     _validate_remote_path(path)
 
     result = await _send_to_agent(
-        workspace, "stat",
-        {"path": path, "cwd": workspace.remote_path},
+        binding, "stat",
+        {"path": path, "cwd": binding.remote_path},
         timeout=10, operation="stat", detail=path, key_info=key_info,
     )
-    await _log_operation(workspace, "stat", path, key_info["key_id"])
-    return _normalize_file_type(result)
+    await _log_operation(binding, "stat", path, key_info["key_id"])
+    return result
 
 
 @mcp.tool()
@@ -493,21 +500,17 @@ async def remote_file_exists(project_id: str, path: str) -> dict:
     when you only need a yes/no answer (e.g. before creating a file).
     """
     key_info = await authenticate()
-    workspace = await _resolve_workspace(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info["project_scopes"])
     _validate_remote_path(path)
 
     result = await _send_to_agent(
-        workspace, "stat",
-        {"path": path, "cwd": workspace.remote_path},
+        binding, "stat",
+        {"path": path, "cwd": binding.remote_path},
         timeout=10, operation="stat", detail=path, key_info=key_info,
     )
-    # Route through _normalize_file_type so we tolerate BOTH a new agent
-    # (returns ``file_type``) and an old agent (returns ``type``). Reading
-    # ``file_type`` directly would silently break the old-agent case.
-    normalized = _normalize_file_type(result)
     return {
-        "exists": normalized.get("exists", False),
-        "type": normalized.get("type"),
+        "exists": result.get("exists", False),
+        "type": result.get("type"),
     }
 
 
@@ -518,15 +521,15 @@ async def remote_mkdir(project_id: str, path: str, parents: bool = True) -> dict
     With ``parents=True`` (default), missing parents are created (mkdir -p).
     """
     key_info = await authenticate()
-    workspace = await _resolve_workspace(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info["project_scopes"])
     _validate_remote_path(path)
 
     result = await _send_to_agent(
-        workspace, "mkdir",
-        {"path": path, "cwd": workspace.remote_path, "parents": parents},
+        binding, "mkdir",
+        {"path": path, "cwd": binding.remote_path, "parents": parents},
         timeout=10, operation="mkdir", detail=path, key_info=key_info,
     )
-    await _log_operation(workspace, "mkdir", path, key_info["key_id"])
+    await _log_operation(binding, "mkdir", path, key_info["key_id"])
     return result
 
 
@@ -540,16 +543,16 @@ async def remote_delete_file(
     workspace root.
     """
     key_info = await authenticate()
-    workspace = await _resolve_workspace(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info["project_scopes"])
     _validate_remote_path(path)
 
     result = await _send_to_agent(
-        workspace, "delete",
-        {"path": path, "cwd": workspace.remote_path, "recursive": recursive},
+        binding, "delete",
+        {"path": path, "cwd": binding.remote_path, "recursive": recursive},
         timeout=30, operation="delete", detail=path, key_info=key_info,
     )
-    await _log_operation(workspace, "delete", path, key_info["key_id"])
-    return _normalize_file_type(result)
+    await _log_operation(binding, "delete", path, key_info["key_id"])
+    return result
 
 
 @mcp.tool()
@@ -558,16 +561,16 @@ async def remote_move_file(
 ) -> dict:
     """Move/rename a file or directory on the remote machine."""
     key_info = await authenticate()
-    workspace = await _resolve_workspace(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info["project_scopes"])
     _validate_remote_path(src)
     _validate_remote_path(dst)
 
     result = await _send_to_agent(
-        workspace, "move",
-        {"src": src, "dst": dst, "cwd": workspace.remote_path, "overwrite": overwrite},
+        binding, "move",
+        {"src": src, "dst": dst, "cwd": binding.remote_path, "overwrite": overwrite},
         timeout=30, operation="move", detail=f"{src} -> {dst}", key_info=key_info,
     )
-    await _log_operation(workspace, "move", f"{src} -> {dst}", key_info["key_id"])
+    await _log_operation(binding, "move", f"{src} -> {dst}", key_info["key_id"])
     return result
 
 
@@ -577,16 +580,16 @@ async def remote_copy_file(
 ) -> dict:
     """Copy a file or directory on the remote machine."""
     key_info = await authenticate()
-    workspace = await _resolve_workspace(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info["project_scopes"])
     _validate_remote_path(src)
     _validate_remote_path(dst)
 
     result = await _send_to_agent(
-        workspace, "copy",
-        {"src": src, "dst": dst, "cwd": workspace.remote_path, "overwrite": overwrite},
+        binding, "copy",
+        {"src": src, "dst": dst, "cwd": binding.remote_path, "overwrite": overwrite},
         timeout=60, operation="copy", detail=f"{src} -> {dst}", key_info=key_info,
     )
-    await _log_operation(workspace, "copy", f"{src} -> {dst}", key_info["key_id"])
+    await _log_operation(binding, "copy", f"{src} -> {dst}", key_info["key_id"])
     return result
 
 
@@ -607,16 +610,16 @@ async def remote_glob(
         path: Base directory (relative to workspace, default ``.``)
     """
     key_info = await authenticate()
-    workspace = await _resolve_workspace(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info["project_scopes"])
     _validate_remote_path(path)
     _validate_remote_pattern(pattern, kind="glob")
 
     result = await _send_to_agent(
-        workspace, "glob",
-        {"pattern": pattern, "path": path, "cwd": workspace.remote_path},
+        binding, "glob",
+        {"pattern": pattern, "path": path, "cwd": binding.remote_path},
         timeout=30, operation="glob", detail=f"{pattern} @ {path}", key_info=key_info,
     )
-    await _log_operation(workspace, "glob", f"{pattern} @ {path}", key_info["key_id"])
+    await _log_operation(binding, "glob", f"{pattern} @ {path}", key_info["key_id"])
     return result
 
 
@@ -663,7 +666,7 @@ async def remote_grep(
     - Files whose first 8 KB contain a NUL byte (binary heuristic)
     """
     key_info = await authenticate()
-    workspace = await _resolve_workspace(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info["project_scopes"])
     _validate_remote_path(path)
     _validate_remote_pattern(pattern, kind="grep")
 
@@ -673,7 +676,7 @@ async def remote_grep(
     payload: dict = {
         "pattern": pattern,
         "path": path,
-        "cwd": workspace.remote_path,
+        "cwd": binding.remote_path,
         "case_insensitive": case_insensitive,
         "max_results": max_results,
         "respect_gitignore": respect_gitignore,
@@ -682,8 +685,8 @@ async def remote_grep(
         payload["glob"] = glob
 
     result = await _send_to_agent(
-        workspace, "grep", payload, timeout=60,
+        binding, "grep", payload, timeout=60,
         operation="grep", detail=f"{pattern} @ {path}", key_info=key_info,
     )
-    await _log_operation(workspace, "grep", f"{pattern} @ {path}", key_info["key_id"])
+    await _log_operation(binding, "grep", f"{pattern} @ {path}", key_info["key_id"])
     return result

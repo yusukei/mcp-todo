@@ -293,6 +293,124 @@ async def _setup_common_project(rename_from: str | None) -> None:
         await close_db()
 
 
+async def _migrate_workspaces_to_projects() -> None:
+    """Copy the historical ``remote_workspaces`` collection into the
+    embedded ``Project.remote`` field.
+
+    Runs idempotently: projects that already have a ``remote`` binding
+    are skipped so re-running is safe. The source collection is left
+    intact — drop it manually once the migration has been verified and
+    the application has been running on the new code for long enough.
+
+    Also rewrites any ``remote_exec_logs`` documents that still use the
+    legacy ``workspace_id`` field, resolving each to its ``project_id``
+    via the workspace document it came from. Legacy logs whose source
+    workspace no longer exists are left alone (the operator can prune
+    them separately).
+    """
+    from datetime import UTC, datetime
+
+    from bson import ObjectId
+
+    from .core.database import get_mongo_client
+    from .models import Project
+    from .models.project import ProjectRemoteBinding
+
+    await connect()
+    try:
+        client = get_mongo_client()
+        if client is None:
+            print("Error: database connection failed", file=sys.stderr)
+            sys.exit(1)
+        db = client[settings.MONGO_DBNAME]
+
+        ws_collection = db["remote_workspaces"]
+        migrated = 0
+        skipped_existing = 0
+        skipped_missing_project = 0
+        workspace_to_project: dict[str, str] = {}
+
+        async for ws in ws_collection.find({}):
+            ws_id = str(ws["_id"])
+            project_id_str = ws.get("project_id", "")
+            agent_id = ws.get("agent_id", "")
+            remote_path = ws.get("remote_path", "")
+            label = ws.get("label", "") or ""
+
+            if not project_id_str or not agent_id or not remote_path:
+                print(f"  skip workspace {ws_id}: missing required field")
+                continue
+
+            try:
+                project_oid = ObjectId(project_id_str)
+            except Exception:
+                print(f"  skip workspace {ws_id}: invalid project_id {project_id_str!r}")
+                continue
+
+            project = await Project.get(project_oid)
+            if not project:
+                skipped_missing_project += 1
+                print(f"  skip workspace {ws_id}: project {project_id_str} not found")
+                continue
+
+            workspace_to_project[ws_id] = project_id_str
+
+            if project.remote is not None:
+                skipped_existing += 1
+                print(
+                    f"  skip project {project_id_str} ({project.name!r}): "
+                    f"already has a remote binding"
+                )
+                continue
+
+            project.remote = ProjectRemoteBinding(
+                agent_id=agent_id,
+                remote_path=remote_path,
+                label=label,
+                updated_at=ws.get("updated_at") or datetime.now(UTC),
+            )
+            await project.save_updated()
+            migrated += 1
+            print(
+                f"  migrated workspace {ws_id} → project {project_id_str} "
+                f"({project.name!r}, agent={agent_id})"
+            )
+
+        # Rewrite legacy remote_exec_logs.workspace_id → project_id
+        log_collection = db["remote_exec_logs"]
+        log_updated = 0
+        log_unresolved = 0
+        async for log in log_collection.find({"workspace_id": {"$exists": True}}):
+            ws_id = log.get("workspace_id")
+            project_id = workspace_to_project.get(ws_id) if ws_id else None
+            if not project_id:
+                log_unresolved += 1
+                continue
+            await log_collection.update_one(
+                {"_id": log["_id"]},
+                {"$set": {"project_id": project_id}, "$unset": {"workspace_id": ""}},
+            )
+            log_updated += 1
+
+        print()
+        print(
+            f"Workspaces: migrated={migrated} "
+            f"skipped_existing={skipped_existing} "
+            f"skipped_missing_project={skipped_missing_project}"
+        )
+        print(
+            f"Exec logs:  rewritten={log_updated} unresolved={log_unresolved}"
+        )
+        print()
+        print(
+            "The source collection remote_workspaces was not deleted. "
+            "Drop it manually after verifying the migration:"
+        )
+        print("  db.remote_workspaces.drop()")
+    finally:
+        await close_db()
+
+
 def _resolve_value(args_val: str | None, env_val: str, prompt_msg: str, *, secret: bool = False) -> str:
     """Resolve value from: CLI arg > env var > interactive prompt."""
     if args_val:
@@ -350,6 +468,15 @@ def main() -> None:
         ),
     )
 
+    sub.add_parser(
+        "migrate-workspaces-to-projects",
+        help=(
+            "Copy legacy remote_workspaces documents into the embedded "
+            "Project.remote field, and rewrite remote_exec_logs to use "
+            "project_id instead of workspace_id. Idempotent."
+        ),
+    )
+
     args = parser.parse_args()
 
     if args.command == "init-admin":
@@ -392,6 +519,9 @@ def main() -> None:
 
     elif args.command == "setup-common-project":
         asyncio.run(_setup_common_project(args.rename_from))
+
+    elif args.command == "migrate-workspaces-to-projects":
+        asyncio.run(_migrate_workspaces_to_projects())
 
     else:
         parser.print_help()

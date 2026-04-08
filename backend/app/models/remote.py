@@ -35,27 +35,16 @@ class RemoteAgent(Document):
         ]
 
 
-class RemoteWorkspace(Document):
-    """Links a project to a remote agent + directory."""
-
-    agent_id: Indexed(str)  # type: ignore[valid-type]
-    project_id: Indexed(str, unique=True)  # type: ignore[valid-type]  # 1 project = 1 workspace
-    remote_path: str  # Absolute path on remote machine
-    label: str = ""
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-
-    class Settings:
-        name = "remote_workspaces"
-        indexes = [
-            [("agent_id", 1)],
-        ]
-
-
 class RemoteExecLog(Document):
-    """Audit trail for MCP-initiated remote operations."""
+    """Audit trail for MCP-initiated remote operations.
 
-    workspace_id: str
+    ``project_id`` identifies the project whose ``ProjectRemoteBinding``
+    was used to route the operation. Renamed from the historical
+    ``workspace_id`` (2026-04-08) when the standalone
+    ``remote_workspaces`` collection was folded into ``Project.remote``.
+    """
+
+    project_id: str
     agent_id: str
     operation: str  # "exec" | "read_file" | "write_file" | "list_dir"
     detail: str  # command string or file path
@@ -71,7 +60,7 @@ class RemoteExecLog(Document):
         name = "remote_exec_logs"
         indexes = [
             [("agent_id", 1), ("created_at", -1)],
-            [("workspace_id", 1), ("created_at", -1)],
+            [("project_id", 1), ("created_at", -1)],
         ]
 
 

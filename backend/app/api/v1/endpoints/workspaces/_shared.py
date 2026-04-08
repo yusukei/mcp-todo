@@ -1,21 +1,21 @@
 """Shared schemas, constants, and helpers for workspaces endpoint submodules.
 
-All cross-module state (request schemas, validation constants, workspace and
-agent serializers, startup cleanup) lives here so the individual router
-modules (`agents`, `workspaces`, `releases`, `websocket`) stay focused on
-route handlers.
+All cross-module state (request schemas, validation constants, agent
+serializers, startup cleanup) lives here so the individual router modules
+(`agents`, `releases`, `websocket`) stay focused on route handlers.
+
+Workspace CRUD schemas / serializers lived here until 2026-04-08; they
+were removed when the project → agent binding moved into the embedded
+``Project.remote`` field.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 
-from bson import ObjectId
-from bson.errors import InvalidId
 from pydantic import BaseModel, Field
 
-from .....models.remote import RemoteAgent, RemoteWorkspace
+from .....models.remote import RemoteAgent
 from .....services.agent_manager import agent_manager
 
 logger = logging.getLogger(__name__)
@@ -44,18 +44,6 @@ class CreateAgentRequest(BaseModel):
 class AgentSettingsUpdateRequest(BaseModel):
     auto_update: bool | None = None
     update_channel: str | None = None
-
-
-class WorkspaceCreateRequest(BaseModel):
-    agent_id: str
-    project_id: str
-    remote_path: str = Field(..., min_length=1, max_length=1000)
-    label: str = Field("", max_length=200)
-
-
-class WorkspaceUpdateRequest(BaseModel):
-    remote_path: str | None = Field(None, min_length=1, max_length=1000)
-    label: str | None = Field(None, max_length=200)
 
 
 # ── Startup cleanup ──────────────────────────────────────────
@@ -95,36 +83,3 @@ def agent_dict(a: RemoteAgent) -> dict:
     }
 
 
-def build_workspace_dict(
-    w: RemoteWorkspace,
-    agent: RemoteAgent | None,
-    project,  # Project | None — typed as Any to avoid a circular import
-) -> dict:
-    """Build a workspace response dict from already-fetched related entities.
-
-    Synchronous on purpose so it can be reused inside batched loops without
-    triggering extra DB round-trips.
-    """
-    return {
-        "id": str(w.id),
-        "agent_id": w.agent_id,
-        "agent_name": agent.name if agent else "",
-        "project_id": w.project_id,
-        "project_name": project.name if project else "",
-        "remote_path": w.remote_path,
-        "label": w.label,
-        "is_online": agent_manager.is_connected(w.agent_id),
-        "created_at": w.created_at.isoformat(),
-        "updated_at": w.updated_at.isoformat(),
-    }
-
-
-def to_object_ids(ids: list[str]) -> list[ObjectId]:
-    """Convert string IDs to ObjectId, silently dropping invalid ones."""
-    out: list[ObjectId] = []
-    for s in ids:
-        try:
-            out.append(ObjectId(s))
-        except (InvalidId, TypeError):
-            continue
-    return out
