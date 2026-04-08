@@ -234,7 +234,7 @@ async def lifespan(app: FastAPI):
         except Exception as _e:
             logger.warning("Final flush failed: %s", _e)
     await event_store.aclose()
-    from .mcp.oauth_provider import close_mcp_redis
+    from .mcp.oauth import close_mcp_redis
     await close_mcp_redis()
     await close_redis()
     await close_db()

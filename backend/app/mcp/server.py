@@ -11,7 +11,7 @@ from fastmcp import FastMCP
 from mcp.server.auth.settings import ClientRegistrationOptions
 
 from ..core.config import settings
-from .oauth_provider import TodoOAuthProvider
+from .oauth import TodoOAuthProvider
 
 logger = logging.getLogger(__name__)
 

@@ -19,7 +19,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from app.core.security import create_access_token
-from app.mcp.oauth_provider import TodoOAuthProvider, get_mcp_redis
+from app.mcp.oauth import TodoOAuthProvider, get_mcp_redis
 from app.models.user import AuthType, User
 
 
@@ -98,7 +98,7 @@ async def oauth_client(oauth_app):
 @pytest_asyncio.fixture(autouse=True)
 async def _patch_mcp_redis():
     """OAuth プロバイダの Redis をテスト用 fakeredis に差し替え"""
-    import app.mcp.oauth_provider as mod
+    import app.mcp.oauth._redis as mod
     fake = _fakeredis.FakeRedis(decode_responses=True)
     mod._mcp_redis = fake
     yield

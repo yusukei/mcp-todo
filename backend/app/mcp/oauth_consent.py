@@ -21,7 +21,7 @@ from pydantic import AnyUrl
 
 from ..core.security import decode_access_token
 from ..models import User
-from .oauth_provider import (
+from .oauth import (
     PENDING_AUTH_PREFIX,
     TodoAuthorizationCode,
     get_mcp_redis,
