@@ -14,19 +14,37 @@ FastAPI router module (which would create a circular import).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
+import os
+import re
 import secrets
 from datetime import UTC, datetime
+from pathlib import Path
 
 from bson import ObjectId
 from bson.errors import InvalidId
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Query,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from ....core.config import settings
 from ....core.deps import get_admin_user
 from ....core.security import hash_api_key
-from ....models import User
+from ....models import AgentRelease, User
 from ....models.terminal import RemoteWorkspace, TerminalAgent
 from ....services.agent_manager import (
     AgentConnectionManager,
@@ -56,6 +74,12 @@ router = APIRouter(prefix="/terminal", tags=["terminal"])
 _PING_INTERVAL = 30  # seconds
 _PING_TIMEOUT = 10  # seconds
 
+# Allowed values for agent release fields
+_ALLOWED_OS_TYPES = {"win32", "linux", "darwin"}
+_ALLOWED_CHANNELS = {"stable", "beta", "canary"}
+_ALLOWED_ARCHS = {"x64", "arm64", "x86"}
+_VERSION_RE = re.compile(r"^\d+(\.\d+)*([\-+].+)?$")
+
 
 async def reset_all_agents_online() -> int:
     """Reset all agents' is_online to False on server startup.
@@ -76,6 +100,11 @@ async def reset_all_agents_online() -> int:
 
 class CreateAgentRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
+
+
+class AgentSettingsUpdateRequest(BaseModel):
+    auto_update: bool | None = None
+    update_channel: str | None = None
 
 
 class WorkspaceCreateRequest(BaseModel):
@@ -104,6 +133,9 @@ def _agent_dict(a: TerminalAgent) -> dict:
         "is_online": agent_manager.is_connected(agent_id),
         "last_seen_at": a.last_seen_at.isoformat() if a.last_seen_at else None,
         "created_at": a.created_at.isoformat(),
+        "agent_version": a.agent_version,
+        "auto_update": a.auto_update,
+        "update_channel": a.update_channel,
     }
 
 
@@ -155,6 +187,151 @@ async def _workspace_dict(w: RemoteWorkspace) -> dict:
     return _build_workspace_dict(w, agent, project)
 
 
+# ── Release helpers ──────────────────────────────────────────
+
+
+def _parse_version_tuple(v: str | None) -> tuple[int, ...]:
+    """Parse a dotted version string into a comparable tuple of ints.
+
+    Strips an optional pre-release / build suffix (anything after the first
+    '-' or '+'). Non-numeric components are coerced to 0 so that malformed
+    versions sort *before* well-formed ones rather than crashing the
+    comparison logic. ``None`` or empty input returns ``()`` which compares
+    less than every non-empty tuple, ensuring agents reporting no version
+    are always considered out of date.
+    """
+    if not v:
+        return ()
+    head = re.split(r"[\-+]", v, maxsplit=1)[0]
+    parts: list[int] = []
+    for piece in head.split("."):
+        try:
+            parts.append(int(piece))
+        except ValueError:
+            parts.append(0)
+    return tuple(parts)
+
+
+def _is_newer(release_version: str, agent_version: str | None) -> bool:
+    """Return True iff release_version > agent_version."""
+    return _parse_version_tuple(release_version) > _parse_version_tuple(agent_version)
+
+
+def _release_dict(r: AgentRelease, *, include_download_url: bool = False, base_url: str = "") -> dict:
+    out = {
+        "id": str(r.id),
+        "version": r.version,
+        "os_type": r.os_type,
+        "arch": r.arch,
+        "channel": r.channel,
+        "sha256": r.sha256,
+        "size_bytes": r.size_bytes,
+        "release_notes": r.release_notes,
+        "uploaded_by": r.uploaded_by,
+        "created_at": r.created_at.isoformat(),
+    }
+    if include_download_url:
+        # Use BASE_URL when configured (production), otherwise return a
+        # path-only URL that the client can resolve against its own host.
+        prefix = base_url.rstrip("/") if base_url else ""
+        out["download_url"] = f"{prefix}/api/v1/terminal/releases/{r.id}/download"
+    return out
+
+
+def _release_storage_path(rel: AgentRelease) -> Path:
+    """Resolve the on-disk path for a release, ensuring it stays inside AGENT_RELEASES_DIR."""
+    base = Path(settings.AGENT_RELEASES_DIR).resolve()
+    target = (base / rel.storage_path).resolve()
+    try:
+        target.relative_to(base)
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail="Release storage path escapes base directory") from exc
+    return target
+
+
+async def _find_latest_release(os_type: str, channel: str, arch: str = "x64") -> AgentRelease | None:
+    """Return the highest-version release matching the filter, or None.
+
+    Beanie sort by created_at would be wrong for re-uploads, so we sort
+    in Python by parsed version tuple. The result set is bounded by os_type
+    and channel so this stays cheap.
+    """
+    releases = await AgentRelease.find(
+        {"os_type": os_type, "channel": channel, "arch": arch}
+    ).to_list()
+    if not releases:
+        return None
+    releases.sort(key=lambda r: _parse_version_tuple(r.version), reverse=True)
+    return releases[0]
+
+
+async def _authenticate_agent_token(authorization: str | None) -> TerminalAgent:
+    """Validate `Authorization: Bearer ta_xxx` and return the matching agent.
+
+    Used by release-download endpoints called by remote agents.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Empty bearer token")
+    key_hash = hash_api_key(token)
+    agent = await TerminalAgent.find_one({"key_hash": key_hash})
+    if not agent:
+        raise HTTPException(status_code=401, detail="Invalid agent token")
+    return agent
+
+
+def _build_update_payload(release: AgentRelease) -> dict:
+    """Serialize an AgentRelease into an ``update_available`` WS message.
+
+    Extracted so ``_maybe_push_update`` (auto-push on connect) and the
+    admin-triggered check-update endpoint share the exact same shape.
+    """
+    return {
+        "type": "update_available",
+        "release_id": str(release.id),
+        "version": release.version,
+        "download_url": (
+            f"{settings.BASE_URL.rstrip('/')}/api/v1/terminal/releases/{release.id}/download"
+            if settings.BASE_URL
+            else f"/api/v1/terminal/releases/{release.id}/download"
+        ),
+        "sha256": release.sha256,
+        "size_bytes": release.size_bytes,
+    }
+
+
+async def _maybe_push_update(ws: WebSocket, agent: TerminalAgent) -> None:
+    """Check whether a newer release exists for ``agent`` and push notification.
+
+    Silently swallows lookup errors so a misconfigured release table never
+    breaks the agent connect handshake.
+    """
+    if not agent.auto_update:
+        return
+    if not agent.os_type:
+        return  # Agent hasn't reported os_type yet
+    try:
+        latest = await _find_latest_release(agent.os_type, agent.update_channel or "stable")
+    except Exception as e:
+        logger.warning("update check: failed to query releases for %s: %s", agent.id, e)
+        return
+    if latest is None:
+        return
+    if not _is_newer(latest.version, agent.agent_version):
+        return
+    payload = _build_update_payload(latest)
+    try:
+        await ws.send_text(json.dumps(payload))
+        logger.info(
+            "update_available pushed to agent=%s current=%s latest=%s",
+            agent.id, agent.agent_version, latest.version,
+        )
+    except Exception as e:
+        logger.warning("update_available send failed for %s: %s", agent.id, e)
+
+
 # ── Health check ─────────────────────────────────────────────
 
 
@@ -184,6 +361,26 @@ async def create_agent(body: CreateAgentRequest, user: User = Depends(get_admin_
     )
     await agent.insert()
     return {**_agent_dict(agent), "token": raw_token}
+
+
+@router.patch("/agents/{agent_id}")
+async def update_agent_settings(
+    agent_id: str,
+    body: AgentSettingsUpdateRequest,
+    user: User = Depends(get_admin_user),
+) -> dict:
+    """Update auto-update flags and channel selection for an agent."""
+    agent = await TerminalAgent.get(agent_id)
+    if not agent or agent.owner_id != str(user.id):
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if body.auto_update is not None:
+        agent.auto_update = body.auto_update
+    if body.update_channel is not None:
+        if body.update_channel not in _ALLOWED_CHANNELS:
+            raise HTTPException(status_code=422, detail=f"Invalid channel: {body.update_channel}")
+        agent.update_channel = body.update_channel
+    await agent.save()
+    return _agent_dict(agent)
 
 
 @router.delete("/agents/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -227,6 +424,60 @@ async def rotate_agent_token(
 
     logger.info("Rotated token for agent %s (%s)", agent.name, agent_id)
     return {**_agent_dict(agent), "token": raw_token}
+
+
+@router.post("/agents/{agent_id}/check-update")
+async def check_agent_update(
+    agent_id: str,
+    user: User = Depends(get_admin_user),
+) -> dict:
+    """Manually trigger an update_available push to a connected agent.
+
+    Useful right after uploading a new release — instead of waiting for
+    the next natural WS reconnect (which fires ``_maybe_push_update``
+    automatically), operators can force the check from the admin UI or
+    a script. Returns ``{"pushed": false, "reason": ...}`` when no push
+    was sent so callers can distinguish "not needed" from "failed".
+    """
+    agent = await TerminalAgent.get(agent_id)
+    if not agent or agent.owner_id != str(user.id):
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if not agent_manager.is_connected(agent_id):
+        raise HTTPException(status_code=409, detail="Agent is not connected")
+    if not agent.auto_update:
+        return {"pushed": False, "reason": "auto_update disabled"}
+    if not agent.os_type:
+        return {"pushed": False, "reason": "agent os_type unknown"}
+    latest = await _find_latest_release(
+        agent.os_type, agent.update_channel or "stable"
+    )
+    if latest is None:
+        return {"pushed": False, "reason": "no release available"}
+    if not _is_newer(latest.version, agent.agent_version):
+        return {
+            "pushed": False,
+            "reason": "already up to date",
+            "current": agent.agent_version,
+            "latest": latest.version,
+        }
+    payload = _build_update_payload(latest)
+    try:
+        await agent_manager.send_raw(agent_id, payload)
+    except AgentOfflineError as exc:
+        raise HTTPException(status_code=409, detail="Agent disconnected during check") from exc
+    except Exception as exc:
+        logger.warning("check-update: send failed for %s: %s", agent_id, exc)
+        raise HTTPException(status_code=500, detail=f"Push failed: {exc}") from exc
+    logger.info(
+        "Manual update check: pushed v%s to agent=%s (current=%s)",
+        latest.version, agent_id, agent.agent_version,
+    )
+    return {
+        "pushed": True,
+        "release_id": str(latest.id),
+        "version": latest.version,
+        "current": agent.agent_version,
+    }
 
 
 # ── Workspace REST endpoints (admin only) ────────────────────
@@ -342,11 +593,185 @@ async def delete_workspace(workspace_id: str, user: User = Depends(get_admin_use
     await workspace.delete()
 
 
+# ── Agent release REST endpoints ─────────────────────────────
+
+
+@router.get("/releases")
+async def list_releases(
+    os_type: str | None = Query(None),
+    channel: str | None = Query(None),
+    user: User = Depends(get_admin_user),
+) -> list[dict]:
+    """List all agent releases. Admin only."""
+    query: dict = {}
+    if os_type:
+        if os_type not in _ALLOWED_OS_TYPES:
+            raise HTTPException(status_code=422, detail=f"Invalid os_type: {os_type}")
+        query["os_type"] = os_type
+    if channel:
+        if channel not in _ALLOWED_CHANNELS:
+            raise HTTPException(status_code=422, detail=f"Invalid channel: {channel}")
+        query["channel"] = channel
+    releases = await AgentRelease.find(query).sort("-created_at").to_list()
+    return [_release_dict(r, include_download_url=True, base_url=settings.BASE_URL) for r in releases]
+
+
+@router.post("/releases", status_code=status.HTTP_201_CREATED)
+async def upload_release(
+    version: str = Form(...),
+    os_type: str = Form(...),
+    channel: str = Form("stable"),
+    arch: str = Form("x64"),
+    release_notes: str = Form(""),
+    file: UploadFile = File(...),
+    user: User = Depends(get_admin_user),
+) -> dict:
+    """Upload a new agent binary release. Admin only."""
+    if not _VERSION_RE.match(version):
+        raise HTTPException(status_code=422, detail=f"Invalid version: {version}")
+    if os_type not in _ALLOWED_OS_TYPES:
+        raise HTTPException(status_code=422, detail=f"Invalid os_type: {os_type}")
+    if channel not in _ALLOWED_CHANNELS:
+        raise HTTPException(status_code=422, detail=f"Invalid channel: {channel}")
+    if arch not in _ALLOWED_ARCHS:
+        raise HTTPException(status_code=422, detail=f"Invalid arch: {arch}")
+
+    # Reject duplicates (same os_type + channel + arch + version)
+    existing = await AgentRelease.find_one({
+        "os_type": os_type,
+        "channel": channel,
+        "arch": arch,
+        "version": version,
+    })
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Release already exists for {os_type}/{channel}/{arch} v{version}",
+        )
+
+    base_dir = Path(settings.AGENT_RELEASES_DIR)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    # Use a content-addressable subdirectory layout to avoid collisions and
+    # to keep file paths predictable for ops engineers.
+    subdir = base_dir / os_type / channel / arch
+    subdir.mkdir(parents=True, exist_ok=True)
+    # Sanitize filename — keep extension only
+    suffix = Path(file.filename or "").suffix
+    if os_type == "win32" and not suffix:
+        suffix = ".exe"
+    target_name = f"mcp-terminal-agent-{version}{suffix}"
+    target_path = subdir / target_name
+
+    if target_path.exists():
+        # Should not happen given the duplicate check above, but defensive.
+        raise HTTPException(status_code=409, detail="Target file already exists on disk")
+
+    sha = hashlib.sha256()
+    size = 0
+    try:
+        with open(target_path, "wb") as f:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                sha.update(chunk)
+                size += len(chunk)
+                f.write(chunk)
+    except Exception as e:
+        # Clean up partial file on failure
+        try:
+            target_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=f"Failed to write release file: {e}") from e
+
+    if size == 0:
+        target_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=422, detail="Uploaded file is empty")
+
+    release = AgentRelease(
+        version=version,
+        os_type=os_type,
+        arch=arch,
+        channel=channel,
+        storage_path=str(target_path.relative_to(base_dir)).replace(os.sep, "/"),
+        sha256=sha.hexdigest(),
+        size_bytes=size,
+        release_notes=release_notes,
+        uploaded_by=str(user.id),
+    )
+    await release.insert()
+    logger.info(
+        "Agent release uploaded: %s/%s/%s v%s (%d bytes) by %s",
+        os_type, channel, arch, version, size, user.id,
+    )
+    return _release_dict(release, include_download_url=True, base_url=settings.BASE_URL)
+
+
+@router.delete("/releases/{release_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_release(release_id: str, user: User = Depends(get_admin_user)) -> None:
+    release = await AgentRelease.get(release_id)
+    if not release:
+        raise HTTPException(status_code=404, detail="Release not found")
+    # Delete file first; ignore missing
+    try:
+        path = _release_storage_path(release)
+        path.unlink(missing_ok=True)
+    except HTTPException:
+        # storage_path was malformed — still delete the DB record
+        logger.warning("Release %s had invalid storage path; deleting record only", release_id)
+    except Exception as e:
+        logger.warning("Failed to delete release file %s: %s", release_id, e)
+    await release.delete()
+
+
+# ── Agent-facing release endpoints (token authenticated) ─────
+
+
+@router.get("/releases/latest")
+async def get_latest_release(
+    os_type: str = Query(...),
+    channel: str = Query("stable"),
+    arch: str = Query("x64"),
+    authorization: str | None = Header(None),
+) -> dict:
+    """Return the latest release matching the filter. Used by agents to poll."""
+    await _authenticate_agent_token(authorization)
+    if os_type not in _ALLOWED_OS_TYPES:
+        raise HTTPException(status_code=422, detail=f"Invalid os_type: {os_type}")
+    if channel not in _ALLOWED_CHANNELS:
+        raise HTTPException(status_code=422, detail=f"Invalid channel: {channel}")
+    release = await _find_latest_release(os_type, channel, arch)
+    if not release:
+        raise HTTPException(status_code=404, detail="No release found")
+    return _release_dict(release, include_download_url=True, base_url=settings.BASE_URL)
+
+
+@router.get("/releases/{release_id}/download")
+async def download_release(
+    release_id: str,
+    authorization: str | None = Header(None),
+) -> FileResponse:
+    """Stream a release binary to an authenticated agent."""
+    await _authenticate_agent_token(authorization)
+    release = await AgentRelease.get(release_id)
+    if not release:
+        raise HTTPException(status_code=404, detail="Release not found")
+    path = _release_storage_path(release)
+    if not path.exists():
+        raise HTTPException(status_code=410, detail="Release file missing on server")
+    return FileResponse(
+        path,
+        media_type="application/octet-stream",
+        filename=path.name,
+        headers={"X-Agent-Release-Sha256": release.sha256},
+    )
+
+
 # ── WebSocket: Agent ─────────────────────────────────────────
 
 
 _RESPONSE_TYPES = frozenset({
-    # Phase 0 handlers
     "exec_result", "file_content", "write_result", "dir_listing",
     # Phase 1 handlers (added 2026-04-07): stat / mkdir / delete / move /
     # copy / glob / grep. Each handler returns one of these *_result
@@ -445,8 +870,15 @@ async def agent_websocket(ws: WebSocket):
                 agent.hostname = msg.get("hostname", agent.hostname)
                 agent.os_type = msg.get("os", agent.os_type)
                 agent.available_shells = msg.get("shells", agent.available_shells)
+                # New: agent reports its version on every (re)connection.
+                reported_version = msg.get("agent_version")
+                if reported_version:
+                    agent.agent_version = reported_version
                 agent.last_seen_at = datetime.now(UTC)
                 await agent.save()
+                # Check for available updates *after* persisting the
+                # reported version so the comparison uses fresh data.
+                await _maybe_push_update(ws, agent)
 
             elif msg_type == "pong":
                 pass

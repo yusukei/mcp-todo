@@ -17,6 +17,11 @@ class TerminalAgent(Document):
     last_seen_at: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
+    # Auto-update support
+    agent_version: str | None = None  # Version string reported by the agent
+    auto_update: bool = True
+    update_channel: str = "stable"  # stable | beta | canary
+
     class Settings:
         name = "terminal_agents"
         indexes = [
@@ -61,4 +66,25 @@ class RemoteExecLog(Document):
         indexes = [
             [("agent_id", 1), ("created_at", -1)],
             [("workspace_id", 1), ("created_at", -1)],
+        ]
+
+
+class AgentRelease(Document):
+    """A published agent binary release available for self-update."""
+
+    version: str  # semver string e.g. "0.2.0"
+    os_type: str  # "win32" | "linux" | "darwin"
+    arch: str = "x64"
+    channel: str = "stable"  # "stable" | "beta" | "canary"
+    storage_path: str  # Path under settings.AGENT_RELEASES_DIR
+    sha256: str  # lowercase hex
+    size_bytes: int
+    release_notes: str = ""
+    uploaded_by: str  # User ID
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    class Settings:
+        name = "agent_releases"
+        indexes = [
+            [("os_type", 1), ("channel", 1), ("created_at", -1)],
         ]

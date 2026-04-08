@@ -7,7 +7,7 @@ from .knowledge import Knowledge
 from .mcp_api_key import McpApiKey
 from .project import Project, ProjectMember
 from .task import Attachment, Comment, Task
-from .terminal import RemoteExecLog, RemoteWorkspace, TerminalAgent
+from .terminal import AgentRelease, RemoteExecLog, RemoteWorkspace, TerminalAgent
 from .user import AuthType, User
 
 __all__ = [
@@ -34,6 +34,7 @@ __all__ = [
     "TerminalAgent",
     "RemoteWorkspace",
     "RemoteExecLog",
+    "AgentRelease",
     "ChatSession",
     "ChatMessage",
     "MessageRole",

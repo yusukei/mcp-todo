@@ -46,12 +46,14 @@ services:
       - DOCSITE_INDEX_DIR=/app/search_index_docsites
       - BOOKMARK_ASSETS_DIR=/app/bookmark_assets
       - BOOKMARK_INDEX_DIR=/app/search_index_bookmarks
+      - AGENT_RELEASES_DIR=/app/agent_releases
     volumes:
       - search_index:/app/search_index
       - docsite_assets:/app/docsite_assets
       - docsite_index:/app/search_index_docsites
       - bookmark_assets:/app/bookmark_assets
       - bookmark_index:/app/search_index_bookmarks
+      - agent_releases:/app/agent_releases
     depends_on:
       mongo:
         condition: service_healthy
@@ -168,6 +170,7 @@ volumes:
   docsite_index:
   bookmark_assets:
   bookmark_index:
+  agent_releases:
   backups:
 
 networks:

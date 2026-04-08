@@ -235,3 +235,39 @@ class TestSpawnTask:
 
         await asyncio.sleep(0.05)
         assert len(agent._background_tasks) == 0
+
+
+# ──────────────────────────────────────────────
+# TerminalAgent._absolute_download_url
+# ──────────────────────────────────────────────
+
+
+class TestAbsoluteDownloadUrl:
+    """Regression: _absolute_download_url must swap scheme wss→https and
+    cope with server-relative paths that may or may not include the
+    leading slash.
+    """
+
+    def _agent(self, server_url: str) -> TerminalAgent:
+        return TerminalAgent(server_url=server_url, token="ta_x")
+
+    def test_wss_to_https_with_leading_slash(self):
+        agent = self._agent("wss://todo.example.com/api/v1/terminal/agent/ws")
+        url = agent._absolute_download_url("/api/v1/terminal/releases/abc/download")
+        assert url == "https://todo.example.com/api/v1/terminal/releases/abc/download"
+
+    def test_ws_to_http(self):
+        agent = self._agent("ws://localhost:8000/api/v1/terminal/agent/ws")
+        url = agent._absolute_download_url("/api/v1/terminal/releases/abc/download")
+        assert url == "http://localhost:8000/api/v1/terminal/releases/abc/download"
+
+    def test_missing_leading_slash_normalized(self):
+        agent = self._agent("wss://todo.example.com/api/v1/terminal/agent/ws")
+        url = agent._absolute_download_url("api/v1/terminal/releases/abc/download")
+        assert url == "https://todo.example.com/api/v1/terminal/releases/abc/download"
+
+    def test_port_preserved(self):
+        agent = self._agent("wss://todo.example.com:8443/api/v1/terminal/agent/ws")
+        url = agent._absolute_download_url("/api/v1/terminal/releases/abc/download")
+        assert url == "https://todo.example.com:8443/api/v1/terminal/releases/abc/download"
+

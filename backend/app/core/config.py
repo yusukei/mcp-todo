@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     SEARCH_INDEX_DIR: str = str(Path(__file__).resolve().parents[3] / "search_index")
     KNOWLEDGE_INDEX_DIR: str = str(Path(__file__).resolve().parents[3] / "search_index_knowledge")
     DOCUMENT_INDEX_DIR: str = str(Path(__file__).resolve().parents[3] / "search_index_documents")
+    AGENT_RELEASES_DIR: str = str(Path(__file__).resolve().parents[3] / "agent_releases")
     MONGO_URI: str = "mongodb://localhost:27017"
     MONGO_DBNAME: str = "claude_todo"
 

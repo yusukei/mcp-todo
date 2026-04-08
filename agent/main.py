@@ -25,6 +25,13 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from self_update import (
+    UpdateError,
+    __version__,
+    apply_update,
+    cleanup_old_files,
+)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -1261,6 +1268,7 @@ class TerminalAgent:
                 "hostname": platform.node(),
                 "os": sys.platform,
                 "shells": _detect_shells(),
+                "agent_version": __version__,
             }))
 
             # ── Message loop ──
@@ -1300,6 +1308,10 @@ class TerminalAgent:
         handler = _HANDLERS.get(msg_type)
         if handler:
             self._spawn_task(self._run_handler(handler, msg))
+            return
+
+        if msg_type == "update_available":
+            self._spawn_task(self._handle_update_available(msg))
             return
 
         if msg_type == "ping":
@@ -1345,6 +1357,65 @@ class TerminalAgent:
                     "request_id": request_id,
                     "error": f"{type(e).__name__}: {e}",
                 }))
+
+    async def _handle_update_available(self, msg: dict) -> None:
+        """Apply a server-pushed update and hand off to the new binary.
+
+        All blocking I/O (HTTP download, file rename, sleep, spawn) is
+        delegated to a worker thread so the WebSocket message loop
+        keeps draining other messages while the update is in flight.
+        On success the agent shuts itself down — the spawned child
+        will reconnect with the new version.
+        """
+        version = msg.get("version", "")
+        download_url = msg.get("download_url", "")
+        sha256 = msg.get("sha256", "")
+        if not (version and download_url and sha256):
+            logger.warning("update_available missing required fields, ignoring")
+            return
+
+        if not download_url.startswith(("http://", "https://")):
+            download_url = self._absolute_download_url(download_url)
+
+        logger.info("Update available: v%s (current %s)", version, __version__)
+        try:
+            old_path = await asyncio.to_thread(
+                apply_update,
+                download_url=download_url,
+                sha256=sha256,
+                version=version,
+                token=self.token,
+                restart_argv=sys.argv[1:],
+            )
+        except UpdateError as e:
+            logger.error("Update failed: %s", e)
+            return
+        except Exception as e:
+            logger.exception("Unexpected error during update: %s", e)
+            return
+
+        logger.info(
+            "Update applied (old binary preserved at %s); shutting down for handoff",
+            old_path,
+        )
+        await self.shutdown()
+
+    def _absolute_download_url(self, path: str) -> str:
+        """Resolve a server-relative download path to a full HTTPS URL.
+
+        The agent connects via wss://host/api/v1/terminal/agent/ws but
+        the release endpoint is exposed under https://host/api/v1/...
+        so we keep the netloc and swap the scheme.
+        """
+        from urllib.parse import urlsplit, urlunsplit
+
+        parts = urlsplit(self.server_url)
+        scheme = "https" if parts.scheme in ("wss", "https") else "http"
+        # Defensive: if the server forgot the leading slash the naive
+        # urlunsplit would glue netloc and path together. Force it.
+        if not path.startswith("/"):
+            path = "/" + path
+        return urlunsplit((scheme, parts.netloc, path, "", ""))
 
     async def shutdown(self) -> None:
         self._running = False
@@ -1398,6 +1469,14 @@ def main() -> None:
     args = parser.parse_args()
 
     _log_grep_engine()
+
+    # Remove leftover .old/.new artifacts from a previous self-update.
+    try:
+        removed = cleanup_old_files()
+        if removed:
+            logger.info("Cleaned up %d stale update artifacts", removed)
+    except Exception as e:
+        logger.warning("Update cleanup failed: %s", e)
 
     server_url = args.url
     token = args.token

@@ -415,3 +415,75 @@ class TestRemoteCopy:
         assert payload["src"] == "a"
         assert payload["dst"] == "b"
         assert result["success"] is True
+
+
+# ──────────────────────────────────────────────
+# list_remote_agents — exposes update-related fields
+# ──────────────────────────────────────────────
+
+
+class TestListRemoteAgents:
+    """Regression: the MCP `list_remote_agents` tool must expose
+    `agent_version`, `auto_update`, and `update_channel` so operators
+    can tell from Claude Code whether a rollout has landed.
+    """
+
+    async def test_returns_update_fields(self, admin_user):
+        from app.core.security import hash_api_key
+        from app.models.terminal import TerminalAgent
+
+        agent = TerminalAgent(
+            name="release-check-host",
+            key_hash=hash_api_key("ta_listtest_token_0001"),
+            owner_id=str(admin_user.id),
+            hostname="rch",
+            os_type="win32",
+            agent_version="0.2.0",
+            auto_update=True,
+            update_channel="beta",
+        )
+        await agent.insert()
+
+        with patch(
+            "app.mcp.tools.remote.authenticate",
+            new=AsyncMock(return_value=_MOCK_KEY_INFO),
+        ):
+            result = await remote.list_remote_agents()
+
+        assert len(result) == 1
+        entry = result[0]
+        assert entry["name"] == "release-check-host"
+        assert entry["agent_version"] == "0.2.0"
+        assert entry["auto_update"] is True
+        assert entry["update_channel"] == "beta"
+        # Existing fields must still be present.
+        assert entry["id"] == str(agent.id)
+        assert entry["os_type"] == "win32"
+        assert "workspace_count" in entry
+        assert "is_online" in entry
+
+    async def test_handles_agent_without_version(self, admin_user):
+        """Older agents (pre-self-update build) report agent_version=None."""
+        from app.core.security import hash_api_key
+        from app.models.terminal import TerminalAgent
+
+        agent = TerminalAgent(
+            name="legacy-agent",
+            key_hash=hash_api_key("ta_listtest_token_0002"),
+            owner_id=str(admin_user.id),
+            os_type="linux",
+            # agent_version deliberately omitted -> defaults to None
+        )
+        await agent.insert()
+
+        with patch(
+            "app.mcp.tools.remote.authenticate",
+            new=AsyncMock(return_value=_MOCK_KEY_INFO),
+        ):
+            result = await remote.list_remote_agents()
+
+        entry = next(e for e in result if e["name"] == "legacy-agent")
+        assert entry["agent_version"] is None
+        assert entry["auto_update"] is True  # model default
+        assert entry["update_channel"] == "stable"  # model default
+

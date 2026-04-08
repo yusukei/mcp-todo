@@ -30,7 +30,7 @@ import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.models import AllowedEmail, Bookmark, BookmarkCollection, ChatMessage, ChatSession, DocPage, DocSite, DocumentVersion, Knowledge, McpApiKey, Project, ProjectDocument, RemoteExecLog, RemoteWorkspace, Task, TerminalAgent, User
+from app.models import AgentRelease, AllowedEmail, Bookmark, BookmarkCollection, ChatMessage, ChatSession, DocPage, DocSite, DocumentVersion, Knowledge, McpApiKey, Project, ProjectDocument, RemoteExecLog, RemoteWorkspace, Task, TerminalAgent, User
 from app.models.project import ProjectMember
 from app.models.user import AuthType
 from app.core.redis import get_redis
@@ -41,7 +41,7 @@ from app.core.security import create_access_token, hash_password
 # Session スコープ: DB / Redis の初期化
 # ---------------------------------------------------------------------------
 
-_ALL_MODELS = [User, AllowedEmail, Project, Task, McpApiKey, Knowledge, ProjectDocument, DocumentVersion, DocSite, DocPage, Bookmark, BookmarkCollection, TerminalAgent, RemoteWorkspace, RemoteExecLog, ChatSession, ChatMessage]
+_ALL_MODELS = [User, AllowedEmail, Project, Task, McpApiKey, Knowledge, ProjectDocument, DocumentVersion, DocSite, DocPage, Bookmark, BookmarkCollection, TerminalAgent, RemoteWorkspace, RemoteExecLog, AgentRelease, ChatSession, ChatMessage]
 
 
 @pytest_asyncio.fixture(scope="session", autouse=True)

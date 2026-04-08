@@ -142,6 +142,9 @@ async def list_remote_agents() -> list[dict]:
             "is_online": agent_manager.is_connected(aid),
             "workspace_count": ws_count,
             "last_seen_at": a.last_seen_at.isoformat() if a.last_seen_at else None,
+            "agent_version": a.agent_version,
+            "auto_update": a.auto_update,
+            "update_channel": a.update_channel,
         })
     return result
 
