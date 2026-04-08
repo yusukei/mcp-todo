@@ -110,7 +110,7 @@ async def upload_release(
     suffix = Path(file.filename or "").suffix
     if os_type == "win32" and not suffix:
         suffix = ".exe"
-    target_name = f"mcp-terminal-agent-{version}{suffix}"
+    target_name = f"mcp-workspace-agent-{version}{suffix}"
     target_path = subdir / target_name
 
     if target_path.exists():

@@ -67,7 +67,7 @@ def release_dict(r: AgentRelease, *, include_download_url: bool = False, base_ur
         # Use BASE_URL when configured (production), otherwise return a
         # path-only URL that the client can resolve against its own host.
         prefix = base_url.rstrip("/") if base_url else ""
-        out["download_url"] = f"{prefix}/api/v1/terminal/releases/{r.id}/download"
+        out["download_url"] = f"{prefix}/api/v1/workspaces/releases/{r.id}/download"
     return out
 
 
@@ -126,9 +126,9 @@ def build_update_payload(release: AgentRelease) -> dict:
         "release_id": str(release.id),
         "version": release.version,
         "download_url": (
-            f"{settings.BASE_URL.rstrip('/')}/api/v1/terminal/releases/{release.id}/download"
+            f"{settings.BASE_URL.rstrip('/')}/api/v1/workspaces/releases/{release.id}/download"
             if settings.BASE_URL
-            else f"/api/v1/terminal/releases/{release.id}/download"
+            else f"/api/v1/workspaces/releases/{release.id}/download"
         ),
         "sha256": release.sha256,
         "size_bytes": release.size_bytes,
