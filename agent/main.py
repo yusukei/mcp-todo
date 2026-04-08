@@ -192,8 +192,6 @@ async def handle_exec(msg: dict) -> dict:
 
     if base_cwd and not os.path.isdir(base_cwd):
         return {
-            "type": "exec_result",
-            "request_id": msg["request_id"],
             "exit_code": -1,
             "stdout": "",
             "stderr": f"Working directory does not exist: {base_cwd}",
@@ -211,8 +209,6 @@ async def handle_exec(msg: dict) -> dict:
             resolved = _resolve_safe_path(cwd_override, base_cwd)
         except ValueError as e:
             return {
-                "type": "exec_result",
-                "request_id": msg["request_id"],
                 "exit_code": -1,
                 "stdout": "",
                 "stderr": f"Invalid cwd_override: {e}",
@@ -223,8 +219,6 @@ async def handle_exec(msg: dict) -> dict:
             }
         if not os.path.isdir(resolved):
             return {
-                "type": "exec_result",
-                "request_id": msg["request_id"],
                 "exit_code": -1,
                 "stdout": "",
                 "stderr": f"cwd_override is not a directory: {cwd_override}",
@@ -241,8 +235,6 @@ async def handle_exec(msg: dict) -> dict:
     if extra_env:
         if not isinstance(extra_env, dict):
             return {
-                "type": "exec_result",
-                "request_id": msg["request_id"],
                 "exit_code": -1,
                 "stdout": "",
                 "stderr": "env must be an object of string→string",
@@ -255,8 +247,6 @@ async def handle_exec(msg: dict) -> dict:
         for k, v in extra_env.items():
             if not isinstance(k, str) or not isinstance(v, str):
                 return {
-                    "type": "exec_result",
-                    "request_id": msg["request_id"],
                     "exit_code": -1,
                     "stdout": "",
                     "stderr": "env keys/values must be strings",
@@ -290,8 +280,6 @@ async def handle_exec(msg: dict) -> dict:
             out_text, out_truncated, out_total = _truncate_with_flag(stdout, MAX_OUTPUT_BYTES)
             err_text, err_truncated, err_total = _truncate_with_flag(stderr, MAX_OUTPUT_BYTES)
             return {
-                "type": "exec_result",
-                "request_id": msg["request_id"],
                 "exit_code": -1,
                 "stdout": out_text,
                 "stderr": err_text + f"\n[timeout after {timeout}s]",
@@ -304,8 +292,6 @@ async def handle_exec(msg: dict) -> dict:
         out_text, out_truncated, out_total = _truncate_with_flag(stdout, MAX_OUTPUT_BYTES)
         err_text, err_truncated, err_total = _truncate_with_flag(stderr, MAX_OUTPUT_BYTES)
         return {
-            "type": "exec_result",
-            "request_id": msg["request_id"],
             "exit_code": proc.returncode,
             "stdout": out_text,
             "stderr": err_text,
@@ -317,8 +303,6 @@ async def handle_exec(msg: dict) -> dict:
 
     except Exception as e:
         return {
-            "type": "exec_result",
-            "request_id": msg["request_id"],
             "exit_code": -1,
             "stdout": "",
             "stderr": str(e),
@@ -345,7 +329,7 @@ async def handle_read_file(msg: dict) -> dict:
     try:
         path = _resolve_safe_path(path, cwd)
     except ValueError as e:
-        return {"type": "file_content", "request_id": msg["request_id"], "error": str(e)}
+        return {"error": str(e)}
 
     def _read_text():
         size = os.path.getsize(path)
@@ -403,15 +387,15 @@ async def handle_read_file(msg: dict) -> dict:
             result = await asyncio.to_thread(_read_binary)
         else:
             result = await asyncio.to_thread(_read_text)
-        return {"type": "file_content", "request_id": msg["request_id"], **result}
+        return {**result}
     except FileNotFoundError:
-        return {"type": "file_content", "request_id": msg["request_id"], "error": f"File not found: {path}"}
+        return {"error": f"File not found: {path}"}
     except PermissionError:
-        return {"type": "file_content", "request_id": msg["request_id"], "error": f"Permission denied: {path}"}
+        return {"error": f"Permission denied: {path}"}
     except LookupError as e:  # unknown codec
-        return {"type": "file_content", "request_id": msg["request_id"], "error": f"Unknown encoding: {e}"}
+        return {"error": f"Unknown encoding: {e}"}
     except Exception as e:
-        return {"type": "file_content", "request_id": msg["request_id"], "error": str(e)}
+        return {"error": str(e)}
 
 
 async def handle_write_file(msg: dict) -> dict:
@@ -423,7 +407,7 @@ async def handle_write_file(msg: dict) -> dict:
     try:
         path = _resolve_safe_dir(path, cwd)
     except ValueError as e:
-        return {"type": "write_result", "request_id": msg["request_id"], "success": False, "error": str(e)}
+        return {"success": False, "error": str(e)}
 
     def _write():
         data = content.encode("utf-8")
@@ -438,11 +422,11 @@ async def handle_write_file(msg: dict) -> dict:
 
     try:
         result = await asyncio.to_thread(_write)
-        return {"type": "write_result", "request_id": msg["request_id"], **result}
+        return {**result}
     except PermissionError:
-        return {"type": "write_result", "request_id": msg["request_id"], "success": False, "error": f"Permission denied: {path}"}
+        return {"success": False, "error": f"Permission denied: {path}"}
     except Exception as e:
-        return {"type": "write_result", "request_id": msg["request_id"], "success": False, "error": str(e)}
+        return {"success": False, "error": str(e)}
 
 
 async def handle_list_dir(msg: dict) -> dict:
@@ -453,7 +437,7 @@ async def handle_list_dir(msg: dict) -> dict:
     try:
         path = _resolve_safe_path(path, cwd)
     except ValueError as e:
-        return {"type": "dir_listing", "request_id": msg["request_id"], "error": str(e)}
+        return {"error": str(e)}
 
     def _list():
         entries = []
@@ -477,13 +461,13 @@ async def handle_list_dir(msg: dict) -> dict:
 
     try:
         entries = await asyncio.to_thread(_list)
-        return {"type": "dir_listing", "request_id": msg["request_id"], "entries": entries, "path": path}
+        return {"entries": entries, "path": path}
     except FileNotFoundError:
-        return {"type": "dir_listing", "request_id": msg["request_id"], "error": f"Directory not found: {path}"}
+        return {"error": f"Directory not found: {path}"}
     except PermissionError:
-        return {"type": "dir_listing", "request_id": msg["request_id"], "error": f"Permission denied: {path}"}
+        return {"error": f"Permission denied: {path}"}
     except Exception as e:
-        return {"type": "dir_listing", "request_id": msg["request_id"], "error": str(e)}
+        return {"error": str(e)}
 
 
 # ── New handlers (stat / file_exists / mkdir / delete / move / copy / glob / grep) ──
@@ -497,18 +481,14 @@ async def handle_stat(msg: dict) -> dict:
     try:
         resolved = _resolve_safe_path(path, cwd)
     except ValueError as e:
-        return {"type": "stat_result", "request_id": msg["request_id"], "error": str(e)}
+        return {"error": str(e)}
 
     def _stat():
-        # NB: the inner result dict MUST NOT contain a key named ``type``.
-        # The caller wraps this with ``{"type": "stat_result", **result}``
-        # and a ``type`` key here would shadow the envelope type, leaving
-        # the message un-routable on the backend (request would hang
-        # until the MCP layer's timeout). Use ``file_type`` instead and
-        # let the MCP layer normalize it back to ``type`` for the public
-        # API surface.
+        # The envelope is built by the dispatcher under a nested
+        # ``payload`` key (see _RunHandler in this file), so an inner
+        # ``type`` key is now safe — it cannot shadow the envelope.
         if not os.path.exists(resolved) and not os.path.islink(resolved):
-            return {"exists": False, "file_type": None, "path": resolved}
+            return {"exists": False, "type": None, "path": resolved}
         st = os.lstat(resolved)
         if os.path.islink(resolved):
             ftype = "symlink"
@@ -518,7 +498,7 @@ async def handle_stat(msg: dict) -> dict:
             ftype = "file"
         return {
             "exists": True,
-            "file_type": ftype,
+            "type": ftype,
             "size": st.st_size,
             "mtime": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(),
             "mode": oct(st.st_mode & 0o777),
@@ -526,9 +506,9 @@ async def handle_stat(msg: dict) -> dict:
         }
 
     try:
-        return {"type": "stat_result", "request_id": msg["request_id"], **(await asyncio.to_thread(_stat))}
+        return {**(await asyncio.to_thread(_stat))}
     except Exception as e:
-        return {"type": "stat_result", "request_id": msg["request_id"], "error": str(e)}
+        return {"error": str(e)}
 
 
 async def handle_mkdir(msg: dict) -> dict:
@@ -540,7 +520,7 @@ async def handle_mkdir(msg: dict) -> dict:
     try:
         resolved = _resolve_safe_dir(path, cwd)
     except ValueError as e:
-        return {"type": "mkdir_result", "request_id": msg["request_id"], "success": False, "error": str(e)}
+        return {"success": False, "error": str(e)}
 
     def _mkdir():
         try:
@@ -556,11 +536,11 @@ async def handle_mkdir(msg: dict) -> dict:
             return {"success": False, "error": f"Already exists: {resolved}"}
 
     try:
-        return {"type": "mkdir_result", "request_id": msg["request_id"], **(await asyncio.to_thread(_mkdir))}
+        return {**(await asyncio.to_thread(_mkdir))}
     except PermissionError:
-        return {"type": "mkdir_result", "request_id": msg["request_id"], "success": False, "error": f"Permission denied: {resolved}"}
+        return {"success": False, "error": f"Permission denied: {resolved}"}
     except Exception as e:
-        return {"type": "mkdir_result", "request_id": msg["request_id"], "success": False, "error": str(e)}
+        return {"success": False, "error": str(e)}
 
 
 async def handle_delete(msg: dict) -> dict:
@@ -572,34 +552,33 @@ async def handle_delete(msg: dict) -> dict:
     try:
         resolved = _resolve_safe_path(path, cwd)
     except ValueError as e:
-        return {"type": "delete_result", "request_id": msg["request_id"], "success": False, "error": str(e)}
+        return {"success": False, "error": str(e)}
 
     # Refuse to delete the workspace root itself.
     base = os.path.realpath(cwd) if cwd else None
     if base and resolved == base:
-        return {"type": "delete_result", "request_id": msg["request_id"], "success": False,
+        return {"success": False,
                 "error": "Refusing to delete workspace root"}
 
     def _delete():
-        # See _stat() above: do NOT use a key named ``type`` here. It would
-        # shadow the envelope ``type: "delete_result"`` set by the caller
-        # and leave the response un-routable on the backend.
+        # ``type`` here is safe to use as a payload field because the
+        # dispatcher nests payload under a separate key (see _RunHandler).
         if os.path.islink(resolved) or os.path.isfile(resolved):
             os.remove(resolved)
-            return {"success": True, "path": resolved, "file_type": "file"}
+            return {"success": True, "path": resolved, "type": "file"}
         if os.path.isdir(resolved):
             if not recursive:
                 return {"success": False, "error": "Directory delete requires recursive=True"}
             shutil.rmtree(resolved)
-            return {"success": True, "path": resolved, "file_type": "directory"}
+            return {"success": True, "path": resolved, "type": "directory"}
         return {"success": False, "error": f"Path not found: {resolved}"}
 
     try:
-        return {"type": "delete_result", "request_id": msg["request_id"], **(await asyncio.to_thread(_delete))}
+        return {**(await asyncio.to_thread(_delete))}
     except PermissionError:
-        return {"type": "delete_result", "request_id": msg["request_id"], "success": False, "error": f"Permission denied: {resolved}"}
+        return {"success": False, "error": f"Permission denied: {resolved}"}
     except Exception as e:
-        return {"type": "delete_result", "request_id": msg["request_id"], "success": False, "error": str(e)}
+        return {"success": False, "error": str(e)}
 
 
 async def handle_move(msg: dict) -> dict:
@@ -613,7 +592,7 @@ async def handle_move(msg: dict) -> dict:
         src_resolved = _resolve_safe_path(src, cwd)
         dst_resolved = _resolve_safe_dir(dst, cwd)
     except ValueError as e:
-        return {"type": "move_result", "request_id": msg["request_id"], "success": False, "error": str(e)}
+        return {"success": False, "error": str(e)}
 
     def _move():
         if not os.path.exists(src_resolved) and not os.path.islink(src_resolved):
@@ -632,11 +611,11 @@ async def handle_move(msg: dict) -> dict:
         return {"success": True, "src": src_resolved, "dst": dst_resolved}
 
     try:
-        return {"type": "move_result", "request_id": msg["request_id"], **(await asyncio.to_thread(_move))}
+        return {**(await asyncio.to_thread(_move))}
     except PermissionError as e:
-        return {"type": "move_result", "request_id": msg["request_id"], "success": False, "error": f"Permission denied: {e}"}
+        return {"success": False, "error": f"Permission denied: {e}"}
     except Exception as e:
-        return {"type": "move_result", "request_id": msg["request_id"], "success": False, "error": str(e)}
+        return {"success": False, "error": str(e)}
 
 
 async def handle_copy(msg: dict) -> dict:
@@ -650,7 +629,7 @@ async def handle_copy(msg: dict) -> dict:
         src_resolved = _resolve_safe_path(src, cwd)
         dst_resolved = _resolve_safe_dir(dst, cwd)
     except ValueError as e:
-        return {"type": "copy_result", "request_id": msg["request_id"], "success": False, "error": str(e)}
+        return {"success": False, "error": str(e)}
 
     def _copy():
         if not os.path.exists(src_resolved) and not os.path.islink(src_resolved):
@@ -669,11 +648,11 @@ async def handle_copy(msg: dict) -> dict:
         return {"success": True, "src": src_resolved, "dst": dst_resolved}
 
     try:
-        return {"type": "copy_result", "request_id": msg["request_id"], **(await asyncio.to_thread(_copy))}
+        return {**(await asyncio.to_thread(_copy))}
     except PermissionError as e:
-        return {"type": "copy_result", "request_id": msg["request_id"], "success": False, "error": f"Permission denied: {e}"}
+        return {"success": False, "error": f"Permission denied: {e}"}
     except Exception as e:
-        return {"type": "copy_result", "request_id": msg["request_id"], "success": False, "error": str(e)}
+        return {"success": False, "error": str(e)}
 
 
 async def handle_glob(msg: dict) -> dict:
@@ -688,12 +667,12 @@ async def handle_glob(msg: dict) -> dict:
     cwd = msg.get("cwd")
 
     if not pattern:
-        return {"type": "glob_result", "request_id": msg["request_id"], "error": "pattern is required"}
+        return {"error": "pattern is required"}
 
     try:
         base_dir = _resolve_safe_path(path, cwd)
     except ValueError as e:
-        return {"type": "glob_result", "request_id": msg["request_id"], "error": str(e)}
+        return {"error": str(e)}
 
     def _glob():
         base = Path(base_dir)
@@ -725,9 +704,9 @@ async def handle_glob(msg: dict) -> dict:
 
     try:
         result = await asyncio.to_thread(_glob)
-        return {"type": "glob_result", "request_id": msg["request_id"], **result}
+        return {**result}
     except Exception as e:
-        return {"type": "glob_result", "request_id": msg["request_id"], "error": str(e)}
+        return {"error": str(e)}
 
 
 # Directories that are universally heavy / vendored / generated.
@@ -930,8 +909,6 @@ async def handle_grep(msg: dict) -> dict:
     if RG_PATH is None:
         logger.error("[grep] RG_PATH is None — returning install-hint error")
         return {
-            "type": "grep_result",
-            "request_id": request_id,
             "error": (
                 "ripgrep (rg) is not installed on the agent host. "
                 "Install it (macOS: brew install ripgrep | "
@@ -954,25 +931,22 @@ async def handle_grep(msg: dict) -> dict:
     try:
         max_results_raw = int(msg.get("max_results", MAX_GREP_RESULTS_DEFAULT))
     except (TypeError, ValueError):
-        return {"type": "grep_result", "request_id": request_id,
-                "error": "max_results must be an integer"}
+        return {"error": "max_results must be an integer"}
     max_results = max(1, min(max_results_raw, 2000))
 
     if not pattern:
-        return {"type": "grep_result", "request_id": request_id,
-                "error": "pattern is required"}
+        return {"error": "pattern is required"}
 
     try:
         base_dir = _resolve_safe_path(path, cwd)
     except ValueError as e:
         logger.error("[grep] path validation failed: %s", e)
-        return {"type": "grep_result", "request_id": request_id, "error": str(e)}
+        return {"error": str(e)}
     logger.info("[grep] resolved base_dir=%s", base_dir)
 
     if not os.path.exists(base_dir):
         logger.error("[grep] base_dir does not exist: %s", base_dir)
-        return {"type": "grep_result", "request_id": request_id,
-                "error": f"Not a directory: {base_dir}"}
+        return {"error": f"Not a directory: {base_dir}"}
 
     try:
         result = await _grep_with_rg(
@@ -987,14 +961,14 @@ async def handle_grep(msg: dict) -> dict:
         # Known failure modes (launch failure / timeout / non-zero exit)
         # surface as a structured error to the MCP layer.
         logger.error("[grep] RipgrepError: %s", e)
-        return {"type": "grep_result", "request_id": request_id, "error": str(e)}
+        return {"error": str(e)}
     # Any other exception (JSONDecodeError, programmer bugs, …) intentionally
     # propagates. The agent's outer dispatcher will log a stack trace and
     # the operator will see exactly what went wrong instead of a vague
     # "ripgrep failed" message.
 
     logger.info("[grep] returning %d matches for request_id=%s", result.get("count", 0), request_id)
-    return {"type": "grep_result", "request_id": request_id, **result}
+    return {**result}
 
 
 _HANDLERS = {
@@ -1009,6 +983,24 @@ _HANDLERS = {
     "copy": handle_copy,
     "glob": handle_glob,
     "grep": handle_grep,
+}
+
+
+# Map handler request type → response envelope type. Most are
+# ``<request>_result`` but read_file / list_dir use legacy names that
+# are kept for stability with the public MCP API surface.
+_RESPONSE_TYPE_FOR = {
+    "exec": "exec_result",
+    "read_file": "file_content",
+    "write_file": "write_result",
+    "list_dir": "dir_listing",
+    "stat": "stat_result",
+    "mkdir": "mkdir_result",
+    "delete": "delete_result",
+    "move": "move_result",
+    "copy": "copy_result",
+    "glob": "glob_result",
+    "grep": "grep_result",
 }
 
 
@@ -1339,10 +1331,25 @@ class WorkspaceAgent:
             await self._chat_manager.handle_cancel(msg)
             return
 
-        # Regular handlers: also run as tasks to avoid blocking the loop
-        handler = _HANDLERS.get(msg_type)
-        if handler:
-            self._spawn_task(self._run_handler(handler, msg))
+        # Regular handlers: also run as tasks to avoid blocking the loop.
+        #
+        # The new envelope format (introduced 2026-04-08 along with the
+        # shadowing fix) carries request data in a nested ``payload`` key
+        # so envelope fields (``type``, ``request_id``) cannot be shadowed
+        # by user data. Unwrap it here so handlers continue to see a flat
+        # dict — the per-handler signature is unchanged, only the wire
+        # format around it.
+        handler = _HANDLERS.get(msg_type) if isinstance(msg_type, str) else None
+        if handler and isinstance(msg_type, str):
+            inbound_payload = msg.get("payload") or {}
+            if not isinstance(inbound_payload, dict):
+                logger.warning(
+                    "[dispatch] %s: ``payload`` is %s, not dict — ignoring",
+                    msg_type, type(inbound_payload).__name__,
+                )
+                inbound_payload = {}
+            synthetic = {**inbound_payload, "request_id": msg.get("request_id")}
+            self._spawn_task(self._run_handler(handler, synthetic, msg_type))
             return
 
         if msg_type == "update_available":
@@ -1352,35 +1359,48 @@ class WorkspaceAgent:
         if msg_type == "ping":
             await self._safe_send(json.dumps({"type": "pong"}))
 
-    async def _run_handler(self, handler, msg: dict) -> None:
-        """Run a request/response handler as a background task."""
-        msg_type = msg.get("type")
+    async def _run_handler(self, handler, msg: dict, msg_type: str) -> None:
+        """Run a request/response handler as a background task.
+
+        Handlers return *just* the payload dict (the inner data). The
+        dispatcher wraps it in the envelope here. This is the architectural
+        guarantee that handler code can never accidentally shadow envelope
+        fields like ``type`` or ``request_id`` — those keys are owned by
+        the dispatcher, full stop.
+        """
         request_id = msg.get("request_id")
+        response_type = _RESPONSE_TYPE_FOR.get(msg_type, f"{msg_type}_result")
+
         try:
-            response = await handler(msg)
-            if response:
-                try:
-                    payload = json.dumps(response)
-                except (TypeError, ValueError) as e:
-                    logger.exception(
-                        "[dispatch] FAILED to serialize response for %s/%s: %s",
-                        msg_type, request_id, e,
-                    )
-                    # Send a minimal error so the caller doesn't hang.
-                    payload = json.dumps({
-                        "type": f"{msg_type}_result",
-                        "request_id": request_id,
-                        "error": f"response serialization failed: {e}",
-                    })
-                logger.info(
-                    "[dispatch] sending response: type=%s req=%s bytes=%d",
-                    response.get("type"), request_id, len(payload),
+            inner = await handler(msg)
+            if inner is None:
+                inner = {}
+            envelope = {
+                "type": response_type,
+                "request_id": request_id,
+                "payload": inner,
+            }
+            try:
+                payload_str = json.dumps(envelope)
+            except (TypeError, ValueError) as e:
+                logger.exception(
+                    "[dispatch] FAILED to serialize response for %s/%s: %s",
+                    msg_type, request_id, e,
                 )
-                await self._safe_send(payload)
-                logger.info(
-                    "[dispatch] response sent: type=%s req=%s",
-                    response.get("type"), request_id,
-                )
+                payload_str = json.dumps({
+                    "type": response_type,
+                    "request_id": request_id,
+                    "payload": {"error": f"response serialization failed: {e}"},
+                })
+            logger.info(
+                "[dispatch] sending response: type=%s req=%s bytes=%d",
+                response_type, request_id, len(payload_str),
+            )
+            await self._safe_send(payload_str)
+            logger.info(
+                "[dispatch] response sent: type=%s req=%s",
+                response_type, request_id,
+            )
         except Exception as e:
             # Full stack trace so operators can see WHERE the handler died,
             # not just the exception message.
@@ -1388,9 +1408,9 @@ class WorkspaceAgent:
                              msg_type, request_id, e)
             if request_id:
                 await self._safe_send(json.dumps({
-                    "type": f"{msg_type or 'unknown'}_result",
+                    "type": response_type,
                     "request_id": request_id,
-                    "error": f"{type(e).__name__}: {e}",
+                    "payload": {"error": f"{type(e).__name__}: {e}"},
                 }))
 
     async def _handle_update_available(self, msg: dict) -> None:

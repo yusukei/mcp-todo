@@ -140,6 +140,19 @@ class AgentConnectionManager:
     ) -> dict:
         """Send request to agent and await response via Future.
 
+        Wire format (introduced 2026-04-08 with the envelope redesign):
+
+            outbound:  {"type": <msg_type>, "request_id": <hex>,
+                        "payload": <payload>}
+            inbound:   {"type": <msg_type>_result, "request_id": <hex>,
+                        "payload": <inner-result>}
+
+        Envelope keys (``type``, ``request_id``) live at the top level
+        and are owned by the dispatcher. All caller / handler data lives
+        nested under ``payload`` so it cannot collide with envelope keys.
+        This method unwraps ``payload`` before returning, so MCP tools
+        continue to see a flat dict — only the wire-level shape changed.
+
         ``wait_for_agent``: when > 0, block up to that many seconds waiting
         for the agent to (re)connect before failing with AgentOfflineError.
         Useful for absorbing brief disconnects (sleep/wake, WiFi switch).
@@ -152,10 +165,9 @@ class AgentConnectionManager:
             raise AgentOfflineError(agent_id)
 
         # Full 128-bit UUID. The WebSocket dispatcher routes responses
-        # purely by request_id now (type-whitelist was removed after the
-        # envelope-shadowing bug fixed 2026-04-08), so a predictable or
-        # collision-prone id would let one in-flight request's Future be
-        # resolved by another's response. Do not shorten this.
+        # purely by request_id, so a predictable or collision-prone id
+        # would let one in-flight request's Future be resolved by
+        # another's response. Do not shorten this.
         request_id = uuid.uuid4().hex
         loop = asyncio.get_running_loop()
         future = loop.create_future()
@@ -163,12 +175,27 @@ class AgentConnectionManager:
 
         try:
             await ws.send_text(json.dumps({
-                "type": msg_type, "request_id": request_id, **payload,
+                "type": msg_type,
+                "request_id": request_id,
+                "payload": payload,
             }))
-            result = await asyncio.wait_for(future, timeout=timeout)
-            if isinstance(result, dict) and result.get("error"):
-                raise RuntimeError(result["error"])
-            return result
+            envelope = await asyncio.wait_for(future, timeout=timeout)
+            if not isinstance(envelope, dict):
+                raise RuntimeError(
+                    f"Agent response is not a dict: {type(envelope).__name__}"
+                )
+            inner = envelope.get("payload")
+            if not isinstance(inner, dict):
+                # Loud failure: the agent broke the wire contract. Do not
+                # silently substitute an empty dict — surface the bug so
+                # operators can see exactly which handler regressed.
+                raise RuntimeError(
+                    f"Agent response missing ``payload`` dict "
+                    f"(envelope keys: {sorted(envelope.keys())})"
+                )
+            if inner.get("error"):
+                raise RuntimeError(inner["error"])
+            return inner
         except asyncio.TimeoutError:
             raise CommandTimeoutError(request_id, timeout)
         finally:

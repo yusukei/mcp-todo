@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import sys
 
 import pytest
@@ -221,14 +222,12 @@ class TestStat:
             "path": "f.txt",
             "cwd": str(tmp_path),
         }))
-        # Envelope type must be the message kind, NOT the file kind —
-        # regression guard for the inner-dict shadowing bug fixed
-        # 2026-04-08 (the inner dict used to publish ``type: "file"``
-        # which spread over the envelope's ``type: "stat_result"``,
-        # leaving the response un-routable on the backend).
-        assert result["type"] == "stat_result"
+        # Handlers now return ONLY the inner payload (the dispatcher
+        # wraps it in {"type": ..., "request_id": ..., "payload": ...}).
+        # An inner ``type`` key is therefore safe again — it can no
+        # longer shadow the envelope.
         assert result["exists"] is True
-        assert result["file_type"] == "file"
+        assert result["type"] == "file"
         assert result["size"] == 5
         assert "mtime" in result
 
@@ -240,9 +239,8 @@ class TestStat:
             "path": "d",
             "cwd": str(tmp_path),
         }))
-        assert result["type"] == "stat_result"
         assert result["exists"] is True
-        assert result["file_type"] == "directory"
+        assert result["type"] == "directory"
 
     def test_stat_nonexistent(self, tmp_path):
         result = _run(main.handle_stat({
@@ -250,9 +248,8 @@ class TestStat:
             "path": "nope.txt",
             "cwd": str(tmp_path),
         }))
-        assert result["type"] == "stat_result"
         assert result["exists"] is False
-        assert result["file_type"] is None
+        assert result["type"] is None
 
 
 # ──────────────────────────────────────────────
@@ -312,10 +309,8 @@ class TestDelete:
             "path": "f.txt",
             "cwd": str(tmp_path),
         }))
-        # Envelope type guard — see TestStat for the rationale.
-        assert result["type"] == "delete_result"
         assert result["success"] is True
-        assert result["file_type"] == "file"
+        assert result["type"] == "file"
         assert not target.exists()
 
     def test_delete_directory_requires_recursive(self, tmp_path):
@@ -326,7 +321,6 @@ class TestDelete:
             "path": "d",
             "cwd": str(tmp_path),
         }))
-        assert result["type"] == "delete_result"
         assert result["success"] is False
         assert sub.exists()
 
@@ -340,9 +334,8 @@ class TestDelete:
             "cwd": str(tmp_path),
             "recursive": True,
         }))
-        assert result["type"] == "delete_result"
         assert result["success"] is True
-        assert result["file_type"] == "directory"
+        assert result["type"] == "directory"
         assert not sub.exists()
 
     def test_delete_workspace_root_refused(self, tmp_path):
@@ -857,24 +850,27 @@ class TestGrepRgErrorSurfacing:
 
 
 # ──────────────────────────────────────────────
-# Envelope contract — every handler MUST emit the right envelope ``type``
-# and propagate the caller's ``request_id`` unchanged.
+# Envelope contract — every dispatcher round-trip MUST produce the
+# right envelope ``type``, propagate ``request_id`` unchanged, and nest
+# the handler's data under ``payload``.
 #
-# This is the regression net for the 2026-04-08 shadowing bug: ``handle_stat``
-# / ``handle_delete`` returned an inner dict containing ``"type"``, which
-# spread on top of the envelope and silently shadowed it. The dispatcher
-# then dropped the response and the caller's Future hung until the MCP
-# timeout. The static ``_RESPONSE_TYPES`` whitelist that used to catch
-# this was deleted because the new request_id-based dispatcher made it
-# unnecessary — but we still want a *positive* contract test that says
-# "for every handler, hit happy path, prove the envelope is intact".
+# Background (2026-04-08): the original ``handle_stat`` / ``handle_delete``
+# returned an inner dict containing ``"type"``, which spread on top of
+# ``{"type": "stat_result", **result}`` and silently shadowed the envelope.
+# The dispatcher dropped the response and the caller's Future hung until
+# the MCP layer's 60s timeout. The fix nests handler data under a
+# ``payload`` key so envelope fields can never be shadowed — this test
+# is the regression net that says "for every handler, dispatcher round-trip
+# produces an envelope where type / request_id are intact".
 #
 # When you add a new handler:
-#   1. Add it to ``_ENVELOPE_CASES`` below with happy-path inputs and the
-#      expected envelope type.
-#   2. The parametrized test will assert: response is a dict with
-#      ``type == <expected>`` and ``request_id == "<sentinel>"``, and that
-#      no inner key has shadowed either field.
+#   1. Register it in ``main._HANDLERS`` and ``main._RESPONSE_TYPE_FOR``.
+#   2. Add a happy-path case to ``_build_contract_cases`` below.
+#   3. The parametrized test will drive the dispatcher with a synthetic
+#      inbound envelope and assert the OUTBOUND envelope shape:
+#        - ``type`` matches the expected ``*_result``
+#        - ``request_id`` matches the sentinel
+#        - ``payload`` is a dict with the handler's data
 # ──────────────────────────────────────────────
 
 
@@ -882,7 +878,7 @@ _CONTRACT_REQ_ID = "envelope-contract-sentinel-9f3a"
 
 
 def _build_contract_cases(tmp_path):
-    """Return a list of (label, handler, msg, expected_envelope_type).
+    """Return a list of (label, msg_type, payload, expected_envelope_type).
 
     Each case sets up just enough state in ``tmp_path`` to make the handler
     take its happy path. We build the cases inside a function (rather than
@@ -901,103 +897,64 @@ def _build_contract_cases(tmp_path):
     echo_cmd = "echo hi"  # portable on cmd.exe and POSIX shells alike
 
     return [
-        (
-            "handle_exec",
-            main.handle_exec,
-            {"request_id": _CONTRACT_REQ_ID, "command": echo_cmd, "cwd": cwd, "timeout": 10},
-            "exec_result",
-        ),
-        (
-            "handle_read_file",
-            main.handle_read_file,
-            {"request_id": _CONTRACT_REQ_ID, "path": "f.txt", "cwd": cwd},
-            "file_content",
-        ),
-        (
-            "handle_write_file",
-            main.handle_write_file,
-            {"request_id": _CONTRACT_REQ_ID, "path": "new.txt", "content": "x", "cwd": cwd},
-            "write_result",
-        ),
-        (
-            "handle_list_dir",
-            main.handle_list_dir,
-            {"request_id": _CONTRACT_REQ_ID, "path": ".", "cwd": cwd},
-            "dir_listing",
-        ),
-        (
-            "handle_stat (file)",
-            main.handle_stat,
-            {"request_id": _CONTRACT_REQ_ID, "path": "f.txt", "cwd": cwd},
-            "stat_result",
-        ),
-        (
-            "handle_stat (missing)",
-            main.handle_stat,
-            {"request_id": _CONTRACT_REQ_ID, "path": "nope.txt", "cwd": cwd},
-            "stat_result",
-        ),
-        (
-            "handle_mkdir",
-            main.handle_mkdir,
-            {"request_id": _CONTRACT_REQ_ID, "path": "newdir", "cwd": cwd},
-            "mkdir_result",
-        ),
-        (
-            "handle_delete (file)",
-            main.handle_delete,
-            {"request_id": _CONTRACT_REQ_ID, "path": "to_delete.txt", "cwd": cwd},
-            "delete_result",
-        ),
-        (
-            "handle_delete (dir)",
-            main.handle_delete,
-            {"request_id": _CONTRACT_REQ_ID, "path": "src_dir", "cwd": cwd, "recursive": True},
-            "delete_result",
-        ),
-        (
-            "handle_move",
-            main.handle_move,
-            {"request_id": _CONTRACT_REQ_ID, "src": "to_move.txt", "dst": "moved.txt", "cwd": cwd},
-            "move_result",
-        ),
-        (
-            "handle_copy",
-            main.handle_copy,
-            {"request_id": _CONTRACT_REQ_ID, "src": "to_copy.txt", "dst": "copied.txt", "cwd": cwd},
-            "copy_result",
-        ),
-        (
-            "handle_glob",
-            main.handle_glob,
-            {"request_id": _CONTRACT_REQ_ID, "pattern": "**/*.txt", "path": ".", "cwd": cwd},
-            "glob_result",
-        ),
+        ("exec",       "exec",       {"command": echo_cmd, "cwd": cwd, "timeout": 10},                "exec_result"),
+        ("read_file",  "read_file",  {"path": "f.txt", "cwd": cwd},                                    "file_content"),
+        ("write_file", "write_file", {"path": "new.txt", "content": "x", "cwd": cwd},                  "write_result"),
+        ("list_dir",   "list_dir",   {"path": ".", "cwd": cwd},                                        "dir_listing"),
+        ("stat (file)",     "stat",  {"path": "f.txt", "cwd": cwd},                                    "stat_result"),
+        ("stat (missing)",  "stat",  {"path": "nope.txt", "cwd": cwd},                                 "stat_result"),
+        ("mkdir",      "mkdir",      {"path": "newdir", "cwd": cwd},                                   "mkdir_result"),
+        ("delete (file)", "delete",  {"path": "to_delete.txt", "cwd": cwd},                            "delete_result"),
+        ("delete (dir)",  "delete",  {"path": "src_dir", "cwd": cwd, "recursive": True},               "delete_result"),
+        ("move",       "move",       {"src": "to_move.txt", "dst": "moved.txt", "cwd": cwd},           "move_result"),
+        ("copy",       "copy",       {"src": "to_copy.txt", "dst": "copied.txt", "cwd": cwd},          "copy_result"),
+        ("glob",       "glob",       {"pattern": "**/*.txt", "path": ".", "cwd": cwd},                 "glob_result"),
         # handle_grep happy path needs ripgrep mocked — exercise the
         # error path instead (which still goes through the envelope wrap).
-        (
-            "handle_grep (missing rg)",
-            main.handle_grep,
-            {"request_id": _CONTRACT_REQ_ID, "pattern": "x", "path": ".", "cwd": cwd},
-            "grep_result",
-        ),
+        ("grep (missing rg)", "grep", {"pattern": "x", "path": ".", "cwd": cwd},                       "grep_result"),
     ]
 
 
-class TestEnvelopeContract:
-    """Every handler must produce ``{type: <kind>_result, request_id: <id>, ...}``.
+class _CapturingAgent:
+    """Minimal stand-in for ``WorkspaceAgent`` that captures sent frames.
 
-    Whatever else they put in the response, ``type`` and ``request_id``
-    are reserved envelope fields and must NOT be shadowed by inner data.
-    This catches the 2026-04-08 shadowing bug class statically — if any
-    future handler returns an inner ``"type"`` or ``"request_id"`` key,
-    this test fails loudly instead of letting the MCP layer time out.
+    We can't use the real class without a WebSocket; this stub records
+    every ``_safe_send`` payload into ``self.sent`` so the contract test
+    can inspect the OUTBOUND envelope after running ``_run_handler``.
+    """
+
+    def __init__(self):
+        self.sent: list[str] = []
+
+    async def _safe_send(self, data: str) -> None:
+        self.sent.append(data)
+
+    # Borrow the real method directly — it only touches self._safe_send
+    # and the module-level _RESPONSE_TYPE_FOR / json / logger, which all
+    # work fine when called as a bound method on this stub.
+    _run_handler = main.WorkspaceAgent._run_handler
+
+
+class TestEnvelopeContract:
+    """Every dispatcher round-trip must produce a well-formed envelope.
+
+    Drives ``_run_handler`` (the agent's outbound dispatcher) directly
+    with a synthetic inbound payload and asserts the captured outbound
+    frame:
+      - ``type`` is the expected ``*_result``
+      - ``request_id`` is the sentinel
+      - ``payload`` is a dict containing the handler's data
+      - no envelope key is shadowed by inner data
+
+    This catches the 2026-04-08 shadowing-bug class statically: any
+    future handler that breaks the envelope contract fails this test
+    instead of letting the MCP layer time out 60s later.
     """
 
     def test_every_handler_emits_correct_envelope(self, tmp_path, monkeypatch):
         # Force handle_grep down its "ripgrep missing" branch so we don't
-        # need a real binary to validate the envelope wrap. The error path
-        # still goes through the same return statement.
+        # need a real binary to validate the envelope wrap. The error
+        # path still goes through the same dispatcher path.
         monkeypatch.setattr(main, "RG_PATH", None)
 
         cases = _build_contract_cases(tmp_path)
@@ -1005,28 +962,55 @@ class TestEnvelopeContract:
         assert len(cases) >= 11
 
         failures: list[str] = []
-        for label, handler, msg, expected_type in cases:
+        for label, msg_type, inbound_payload, expected_type in cases:
+            agent = _CapturingAgent()
+            handler = main._HANDLERS[msg_type]
+            synthetic_msg = {**inbound_payload, "request_id": _CONTRACT_REQ_ID}
             try:
-                result = _run(handler(msg))
+                _run(agent._run_handler(handler, synthetic_msg, msg_type))
             except Exception as e:
-                failures.append(f"{label}: handler raised {type(e).__name__}: {e}")
+                failures.append(f"{label}: dispatcher raised {type(e).__name__}: {e}")
                 continue
 
-            if not isinstance(result, dict):
-                failures.append(f"{label}: result is {type(result).__name__}, not dict")
+            if not agent.sent:
+                failures.append(f"{label}: dispatcher emitted no frames")
                 continue
-            if result.get("type") != expected_type:
+            if len(agent.sent) > 1:
+                failures.append(f"{label}: dispatcher emitted {len(agent.sent)} frames, expected 1")
+
+            try:
+                envelope = json.loads(agent.sent[0])
+            except json.JSONDecodeError as e:
+                failures.append(f"{label}: outbound frame is not valid JSON: {e}")
+                continue
+
+            if envelope.get("type") != expected_type:
                 failures.append(
-                    f"{label}: envelope ``type`` is {result.get('type')!r}, "
-                    f"expected {expected_type!r} — likely an inner-dict "
-                    f"key shadowed the envelope (see 2026-04-08 bug)"
+                    f"{label}: envelope ``type`` is {envelope.get('type')!r}, "
+                    f"expected {expected_type!r}"
                 )
-            if result.get("request_id") != _CONTRACT_REQ_ID:
+            if envelope.get("request_id") != _CONTRACT_REQ_ID:
                 failures.append(
-                    f"{label}: ``request_id`` is {result.get('request_id')!r}, "
-                    f"expected {_CONTRACT_REQ_ID!r} — handler dropped or "
-                    f"overwrote the correlation id; backend dispatcher "
-                    f"will not be able to resolve the caller's Future"
+                    f"{label}: ``request_id`` is {envelope.get('request_id')!r}, "
+                    f"expected {_CONTRACT_REQ_ID!r} — dispatcher dropped or "
+                    f"overwrote the correlation id; backend cannot resolve "
+                    f"the caller's Future"
+                )
+            payload = envelope.get("payload")
+            if not isinstance(payload, dict):
+                failures.append(
+                    f"{label}: envelope ``payload`` is {type(payload).__name__}, "
+                    f"expected dict — handler data must live nested under "
+                    f"``payload`` so it cannot shadow envelope keys"
+                )
+            # Spot check: top-level envelope must have exactly the three
+            # reserved keys (type / request_id / payload). Anything else
+            # at the top level is a regression that risks future shadowing.
+            extra = set(envelope.keys()) - {"type", "request_id", "payload"}
+            if extra:
+                failures.append(
+                    f"{label}: envelope has unexpected top-level keys {sorted(extra)} — "
+                    f"only ``type`` / ``request_id`` / ``payload`` are allowed"
                 )
 
         assert not failures, "envelope contract violations:\n  - " + "\n  - ".join(failures)

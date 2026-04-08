@@ -7,12 +7,12 @@ frame and then multiplexes:
 - agent_info updates and update_available push
 - chat event forwarding to ``services.chat_events``
 
-Routing by ``request_id`` (rather than a ``type`` whitelist) is deliberate:
-the agent's response payload is built by spreading an inner dict, which
-historically allowed an inner ``"type"`` key to shadow the envelope type
-(see the ``_stat`` / ``_delete`` shadowing bug fixed 2026-04-08). The
-correlation key — ``request_id`` — is unaffected by that hazard, so we
-use it as the single source of truth for "is this an RPC response".
+Routing by ``request_id`` is the single source of truth for "is this an
+RPC response". With the envelope redesign (2026-04-08), inner result
+data is nested under a ``payload`` key so envelope fields (``type``,
+``request_id``) cannot be shadowed by handler data — but we still route
+by ``request_id`` because it is the actual correlation key, not the
+``type`` field.
 """
 from __future__ import annotations
 
@@ -114,16 +114,10 @@ async def agent_websocket(ws: WebSocket):
             request_id = msg.get("request_id")
 
             # If this message correlates to a pending RPC request, resolve
-            # the Future and stop. We route by request_id (not by type) so
-            # that an inner-dict ``type`` shadowing the envelope type — as
-            # happened with ``_stat`` / ``_delete`` returning their own
-            # ``type: "file"`` — cannot silently drop responses on the
-            # floor and hang the caller until MCP timeout.
-            #
-            # Server-pushed messages (chat_event/chat_complete/chat_error)
-            # also carry a request_id but have no pending Future, so
-            # ``resolve_request`` returns False and we fall through to
-            # the type-based dispatch below.
+            # the Future and stop. Server-pushed messages (chat_event /
+            # chat_complete / chat_error) may also carry a request_id but
+            # have no pending Future, so ``resolve_request`` returns False
+            # and we fall through to the type-based dispatch below.
             if request_id is not None and agent_manager.resolve_request(msg):
                 continue
 

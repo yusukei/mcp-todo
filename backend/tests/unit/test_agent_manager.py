@@ -97,11 +97,19 @@ class TestSendRequest:
 
         async def respond_after_delay():
             await asyncio.sleep(0.01)
-            request_id = json.loads(ws.sent[0])["request_id"]
+            outbound = json.loads(ws.sent[0])
+            request_id = outbound["request_id"]
             # Full UUID hex is exactly 32 chars (128 bits) and lowercase hex only.
             assert len(request_id) == 32
             int(request_id, 16)  # must parse as hex
-            manager.resolve_request({"request_id": request_id, "ok": True})
+            # Outbound envelope must nest user data under ``payload``.
+            assert outbound["payload"] == {}
+            assert outbound["type"] == "exec"
+            manager.resolve_request({
+                "type": "exec_result",
+                "request_id": request_id,
+                "payload": {"ok": True},
+            })
 
         responder = asyncio.create_task(respond_after_delay())
         await manager.send_request("agent-1", "exec", {}, timeout=2.0)
@@ -114,12 +122,17 @@ class TestSendRequest:
         async def respond_after_delay():
             # Give send_request time to register the future, then resolve it
             await asyncio.sleep(0.01)
-            payload = json.loads(ws.sent[0])
-            request_id = payload["request_id"]
+            outbound = json.loads(ws.sent[0])
+            request_id = outbound["request_id"]
+            # Outbound: caller payload is nested.
+            assert outbound["payload"] == {"command": "echo hi"}
             manager.resolve_request({
+                "type": "exec_result",
                 "request_id": request_id,
-                "exit_code": 0,
-                "stdout": "hello",
+                "payload": {
+                    "exit_code": 0,
+                    "stdout": "hello",
+                },
             })
 
         responder = asyncio.create_task(respond_after_delay())
@@ -128,6 +141,8 @@ class TestSendRequest:
         )
         await responder
 
+        # send_request unwraps payload before returning, so MCP tools
+        # see a flat dict.
         assert result["exit_code"] == 0
         assert result["stdout"] == "hello"
 
@@ -139,13 +154,37 @@ class TestSendRequest:
             await asyncio.sleep(0.01)
             request_id = json.loads(ws.sent[0])["request_id"]
             manager.resolve_request({
+                "type": "exec_result",
                 "request_id": request_id,
-                "error": "command not found",
+                "payload": {"error": "command not found"},
             })
 
         asyncio.create_task(respond_with_error())
         with pytest.raises(RuntimeError, match="command not found"):
             await manager.send_request("agent-1", "exec", {"command": "boom"}, timeout=2.0)
+
+    async def test_send_request_missing_payload_raises(self, manager):
+        """Wire-contract guard: an envelope without ``payload`` is a bug.
+
+        Don't silently substitute an empty dict — surface the broken
+        agent so operators can identify which handler regressed.
+        """
+        ws = FakeWebSocket()
+        manager.register("agent-1", ws)
+
+        async def respond_flat():
+            await asyncio.sleep(0.01)
+            request_id = json.loads(ws.sent[0])["request_id"]
+            # Old flat format — must be rejected loudly.
+            manager.resolve_request({
+                "type": "exec_result",
+                "request_id": request_id,
+                "exit_code": 0,
+            })
+
+        asyncio.create_task(respond_flat())
+        with pytest.raises(RuntimeError, match="missing ``payload``"):
+            await manager.send_request("agent-1", "exec", {}, timeout=2.0)
 
     async def test_send_request_timeout(self, manager):
         ws = FakeWebSocket()
@@ -230,7 +269,11 @@ class TestSendRequestWaitForAgent:
                     break
                 await asyncio.sleep(0.01)
             request_id = json.loads(ws.sent[0])["request_id"]
-            manager.resolve_request({"request_id": request_id, "ok": True})
+            manager.resolve_request({
+                "type": "exec_result",
+                "request_id": request_id,
+                "payload": {"ok": True},
+            })
 
         asyncio.create_task(connect_then_respond())
         result = await manager.send_request(
