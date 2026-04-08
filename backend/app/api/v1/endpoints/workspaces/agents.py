@@ -100,20 +100,7 @@ async def rotate_agent_token(
 
     # Force-disconnect any live connection bound to the old token.
     if agent_manager.is_connected(agent_id):
-        agent_manager.unregister(agent_id)
-        agent.is_online = False
-        try:
-            await agent.save()
-        except Exception:
-            # The token has already been rotated in the DB above, so
-            # losing the is_online flag here is a monitoring concern,
-            # not a security one. Log with full traceback instead of
-            # swallowing silently — the operator needs to know if
-            # agent writes are starting to fail.
-            logger.exception(
-                "rotate-token: failed to persist is_online=False for agent %s",
-                agent_id,
-            )
+        await agent_manager.unregister(agent_id)
 
     logger.info("Rotated token for agent %s (%s)", agent.name, agent_id)
     return {**agent_dict(agent), "token": raw_token}

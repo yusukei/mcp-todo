@@ -17,6 +17,7 @@ by ``request_id`` because it is the actual correlation key, not the
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from datetime import UTC, datetime
@@ -33,6 +34,21 @@ from ._shared import PING_INTERVAL, PING_TIMEOUT
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Module-level anchor for chat_event background tasks. ``asyncio``
+# only holds a weak reference to a Task returned by
+# ``asyncio.ensure_future`` / ``create_task``; if nothing else
+# references it, the task can be garbage-collected mid-run and its
+# callbacks silently dropped. Storing them here prevents that.
+# Tasks self-remove via ``add_done_callback``.
+_chat_event_tasks: set[asyncio.Task] = set()
+
+
+def _spawn_chat_event(coro) -> None:
+    """Schedule a chat_event handler as an anchored background task."""
+    task = asyncio.create_task(coro)
+    _chat_event_tasks.add(task)
+    task.add_done_callback(_chat_event_tasks.discard)
 
 
 async def _server_ping_loop(ws: WebSocket, agent_id: str) -> None:
@@ -143,18 +159,18 @@ async def agent_websocket(ws: WebSocket):
     agent_id = str(agent.id)
     await ws.send_text(json.dumps({"type": "auth_ok", "agent_id": agent_id}))
 
-    # Register and close old connection if replaced
-    old_ws = agent_manager.register(agent_id, ws)
-    if old_ws is not None:
-        await _safe_close(old_ws, code=1012, reason="Replaced by new connection")
+    # ── Server-side ping task for dead connection detection ──
+    #
+    # Create the ping task BEFORE register() so the manager can take
+    # ownership of its lifetime during the atomic replace. If a prior
+    # connection existed, register() will cancel+await the old
+    # ping_task and close the old ws before returning.
+    ping_task = asyncio.create_task(_server_ping_loop(ws, agent_id))
+    await agent_manager.register(agent_id, ws, ping_task=ping_task)
 
-    agent.is_online = True
     agent.last_seen_at = datetime.now(UTC)
     await agent.save()
     logger.info("Agent connected: %s (%s)", agent.name, agent_id)
-
-    # ── Server-side ping task for dead connection detection ──
-    ping_task = asyncio.create_task(_server_ping_loop(ws, agent_id))
 
     # ── Message loop ──
     try:
@@ -204,7 +220,7 @@ async def agent_websocket(ws: WebSocket):
 
             elif msg_type in ("chat_event", "chat_complete", "chat_error"):
                 from .....services.chat_events import handle_chat_event
-                asyncio.ensure_future(handle_chat_event(msg))
+                _spawn_chat_event(handle_chat_event(msg))
 
             else:
                 # Loudly surface protocol drift instead of silently
@@ -227,18 +243,24 @@ async def agent_websocket(ws: WebSocket):
         logger.exception("Agent WebSocket error (%s)", agent_id)
     finally:
         ping_task.cancel()
-        agent_manager.unregister(agent_id, ws)  # Only remove if this is still the current connection
-        agent.is_online = False
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            # Await the cancelled ping task so the cancellation
+            # actually propagates before we tear down the WS. Without
+            # this, the task can outlive the handler and touch a
+            # half-closed connection — prior source of intermittent
+            # "operation on closed transport" warnings.
+            await ping_task
+        await agent_manager.unregister(agent_id, ws)  # Only remove if this is still the current connection
         agent.last_seen_at = datetime.now(UTC)
         try:
             await agent.save()
         except Exception:
             # Cleanup path: the WS is already tearing down. A failure
-            # to persist the offline flag is a monitoring concern,
-            # not a recoverable one — log the full traceback so it is
+            # to persist last_seen_at is a monitoring concern, not a
+            # recoverable one — log the full traceback so it is
             # visible, but do not re-raise (would mask the triggering
             # disconnect in the task's parent scope).
             logger.exception(
-                "Failed to persist agent offline state on disconnect (%s)",
+                "Failed to persist agent last_seen_at on disconnect (%s)",
                 agent_id,
             )

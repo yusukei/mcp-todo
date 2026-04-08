@@ -46,23 +46,6 @@ class AgentSettingsUpdateRequest(BaseModel):
     update_channel: str | None = None
 
 
-# ── Startup cleanup ──────────────────────────────────────────
-
-
-async def reset_all_agents_online() -> int:
-    """Reset all agents' is_online to False on server startup.
-
-    Called from lifespan to clean up stale state from previous process.
-    """
-    result = await RemoteAgent.find(
-        {"is_online": True}
-    ).update({"$set": {"is_online": False}})
-    count = result.modified_count if result else 0
-    if count:
-        logger.info("Reset %d stale agent online flags", count)
-    return count
-
-
 # ── Serializers / helpers ────────────────────────────────────
 
 

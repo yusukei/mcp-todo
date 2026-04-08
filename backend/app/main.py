@@ -175,11 +175,15 @@ async def lifespan(app: FastAPI):
             logger.warning("Failed to auto-create admin user: %s", e)
 
     # ── Startup cleanup: reset stale state from previous process ──
+    #
+    # The previous ``reset_all_agents_online()`` call was removed when
+    # the ``is_online`` DB field was retired: "is this agent connected
+    # right now" is derived from ``agent_manager.is_connected()`` which
+    # is authoritative per-process. A persisted flag could not safely
+    # be cleared across multiple workers/replicas without a race, so
+    # there is nothing to reset at startup.
     _is_testing = os.environ.get("TESTING") == "1"
     if not _is_testing:
-        from .api.v1.endpoints.workspaces import reset_all_agents_online
-        await reset_all_agents_online()
-
         from .services.chat_events import recover_stale_sessions
         recovered_sessions = await recover_stale_sessions()
         if recovered_sessions:

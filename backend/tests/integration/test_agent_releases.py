@@ -22,6 +22,7 @@ import hashlib
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 
 from app.api.v1.endpoints import workspaces as terminal_module
 from app.api.v1.endpoints.workspaces import (
@@ -396,13 +397,17 @@ class _FakeWebSocket:
 
     def __init__(self):
         self.sent: list[str] = []
+        self.closed: tuple[int, str] | None = None
 
     async def send_text(self, text: str) -> None:
         self.sent.append(text)
 
+    async def close(self, code: int = 1000, reason: str = "") -> None:
+        self.closed = (code, reason)
 
-@pytest.fixture
-def registered_agent_with_ws(admin_user, monkeypatch):
+
+@pytest_asyncio.fixture
+async def registered_agent_with_ws(admin_user, monkeypatch):
     """Create an agent record + pretend its WS is connected."""
     from app.core.security import hash_api_key
     from app.services.agent_manager import agent_manager
@@ -420,7 +425,7 @@ def registered_agent_with_ws(admin_user, monkeypatch):
         )
         await agent.insert()
         fake_ws = _FakeWebSocket()
-        agent_manager.register(str(agent.id), fake_ws)  # type: ignore[arg-type]
+        await agent_manager.register(str(agent.id), fake_ws)  # type: ignore[arg-type]
         return agent, fake_ws
 
     created: list[tuple] = []
@@ -433,10 +438,8 @@ def registered_agent_with_ws(admin_user, monkeypatch):
     yield factory
 
     # Cleanup: unregister any WS we registered.
-    from app.services.agent_manager import agent_manager
-
     for agent, fake_ws in created:
-        agent_manager.unregister(str(agent.id), fake_ws)  # type: ignore[arg-type]
+        await agent_manager.unregister(str(agent.id), fake_ws)  # type: ignore[arg-type]
 
 
 async def _upload_release(client, admin_headers, version, os_type="win32"):

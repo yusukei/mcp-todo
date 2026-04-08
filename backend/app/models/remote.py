@@ -19,7 +19,12 @@ class RemoteAgent(Document):
     hostname: str = ""
     os_type: str = ""  # "darwin", "linux", "windows"
     available_shells: list[str] = Field(default_factory=list)
-    is_online: bool = False
+    # ``is_online`` was a persisted flag used to serve "currently
+    # connected" in admin UIs across process restarts. It was
+    # inherently racy (multi-worker, multi-process) and is now derived
+    # from ``agent_manager.is_connected(agent_id)`` — the authoritative
+    # in-memory signal. ``last_seen_at`` is still persisted as a
+    # diagnostic timestamp.
     last_seen_at: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

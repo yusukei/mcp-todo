@@ -1,6 +1,7 @@
 """MCP tools for remote command execution and file operations via connected agents."""
 
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -42,6 +43,103 @@ MAX_TIMEOUT = 300  # seconds
 MAX_COMMAND_BYTES = 8 * 1024  # 8 KB — upper bound for a single shell command
 MAX_PATTERN_BYTES = 4 * 1024  # 4 KB — upper bound for grep/glob patterns
 DEFAULT_AGENT_WAIT = 5.0  # seconds to wait for a flickering agent
+
+
+# ── Env override denylist (Security H-2) ─────────────────────
+#
+# The ``env`` dict on ``remote_exec`` is merged into the agent
+# subprocess's environment. Several env vars let an attacker hijack
+# the interpreter search path or inject shared libraries — those must
+# never be settable over an MCP call regardless of who the caller is.
+#
+# The denylist is deliberately keyed on the **exact** variable name
+# plus a small prefix list. Prefix matching is case-insensitive so
+# a caller cannot evade the check by submitting ``ld_preload``.
+_ENV_DENY_EXACT = frozenset(
+    x.upper() for x in (
+        "PATH", "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP",
+        "PYTHONEXECUTABLE", "PYTHONUSERBASE", "PYTHONNOUSERSITE",
+        "PYTHONDONTWRITEBYTECODE", "PYTHONVERBOSE", "PYTHONWARNINGS",
+        "PYTHONBREAKPOINT", "PYTHONINSPECT", "PYTHONMALLOC",
+        "NODE_OPTIONS", "NODE_PATH",
+        "CLASSPATH", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS",
+        "PERL5OPT", "PERL5LIB", "RUBYOPT", "RUBYLIB",
+        "GEM_PATH", "GEM_HOME", "BUNDLE_PATH",
+    )
+)
+_ENV_DENY_PREFIXES = (
+    "LD_", "DYLD_",  # dynamic linker injection (glibc / mach-o)
+    "LIBRARY_PATH",
+)
+
+
+def _validate_remote_env(env: dict[str, str]) -> None:
+    """Reject env vars that could hijack the agent subprocess.
+
+    Raises :class:`ToolError` on the first rejected key so the denied
+    audit wrapper (`_audit_on_denied`) can record the attempt. Callers
+    must still type-check ``env`` values beforehand.
+    """
+    for key in env:
+        upper = key.upper()
+        if upper in _ENV_DENY_EXACT:
+            raise ToolError(
+                f"env key {key!r} is denied for remote_exec (runtime hijack risk)"
+            )
+        for prefix in _ENV_DENY_PREFIXES:
+            if upper.startswith(prefix):
+                raise ToolError(
+                    f"env key {key!r} is denied for remote_exec "
+                    f"(matches denied prefix {prefix})"
+                )
+
+
+# ── Secret masking for audit logs (Security H-4) ─────────────
+#
+# RemoteExecLog.detail stores command strings and file paths. Without
+# masking, tokens pasted into ``remote_exec`` (e.g. ``curl -H "Bearer
+# sk-..."``, ``AWS_SECRET=... ./script``) would sit in the audit
+# collection indefinitely. These patterns cover the common leak
+# shapes; they are intentionally conservative (false positives just
+# mean an extra ``***`` in the log, which is harmless).
+_SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # --token=VALUE / --password VALUE / -p VALUE — quoted or bare
+    (
+        re.compile(
+            r"(--?(?:token|password|passwd|pwd|secret|api[-_]?key|auth|"
+            r"access[-_]?key|session[-_]?token)[= ])(\"[^\"]*\"|'[^']*'|\S+)",
+            re.IGNORECASE,
+        ),
+        r"\1***",
+    ),
+    # Authorization: Bearer xxx / Basic xxx
+    (
+        re.compile(r"(?i)(bearer|basic)\s+[A-Za-z0-9._~/+=\-]+"),
+        r"\1 ***",
+    ),
+    # FOO_TOKEN=bar / FOO_SECRET=bar / FOO_KEY=bar / FOO_PASSWORD=bar
+    (
+        re.compile(
+            r"([A-Z][A-Z0-9_]*(?:TOKEN|SECRET|KEY|PASSWORD|PASSWD|APIKEY)\s*=\s*)"
+            r"(\"[^\"]*\"|'[^']*'|\S+)"
+        ),
+        r"\1***",
+    ),
+)
+
+
+def _mask_secrets(text: str) -> str:
+    """Mask common secret shapes in an audit-log string.
+
+    Non-destructive: returns ``text`` unchanged if no pattern matches.
+    Applied by :func:`_log_operation` and :func:`_log_denied` before
+    persisting any caller-supplied ``detail`` or ``error`` string.
+    """
+    if not text:
+        return text
+    for pattern, replacement in _SECRET_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
 
 
 def _validate_remote_path(path: str) -> str:
@@ -177,12 +275,12 @@ async def _log_operation(
         project_id=binding.project_id,
         agent_id=binding.agent_id,
         operation=operation,
-        detail=detail[:500],
+        detail=_mask_secrets(detail)[:500],
         exit_code=exit_code,
         stdout_len=stdout_len,
         stderr_len=stderr_len,
         duration_ms=duration_ms,
-        error=error[:500],
+        error=_mask_secrets(error)[:500],
         mcp_key_id=mcp_key_id,
     )
     await log.insert()
@@ -214,8 +312,8 @@ async def _log_denied(
         project_id=project_id or "",
         agent_id=agent_id or "",
         operation=operation,
-        detail=(detail or "")[:500],
-        error=(f"denied: {reason}")[:500],
+        detail=_mask_secrets(detail or "")[:500],
+        error=_mask_secrets(f"denied: {reason}")[:500],
         mcp_key_id=mcp_key_id or "",
     )
     await log.insert()
@@ -382,6 +480,7 @@ async def remote_exec(
             for k, v in env.items():
                 if not isinstance(k, str) or not isinstance(v, str):
                     raise ToolError("env keys and values must be strings")
+            _validate_remote_env(env)
     key_info = audit.key_info
     binding = audit.binding
 

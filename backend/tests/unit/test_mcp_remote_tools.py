@@ -754,6 +754,107 @@ class TestDeniedAuditTrail:
         assert denied == []
 
 
+class TestEnvDenylist:
+    """Security H-2: remote_exec env must reject runtime-hijack vars."""
+
+    @pytest.mark.parametrize("bad_key", [
+        "LD_PRELOAD",
+        "LD_LIBRARY_PATH",
+        "DYLD_INSERT_LIBRARIES",
+        "PATH",
+        "PYTHONPATH",
+        "PYTHONSTARTUP",
+        "NODE_OPTIONS",
+        "CLASSPATH",
+        "JAVA_TOOL_OPTIONS",
+        "PERL5OPT",
+        "RUBYOPT",
+        # Case insensitivity guard — a denylist keyed on uppercase must
+        # not be evadable by submitting the lowercase form on a
+        # case-sensitive OS.
+        "ld_preload",
+        "Path",
+    ])
+    async def test_denylisted_env_key_rejected(self, patch_auth, bad_key):
+        with patch("app.mcp.tools.remote.agent_manager.send_request", new=AsyncMock()):
+            with pytest.raises(ToolError, match="denied"):
+                await remote.remote_exec(
+                    project_id="p", command="ls",
+                    env={bad_key: "/tmp/evil.so"},
+                )
+
+    async def test_denylisted_env_key_audits_as_denied(self, patch_auth):
+        with patch("app.mcp.tools.remote.agent_manager.send_request", new=AsyncMock()):
+            with pytest.raises(ToolError):
+                await remote.remote_exec(
+                    project_id="p", command="ls",
+                    env={"LD_PRELOAD": "/tmp/evil.so"},
+                )
+        # patch_auth mocks _log_operation but _log_denied is real —
+        # the RemoteExecLog collection should have the denied row.
+        logs = await RemoteExecLog.find_all().to_list()
+        assert len(logs) == 1
+        assert logs[0].error.startswith("denied: ")
+        assert "LD_PRELOAD" in logs[0].error
+
+    async def test_harmless_env_key_passes_through(self, patch_auth):
+        send_request = AsyncMock(return_value={"exit_code": 0, "stdout": "", "stderr": ""})
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            await remote.remote_exec(
+                project_id="p", command="ls",
+                env={"TESTING": "1", "MY_APP_CONFIG": "dev"},
+            )
+        # No denied row, payload was actually sent
+        assert send_request.call_count == 1
+
+
+class TestSecretMasking:
+    """Security H-4: audit log detail must mask common secret shapes."""
+
+    def test_bearer_token_masked(self):
+        masked = remote._mask_secrets('curl -H "Authorization: Bearer sk-abcdef123" https://api')
+        assert "sk-abcdef" not in masked
+        assert "***" in masked
+
+    def test_token_flag_masked(self):
+        masked = remote._mask_secrets("gh api --token=ghp_abcdef1234567890")
+        assert "ghp_abcdef" not in masked
+        assert "***" in masked
+
+    def test_env_var_assignment_masked(self):
+        masked = remote._mask_secrets("AWS_SECRET_KEY=wJalrXUtnFEMI ./deploy.sh")
+        assert "wJalrXUtn" not in masked
+        assert "***" in masked
+        # The key name should survive so operators can see what kind of
+        # secret was there without the value.
+        assert "AWS_SECRET_KEY" in masked
+
+    def test_password_flag_masked(self):
+        masked = remote._mask_secrets("psql -U foo --password supersecret123 -h db")
+        assert "supersecret" not in masked
+
+    def test_plain_text_unchanged(self):
+        text = "git log --oneline -n 5"
+        assert remote._mask_secrets(text) == text
+
+    async def test_log_operation_masks_detail(self):
+        """End-to-end: a command containing a bearer token must be
+        stored as ``***`` in RemoteExecLog.detail."""
+        binding = remote.ResolvedBinding(
+            project_id="p-1", agent_id="a-1", remote_path="/w",
+        )
+        await remote._log_operation(
+            binding=binding,
+            operation="exec",
+            detail='curl -H "Authorization: Bearer sk-topsecret" https://api',
+            mcp_key_id="k-1",
+        )
+        logs = await RemoteExecLog.find_all().to_list()
+        assert len(logs) == 1
+        assert "sk-topsecret" not in logs[0].detail
+        assert "***" in logs[0].detail
+
+
 class TestAuditLogPropagates:
     """CLAUDE.md "No error hiding": audit write failures must NOT be swallowed."""
 

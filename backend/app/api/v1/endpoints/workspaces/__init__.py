@@ -22,7 +22,6 @@ from ._releases_util import (
     is_newer as _is_newer,
     parse_version_tuple as _parse_version_tuple,
 )
-from ._shared import reset_all_agents_online
 from .agents import router as _agents_router
 from .releases import router as _releases_router
 from .websocket import router as _websocket_router
@@ -37,7 +36,6 @@ router.include_router(_websocket_router)
 
 __all__ = [
     "router",
-    "reset_all_agents_online",
     "settings",
     "_find_latest_release",
     "_is_newer",
