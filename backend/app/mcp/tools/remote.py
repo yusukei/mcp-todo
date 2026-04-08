@@ -257,7 +257,7 @@ async def _log_operation(
     binding: ResolvedBinding,
     operation: str,
     detail: str,
-    mcp_key_id: str,
+    key_info: dict,
     duration_ms: int = 0,
     exit_code: int | None = None,
     stdout_len: int = 0,
@@ -271,6 +271,11 @@ async def _log_operation(
     event — operators need to see it. If ``log.insert()`` raises,
     the exception propagates to the MCP tool caller, which is the
     correct boundary to convert it into a protocol-level error.
+
+    ``key_info`` is the dict returned by :func:`authenticate`. We
+    persist both ``key_id`` and ``user_id`` so the audit trail is
+    self-joinable to a single ``User`` lookup — see
+    ``RemoteExecLog.mcp_key_owner_id`` for the rationale.
     """
     log = RemoteExecLog(
         project_id=binding.project_id,
@@ -282,7 +287,8 @@ async def _log_operation(
         stderr_len=stderr_len,
         duration_ms=duration_ms,
         error=_mask_secrets(error)[:500],
-        mcp_key_id=mcp_key_id,
+        mcp_key_id=key_info.get("key_id", ""),
+        mcp_key_owner_id=key_info.get("user_id", ""),
     )
     await log.insert()
 
@@ -292,7 +298,7 @@ async def _log_denied(
     operation: str,
     project_id: str,
     agent_id: str,
-    mcp_key_id: str,
+    key_info: dict | None,
     detail: str,
     reason: str,
 ) -> None:
@@ -304,10 +310,11 @@ async def _log_denied(
     without them, attack probes against ``remote_*`` tools leave no
     trace in the audit trail.
 
-    Partial information is expected: ``project_id``/``agent_id`` may
-    be empty strings when the failure occurred before the binding
-    was resolved. Exceptions from the DB insert propagate — losing
-    an audit record of a rejected attempt is a critical event.
+    Partial information is expected: ``project_id``/``agent_id``/
+    ``key_info`` may all be missing when the failure occurred before
+    the binding was resolved or before authentication completed.
+    Exceptions from the DB insert propagate — losing an audit record
+    of a rejected attempt is a critical event.
     """
     log = RemoteExecLog(
         project_id=project_id or "",
@@ -315,7 +322,8 @@ async def _log_denied(
         operation=operation,
         detail=_mask_secrets(detail or "")[:500],
         error=_mask_secrets(f"denied: {reason}")[:500],
-        mcp_key_id=mcp_key_id or "",
+        mcp_key_id=(key_info.get("key_id", "") if key_info else ""),
+        mcp_key_owner_id=(key_info.get("user_id", "") if key_info else ""),
     )
     await log.insert()
 
@@ -364,7 +372,7 @@ async def _audit_on_denied(operation: str, project_id: str, detail: str = ""):
             operation=operation,
             project_id=(ctx.binding.project_id if ctx.binding else (project_id or "")),
             agent_id=(ctx.binding.agent_id if ctx.binding else ""),
-            mcp_key_id=(ctx.key_info.get("key_id", "") if ctx.key_info else ""),
+            key_info=ctx.key_info,
             detail=detail,
             reason=f"{type(exc).__name__}: {exc}",
         )
@@ -412,16 +420,16 @@ async def _send_to_agent(
             wait_for_agent=settings.REMOTE_DEFAULT_AGENT_WAIT_SECONDS,
         )
     except AgentOfflineError:
-        await _log_operation(binding, operation, detail, key_info["key_id"], error="agent_offline")
+        await _log_operation(binding, operation, detail, key_info, error="agent_offline")
         raise ToolError("Agent is offline")
     except CommandTimeoutError:
         duration_ms = int((time.monotonic() - t0) * 1000)
-        await _log_operation(binding, operation, detail, key_info["key_id"],
+        await _log_operation(binding, operation, detail, key_info,
                              duration_ms=duration_ms, error="timeout")
         raise ToolError(f"Request timed out after {effective_timeout}s")
     except RuntimeError as e:
         duration_ms = int((time.monotonic() - t0) * 1000)
-        await _log_operation(binding, operation, detail, key_info["key_id"],
+        await _log_operation(binding, operation, detail, key_info,
                              duration_ms=duration_ms, error=str(e))
         raise ToolError(str(e))
     return result
@@ -521,7 +529,7 @@ async def remote_exec(
     duration_ms = int((time.monotonic() - t0) * 1000)
 
     await _log_operation(
-        binding, "exec", command, key_info["key_id"],
+        binding, "exec", command, key_info,
         duration_ms=duration_ms,
         exit_code=result.get("exit_code"),
         stdout_len=len(result.get("stdout", "")),
@@ -594,7 +602,7 @@ async def remote_read_file(
     content = result.get("content", "")
 
     await _log_operation(
-        binding, "read_file", path, key_info["key_id"],
+        binding, "read_file", path, key_info,
         duration_ms=duration_ms, stdout_len=len(content),
     )
 
@@ -639,7 +647,7 @@ async def remote_write_file(
     )
     duration_ms = int((time.monotonic() - t0) * 1000)
     await _log_operation(
-        binding, "write_file", path, key_info["key_id"],
+        binding, "write_file", path, key_info,
         duration_ms=duration_ms, stdout_len=result.get("bytes_written", 0),
     )
 
@@ -675,7 +683,7 @@ async def remote_list_dir(
     duration_ms = int((time.monotonic() - t0) * 1000)
     entries = result.get("entries", [])
     await _log_operation(
-        binding, "list_dir", path, key_info["key_id"],
+        binding, "list_dir", path, key_info,
         duration_ms=duration_ms, stdout_len=len(entries),
     )
 
@@ -709,7 +717,7 @@ async def remote_stat(project_id: str, path: str) -> dict:
         {"path": path, "cwd": binding.remote_path},
         detail=path, key_info=key_info,
     )
-    await _log_operation(binding, "stat", path, key_info["key_id"])
+    await _log_operation(binding, "stat", path, key_info)
     return result
 
 
@@ -756,7 +764,7 @@ async def remote_mkdir(project_id: str, path: str, parents: bool = True) -> dict
         {"path": path, "cwd": binding.remote_path, "parents": parents},
         detail=path, key_info=key_info,
     )
-    await _log_operation(binding, "mkdir", path, key_info["key_id"])
+    await _log_operation(binding, "mkdir", path, key_info)
     return result
 
 
@@ -781,7 +789,7 @@ async def remote_delete_file(
         {"path": path, "cwd": binding.remote_path, "recursive": recursive},
         detail=path, key_info=key_info,
     )
-    await _log_operation(binding, "delete", path, key_info["key_id"])
+    await _log_operation(binding, "delete", path, key_info)
     return result
 
 
@@ -805,7 +813,7 @@ async def remote_move_file(
         {"src": src, "dst": dst, "cwd": binding.remote_path, "overwrite": overwrite},
         detail=f"{src} -> {dst}", key_info=key_info,
     )
-    await _log_operation(binding, "move", f"{src} -> {dst}", key_info["key_id"])
+    await _log_operation(binding, "move", f"{src} -> {dst}", key_info)
     return result
 
 
@@ -829,7 +837,7 @@ async def remote_copy_file(
         {"src": src, "dst": dst, "cwd": binding.remote_path, "overwrite": overwrite},
         detail=f"{src} -> {dst}", key_info=key_info,
     )
-    await _log_operation(binding, "copy", f"{src} -> {dst}", key_info["key_id"])
+    await _log_operation(binding, "copy", f"{src} -> {dst}", key_info)
     return result
 
 
@@ -864,7 +872,7 @@ async def remote_glob(
         {"pattern": pattern, "path": path, "cwd": binding.remote_path},
         detail=f"{pattern} @ {path}", key_info=key_info,
     )
-    await _log_operation(binding, "glob", f"{pattern} @ {path}", key_info["key_id"])
+    await _log_operation(binding, "glob", f"{pattern} @ {path}", key_info)
     return result
 
 
@@ -937,5 +945,5 @@ async def remote_grep(
         binding, "grep", payload,
         detail=f"{pattern} @ {path}", key_info=key_info,
     )
-    await _log_operation(binding, "grep", f"{pattern} @ {path}", key_info["key_id"])
+    await _log_operation(binding, "grep", f"{pattern} @ {path}", key_info)
     return result

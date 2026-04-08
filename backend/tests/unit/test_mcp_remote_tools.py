@@ -847,12 +847,17 @@ class TestSecretMasking:
             binding=binding,
             operation="exec",
             detail='curl -H "Authorization: Bearer sk-topsecret" https://api',
-            mcp_key_id="k-1",
+            key_info={"key_id": "k-1", "user_id": "u-1"},
         )
         logs = await RemoteExecLog.find_all().to_list()
         assert len(logs) == 1
         assert "sk-topsecret" not in logs[0].detail
         assert "***" in logs[0].detail
+        # Audit log carries both the key id AND the owning user id so
+        # operators can answer "who did this?" with a single User
+        # lookup instead of the historical 2-hop chain.
+        assert logs[0].mcp_key_id == "k-1"
+        assert logs[0].mcp_key_owner_id == "u-1"
 
 
 class TestAuditLogPropagates:
@@ -877,7 +882,7 @@ class TestAuditLogPropagates:
                     binding=binding,
                     operation="exec",
                     detail="ls",
-                    mcp_key_id="test-key",
+                    key_info={"key_id": "test-key", "user_id": "u-1"},
                 )
 
     async def test_log_denied_insert_failure_propagates(self):
@@ -891,7 +896,7 @@ class TestAuditLogPropagates:
                     operation="exec",
                     project_id="p-1",
                     agent_id="a-1",
-                    mcp_key_id="k-1",
+                    key_info={"key_id": "k-1", "user_id": "u-1"},
                     detail="ls",
                     reason="test",
                 )

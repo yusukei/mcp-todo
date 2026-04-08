@@ -28,6 +28,36 @@ Each registered agent has three pieces of per-agent state:
   includes *waiting* callers so a backlog cannot grow unboundedly if
   every slot is held.
 
+## Resource isolation between callers (P2-5 documentation)
+
+A single agent process can serve requests from multiple MCP API
+keys, projects, and users at the same time. The transport layer
+provides **temporal** isolation only — the per-agent send lock and
+inflight semaphore guarantee that frames cannot interleave and that
+no more than ``MAX_INFLIGHT_PER_AGENT`` requests are mid-flight.
+Beyond that, **all callers share the same agent host process**:
+
+- File-system access is gated by the per-project ``remote_path``
+  binding (callers cannot escape the workspace root) and by
+  ``_validate_remote_path``, but every operation runs as the agent
+  process's OS user with no further uid/gid switching.
+- ``remote_exec`` invocations share the agent host's PATH, environment
+  (minus the explicit denylist in
+  :data:`backend.app.mcp.tools.remote._ENV_DENY_EXACT`), and resource
+  budget. There is **no per-call cgroup, container, or namespace
+  isolation** — a runaway exec from one project can starve other
+  projects sharing the same agent.
+- Audit logging is the only post-hoc accountability mechanism.
+  ``RemoteExecLog`` records both ``mcp_key_id`` and
+  ``mcp_key_owner_id`` (User._id) so a single ``User`` lookup
+  attributes any operation back to the API key's owner.
+
+If stronger isolation is required between projects or users, the
+operating model is "one agent process per trust boundary". The
+agent's :class:`RemoteAgent` registry supports an arbitrary number
+of agents — administrators can deploy a dedicated agent per
+sensitive workload and bind only the relevant projects to it.
+
 ## register() atomicity
 
 ``register`` is async and holds a per-manager lock while it:

@@ -59,6 +59,15 @@ class RemoteExecLog(Document):
     duration_ms: int = 0
     error: str = ""
     mcp_key_id: str = ""
+    # User._id of the API key's owner at the time of the operation.
+    # Persisted alongside ``mcp_key_id`` so the audit trail is
+    # self-joinable: an operator can answer "who did this?" with a
+    # single ``User`` lookup instead of the historical
+    # ``McpApiKey._id`` → ``McpApiKey.created_by`` → ``User._id``
+    # two-hop chain. Empty string for legacy records written before
+    # this field existed and for denied attempts where authentication
+    # failed before the key owner could be resolved.
+    mcp_key_owner_id: str = ""
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:
@@ -66,6 +75,7 @@ class RemoteExecLog(Document):
         indexes = [
             [("agent_id", 1), ("created_at", -1)],
             [("project_id", 1), ("created_at", -1)],
+            [("mcp_key_owner_id", 1), ("created_at", -1)],
         ]
 
 
