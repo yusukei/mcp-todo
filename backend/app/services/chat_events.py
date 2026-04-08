@@ -1,7 +1,7 @@
 """Chat event/dispatch services.
 
 Extracted from `api/v1/endpoints/chat.py` so the agent WebSocket handler
-in `endpoints/terminal.py` and the lifespan recovery hook in `app/main.py`
+in `endpoints/workspaces/` and the lifespan recovery hook in `app/main.py`
 can import them without pulling in the FastAPI router module.
 
 Three responsibility groups live here:
@@ -169,7 +169,7 @@ async def recover_stale_sessions() -> int:
 async def handle_chat_event(msg: dict) -> None:
     """Process a chat event from the Agent and broadcast to all browsers.
 
-    Called from the agent WebSocket message loop in `endpoints/terminal.py`.
+    Called from the agent WebSocket message loop in `endpoints/workspaces/websocket.py`.
     """
     session_id = msg.get("session_id")
     if not session_id:

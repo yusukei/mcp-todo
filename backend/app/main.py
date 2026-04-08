@@ -287,9 +287,6 @@ app.include_router(bookmarks.coll_router, prefix="/api/v1")
 app.include_router(bookmarks.bm_router, prefix="/api/v1")
 app.include_router(bookmark_assets.router, prefix="/api/v1")
 app.include_router(workspaces.router, prefix="/api/v1")
-# Back-compat alias for the pre-rename /api/v1/terminal/* prefix used
-# by Agent binaries built before the rename. Removed in Phase 5.
-app.include_router(workspaces.legacy_terminal_router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 
 

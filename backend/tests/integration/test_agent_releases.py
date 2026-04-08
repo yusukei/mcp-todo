@@ -115,7 +115,7 @@ class TestUploadRelease:
             "release_notes": "Initial release",
         }
         resp = await client.post(
-            "/api/v1/terminal/releases", data=data, files=files, headers=admin_headers
+            "/api/v1/workspaces/releases", data=data, files=files, headers=admin_headers
         )
         assert resp.status_code == 201, resp.text
         body = resp.json()
@@ -140,13 +140,13 @@ class TestUploadRelease:
         data = {"version": "0.2.0", "os_type": "win32", "channel": "stable", "arch": "x64"}
         files = {"file": ("agent.exe", payload, "application/octet-stream")}
         first = await client.post(
-            "/api/v1/terminal/releases", data=data, files=files, headers=admin_headers
+            "/api/v1/workspaces/releases", data=data, files=files, headers=admin_headers
         )
         assert first.status_code == 201
 
         files2 = {"file": ("agent.exe", payload, "application/octet-stream")}
         dup = await client.post(
-            "/api/v1/terminal/releases", data=data, files=files2, headers=admin_headers
+            "/api/v1/workspaces/releases", data=data, files=files2, headers=admin_headers
         )
         assert dup.status_code == 409
 
@@ -155,7 +155,7 @@ class TestUploadRelease:
         data = {"version": "0.2.0", "os_type": "plan9", "channel": "stable"}
         files = {"file": ("agent.exe", payload, "application/octet-stream")}
         resp = await client.post(
-            "/api/v1/terminal/releases", data=data, files=files, headers=admin_headers
+            "/api/v1/workspaces/releases", data=data, files=files, headers=admin_headers
         )
         assert resp.status_code == 422
 
@@ -164,7 +164,7 @@ class TestUploadRelease:
         data = {"version": "abc-xyz", "os_type": "win32", "channel": "stable"}
         files = {"file": ("agent.exe", payload, "application/octet-stream")}
         resp = await client.post(
-            "/api/v1/terminal/releases", data=data, files=files, headers=admin_headers
+            "/api/v1/workspaces/releases", data=data, files=files, headers=admin_headers
         )
         assert resp.status_code == 422
 
@@ -172,7 +172,7 @@ class TestUploadRelease:
         data = {"version": "0.3.0", "os_type": "win32", "channel": "stable"}
         files = {"file": ("agent.exe", b"", "application/octet-stream")}
         resp = await client.post(
-            "/api/v1/terminal/releases", data=data, files=files, headers=admin_headers
+            "/api/v1/workspaces/releases", data=data, files=files, headers=admin_headers
         )
         assert resp.status_code == 422
 
@@ -181,7 +181,7 @@ class TestUploadRelease:
         data = {"version": "0.2.0", "os_type": "win32", "channel": "stable"}
         files = {"file": ("agent.exe", payload, "application/octet-stream")}
         resp = await client.post(
-            "/api/v1/terminal/releases", data=data, files=files, headers=user_headers
+            "/api/v1/workspaces/releases", data=data, files=files, headers=user_headers
         )
         assert resp.status_code == 403
 
@@ -196,18 +196,18 @@ class TestListAndDeleteRelease:
         ]:
             payload, _ = _make_binary_payload(marker=f"{os_type}-{version}")
             await client.post(
-                "/api/v1/terminal/releases",
+                "/api/v1/workspaces/releases",
                 data={"version": version, "os_type": os_type, "channel": channel},
                 files={"file": ("agent.bin", payload, "application/octet-stream")},
                 headers=admin_headers,
             )
 
-        all_resp = await client.get("/api/v1/terminal/releases", headers=admin_headers)
+        all_resp = await client.get("/api/v1/workspaces/releases", headers=admin_headers)
         assert all_resp.status_code == 200
         assert len(all_resp.json()) == 3
 
         win_stable = await client.get(
-            "/api/v1/terminal/releases?os_type=win32&channel=stable",
+            "/api/v1/workspaces/releases?os_type=win32&channel=stable",
             headers=admin_headers,
         )
         body = win_stable.json()
@@ -220,7 +220,7 @@ class TestListAndDeleteRelease:
     ):
         payload, _ = _make_binary_payload()
         upload = await client.post(
-            "/api/v1/terminal/releases",
+            "/api/v1/workspaces/releases",
             data={"version": "0.2.0", "os_type": "win32", "channel": "stable"},
             files={"file": ("agent.exe", payload, "application/octet-stream")},
             headers=admin_headers,
@@ -234,7 +234,7 @@ class TestListAndDeleteRelease:
         assert path.exists()
 
         del_resp = await client.delete(
-            f"/api/v1/terminal/releases/{release_id}", headers=admin_headers
+            f"/api/v1/workspaces/releases/{release_id}", headers=admin_headers
         )
         assert del_resp.status_code == 204
         assert await AgentRelease.get(release_id) is None
@@ -265,7 +265,7 @@ async def registered_agent(admin_user):
 class TestAgentReleaseEndpoints:
     async def test_get_latest_requires_token(self, client):
         resp = await client.get(
-            "/api/v1/terminal/releases/latest?os_type=win32&channel=stable"
+            "/api/v1/workspaces/releases/latest?os_type=win32&channel=stable"
         )
         assert resp.status_code == 401
 
@@ -276,14 +276,14 @@ class TestAgentReleaseEndpoints:
         for v in ("0.2.0", "0.10.0", "0.9.0"):
             payload, _ = _make_binary_payload(marker=f"v{v}")
             await client.post(
-                "/api/v1/terminal/releases",
+                "/api/v1/workspaces/releases",
                 data={"version": v, "os_type": "win32", "channel": "stable"},
                 files={"file": ("agent.exe", payload, "application/octet-stream")},
                 headers=admin_headers,
             )
 
         resp = await client.get(
-            "/api/v1/terminal/releases/latest?os_type=win32&channel=stable",
+            "/api/v1/workspaces/releases/latest?os_type=win32&channel=stable",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200
@@ -296,7 +296,7 @@ class TestAgentReleaseEndpoints:
         agent, token = registered_agent
         payload, digest = _make_binary_payload(marker="downloadme")
         upload = await client.post(
-            "/api/v1/terminal/releases",
+            "/api/v1/workspaces/releases",
             data={"version": "0.2.0", "os_type": "win32", "channel": "stable"},
             files={"file": ("agent.exe", payload, "application/octet-stream")},
             headers=admin_headers,
@@ -304,7 +304,7 @@ class TestAgentReleaseEndpoints:
         release_id = upload.json()["id"]
 
         resp = await client.get(
-            f"/api/v1/terminal/releases/{release_id}/download",
+            f"/api/v1/workspaces/releases/{release_id}/download",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200
@@ -316,7 +316,7 @@ class TestAgentReleaseEndpoints:
     ):
         payload, _ = _make_binary_payload()
         upload = await client.post(
-            "/api/v1/terminal/releases",
+            "/api/v1/workspaces/releases",
             data={"version": "0.2.0", "os_type": "win32", "channel": "stable"},
             files={"file": ("agent.exe", payload, "application/octet-stream")},
             headers=admin_headers,
@@ -324,7 +324,7 @@ class TestAgentReleaseEndpoints:
         release_id = upload.json()["id"]
 
         resp = await client.get(
-            f"/api/v1/terminal/releases/{release_id}/download",
+            f"/api/v1/workspaces/releases/{release_id}/download",
             headers={"Authorization": "Bearer ta_not_a_real_token"},
         )
         assert resp.status_code == 401
@@ -387,7 +387,7 @@ class TestFindLatestRelease:
 
 
 # ──────────────────────────────────────────────
-# POST /terminal/agents/{id}/check-update
+# POST /workspaces/agents/{id}/check-update
 # ──────────────────────────────────────────────
 
 
@@ -442,7 +442,7 @@ def registered_agent_with_ws(admin_user, monkeypatch):
 async def _upload_release(client, admin_headers, version, os_type="win32"):
     payload, digest = _make_binary_payload(marker=f"rel-{version}")
     resp = await client.post(
-        "/api/v1/terminal/releases",
+        "/api/v1/workspaces/releases",
         data={"version": version, "os_type": os_type, "channel": "stable"},
         files={"file": (f"agent-{version}.exe", payload, "application/octet-stream")},
         headers=admin_headers,
@@ -459,7 +459,7 @@ class TestCheckAgentUpdate:
         release_body, _ = await _upload_release(client, admin_headers, "0.3.0")
 
         resp = await client.post(
-            f"/api/v1/terminal/agents/{agent.id}/check-update",
+            f"/api/v1/workspaces/agents/{agent.id}/check-update",
             headers=admin_headers,
         )
         assert resp.status_code == 200, resp.text
@@ -487,7 +487,7 @@ class TestCheckAgentUpdate:
         await _upload_release(client, admin_headers, "0.3.0")
 
         resp = await client.post(
-            f"/api/v1/terminal/agents/{agent.id}/check-update",
+            f"/api/v1/workspaces/agents/{agent.id}/check-update",
             headers=admin_headers,
         )
         assert resp.status_code == 200
@@ -503,7 +503,7 @@ class TestCheckAgentUpdate:
     ):
         agent, fake_ws = await registered_agent_with_ws()
         resp = await client.post(
-            f"/api/v1/terminal/agents/{agent.id}/check-update",
+            f"/api/v1/workspaces/agents/{agent.id}/check-update",
             headers=admin_headers,
         )
         assert resp.status_code == 200
@@ -518,7 +518,7 @@ class TestCheckAgentUpdate:
         agent, fake_ws = await registered_agent_with_ws(auto_update=False)
         await _upload_release(client, admin_headers, "0.3.0")
         resp = await client.post(
-            f"/api/v1/terminal/agents/{agent.id}/check-update",
+            f"/api/v1/workspaces/agents/{agent.id}/check-update",
             headers=admin_headers,
         )
         assert resp.status_code == 200
@@ -532,7 +532,7 @@ class TestCheckAgentUpdate:
         agent, fake_ws = await registered_agent_with_ws(os_reported=False)
         await _upload_release(client, admin_headers, "0.3.0")
         resp = await client.post(
-            f"/api/v1/terminal/agents/{agent.id}/check-update",
+            f"/api/v1/workspaces/agents/{agent.id}/check-update",
             headers=admin_headers,
         )
         assert resp.status_code == 200
@@ -556,7 +556,7 @@ class TestCheckAgentUpdate:
         await agent.insert()
 
         resp = await client.post(
-            f"/api/v1/terminal/agents/{agent.id}/check-update",
+            f"/api/v1/workspaces/agents/{agent.id}/check-update",
             headers=admin_headers,
         )
         assert resp.status_code == 409
@@ -564,7 +564,7 @@ class TestCheckAgentUpdate:
 
     async def test_404_when_agent_missing(self, client, admin_user, admin_headers):
         resp = await client.post(
-            "/api/v1/terminal/agents/000000000000000000000000/check-update",
+            "/api/v1/workspaces/agents/000000000000000000000000/check-update",
             headers=admin_headers,
         )
         assert resp.status_code == 404
@@ -574,7 +574,7 @@ class TestCheckAgentUpdate:
     ):
         agent, _ = await registered_agent_with_ws()
         resp = await client.post(
-            f"/api/v1/terminal/agents/{agent.id}/check-update",
+            f"/api/v1/workspaces/agents/{agent.id}/check-update",
             headers=user_headers,
         )
         assert resp.status_code in (403, 404)

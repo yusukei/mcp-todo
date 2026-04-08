@@ -4,7 +4,7 @@ This module is intentionally kept thin: it owns request/response schemas,
 session CRUD endpoints, and the browser-facing WebSocket loop. Everything
 else lives in `app.services.chat_manager` (connection fan-out) and
 `app.services.chat_events` (agent dispatch + event handling). External
-callers (agent WebSocket handler in `endpoints/terminal.py`, lifespan
+callers (agent WebSocket handler in `endpoints/workspaces/`, lifespan
 recovery hook in `app/main.py`, tests) import those symbols directly
 from `app.services.*` rather than re-importing through this router.
 """
@@ -206,7 +206,7 @@ async def chat_websocket(ws: WebSocket, session_id: str):
     session receive the same events. Inbound user messages are dispatched
     to the agent via `chat_events.dispatch_to_agent`; the agent's reply
     events flow back through `chat_events.handle_chat_event` (called from
-    the agent WebSocket loop in `endpoints/terminal.py`).
+    the agent WebSocket loop in `endpoints/workspaces/websocket.py`).
     """
     await ws.accept()
 

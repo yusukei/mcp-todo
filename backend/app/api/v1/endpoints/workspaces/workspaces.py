@@ -1,4 +1,11 @@
-"""Workspace CRUD admin endpoints."""
+"""Workspace CRUD admin endpoints.
+
+The list/create handlers (root path under /api/v1/workspaces) live as
+module-level functions and are attached to the package router via
+``add_api_route`` in ``__init__.py``. FastAPI's ``include_router`` refuses
+to mount a sub-router whose own prefix and route path are both empty,
+so we cannot use ``@router.get("")`` here directly.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -19,7 +26,6 @@ from ._shared import (
 router = APIRouter()
 
 
-@router.get("/workspaces")
 async def list_workspaces(user: User = Depends(get_admin_user)) -> list[dict]:
     """List all workspaces with their agent / project details.
 
@@ -67,7 +73,6 @@ async def list_workspaces(user: User = Depends(get_admin_user)) -> list[dict]:
     ]
 
 
-@router.post("/workspaces", status_code=status.HTTP_201_CREATED)
 async def create_workspace(
     body: WorkspaceCreateRequest,
     user: User = Depends(get_admin_user),
@@ -99,7 +104,7 @@ async def create_workspace(
     return build_workspace_dict(workspace, agent, project)
 
 
-@router.patch("/workspaces/{workspace_id}")
+@router.patch("/{workspace_id}")
 async def update_workspace(
     workspace_id: str,
     body: WorkspaceUpdateRequest,
@@ -122,7 +127,7 @@ async def update_workspace(
     return build_workspace_dict(workspace, agent, project)
 
 
-@router.delete("/workspaces/{workspace_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{workspace_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_workspace(workspace_id: str, user: User = Depends(get_admin_user)) -> None:
     workspace = await RemoteWorkspace.get(workspace_id)
     if not workspace:

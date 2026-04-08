@@ -1,4 +1,4 @@
-"""Integration tests for /terminal/workspaces CRUD endpoints.
+"""Integration tests for /api/v1/workspaces CRUD endpoints.
 
 Workspaces link a Project to a RemoteAgent + a remote directory. The
 endpoints validate ownership, project existence, and uniqueness (one
@@ -43,7 +43,7 @@ class TestCreateWorkspace:
         self, client, admin_user, admin_headers, agent_for_admin, project_for_admin
     ):
         resp = await client.post(
-            "/api/v1/terminal/workspaces",
+            "/api/v1/workspaces",
             json={
                 "agent_id": str(agent_for_admin.id),
                 "project_id": str(project_for_admin.id),
@@ -65,7 +65,7 @@ class TestCreateWorkspace:
         self, client, admin_user, admin_headers, project_for_admin
     ):
         resp = await client.post(
-            "/api/v1/terminal/workspaces",
+            "/api/v1/workspaces",
             json={
                 "agent_id": "000000000000000000000000",
                 "project_id": str(project_for_admin.id),
@@ -79,7 +79,7 @@ class TestCreateWorkspace:
         self, client, admin_user, admin_headers, agent_for_admin
     ):
         resp = await client.post(
-            "/api/v1/terminal/workspaces",
+            "/api/v1/workspaces",
             json={
                 "agent_id": str(agent_for_admin.id),
                 "project_id": "000000000000000000000000",
@@ -98,12 +98,12 @@ class TestCreateWorkspace:
             "remote_path": "/tmp/dup",
         }
         first = await client.post(
-            "/api/v1/terminal/workspaces", json=body, headers=admin_headers
+            "/api/v1/workspaces", json=body, headers=admin_headers
         )
         assert first.status_code == 201
 
         second = await client.post(
-            "/api/v1/terminal/workspaces", json=body, headers=admin_headers
+            "/api/v1/workspaces", json=body, headers=admin_headers
         )
         assert second.status_code == 409
 
@@ -111,7 +111,7 @@ class TestCreateWorkspace:
         self, client, regular_user, user_headers, agent_for_admin, project_for_admin
     ):
         resp = await client.post(
-            "/api/v1/terminal/workspaces",
+            "/api/v1/workspaces",
             json={
                 "agent_id": str(agent_for_admin.id),
                 "project_id": str(project_for_admin.id),
@@ -127,7 +127,7 @@ class TestListWorkspaces:
         self, client, admin_user, admin_headers, agent_for_admin, project_for_admin
     ):
         await client.post(
-            "/api/v1/terminal/workspaces",
+            "/api/v1/workspaces",
             json={
                 "agent_id": str(agent_for_admin.id),
                 "project_id": str(project_for_admin.id),
@@ -136,13 +136,13 @@ class TestListWorkspaces:
             headers=admin_headers,
         )
 
-        resp = await client.get("/api/v1/terminal/workspaces", headers=admin_headers)
+        resp = await client.get("/api/v1/workspaces", headers=admin_headers)
         assert resp.status_code == 200
         items = resp.json()
         assert any(w["remote_path"] == "/tmp/listme" for w in items)
 
     async def test_list_empty_when_none(self, client, admin_user, admin_headers):
-        resp = await client.get("/api/v1/terminal/workspaces", headers=admin_headers)
+        resp = await client.get("/api/v1/workspaces", headers=admin_headers)
         assert resp.status_code == 200
         assert resp.json() == []
 
@@ -152,7 +152,7 @@ class TestUpdateWorkspace:
         self, client, admin_user, admin_headers, agent_for_admin, project_for_admin
     ):
         create = await client.post(
-            "/api/v1/terminal/workspaces",
+            "/api/v1/workspaces",
             json={
                 "agent_id": str(agent_for_admin.id),
                 "project_id": str(project_for_admin.id),
@@ -164,7 +164,7 @@ class TestUpdateWorkspace:
         wid = create.json()["id"]
 
         resp = await client.patch(
-            f"/api/v1/terminal/workspaces/{wid}",
+            f"/api/v1/workspaces/{wid}",
             json={"remote_path": "/tmp/new", "label": "new"},
             headers=admin_headers,
         )
@@ -177,7 +177,7 @@ class TestUpdateWorkspace:
         self, client, admin_user, admin_headers
     ):
         resp = await client.patch(
-            "/api/v1/terminal/workspaces/000000000000000000000000",
+            "/api/v1/workspaces/000000000000000000000000",
             json={"remote_path": "/tmp/x"},
             headers=admin_headers,
         )
@@ -189,7 +189,7 @@ class TestDeleteWorkspace:
         self, client, admin_user, admin_headers, agent_for_admin, project_for_admin
     ):
         create = await client.post(
-            "/api/v1/terminal/workspaces",
+            "/api/v1/workspaces",
             json={
                 "agent_id": str(agent_for_admin.id),
                 "project_id": str(project_for_admin.id),
@@ -200,7 +200,7 @@ class TestDeleteWorkspace:
         wid = create.json()["id"]
 
         resp = await client.delete(
-            f"/api/v1/terminal/workspaces/{wid}", headers=admin_headers
+            f"/api/v1/workspaces/{wid}", headers=admin_headers
         )
         assert resp.status_code == 204
 
@@ -209,7 +209,7 @@ class TestDeleteWorkspace:
 
     async def test_delete_unknown_returns_404(self, client, admin_user, admin_headers):
         resp = await client.delete(
-            "/api/v1/terminal/workspaces/000000000000000000000000",
+            "/api/v1/workspaces/000000000000000000000000",
             headers=admin_headers,
         )
         assert resp.status_code == 404

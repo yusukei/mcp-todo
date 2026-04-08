@@ -1,6 +1,6 @@
-"""Agent connection manager — process-wide singleton for terminal agent WebSockets.
+"""Agent connection manager — process-wide singleton for remote agent WebSockets.
 
-Extracted from `api/v1/endpoints/terminal.py` so that:
+Extracted from `api/v1/endpoints/workspaces/` so that:
 - `mcp/tools/remote.py` can import it without lazy imports / circular deps
 - `api/v1/endpoints/chat.py` can dispatch agent payloads via a public method
   instead of poking at the private `_connections` dict.

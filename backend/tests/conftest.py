@@ -102,7 +102,6 @@ def test_app(_setup_infra):
     app.include_router(bookmark_assets.router, prefix="/api/v1")
     app.include_router(backup.router, prefix="/api/v1")
     app.include_router(workspaces.router, prefix="/api/v1")
-    app.include_router(workspaces.legacy_terminal_router, prefix="/api/v1")
     app.include_router(chat.router, prefix="/api/v1")
     return app
 

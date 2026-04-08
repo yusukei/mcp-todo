@@ -1,4 +1,4 @@
-"""Integration tests for /terminal/agents endpoints, focused on token rotation.
+"""Integration tests for /workspaces/agents endpoints, focused on token rotation.
 
 The agent CRUD path (create / delete) is exercised end-to-end here so that
 the rotate-token flow can be verified against a realistic database state.
@@ -11,7 +11,7 @@ from app.models.remote import RemoteAgent
 class TestCreateAgent:
     async def test_admin_can_create_agent(self, client, admin_user, admin_headers):
         resp = await client.post(
-            "/api/v1/terminal/agents",
+            "/api/v1/workspaces/agents",
             json={"name": "build-host"},
             headers=admin_headers,
         )
@@ -27,7 +27,7 @@ class TestCreateAgent:
 
     async def test_regular_user_cannot_create_agent(self, client, regular_user, user_headers):
         resp = await client.post(
-            "/api/v1/terminal/agents",
+            "/api/v1/workspaces/agents",
             json={"name": "should-fail"},
             headers=user_headers,
         )
@@ -39,7 +39,7 @@ class TestRotateAgentToken:
         self, client, admin_user, admin_headers
     ):
         create_resp = await client.post(
-            "/api/v1/terminal/agents",
+            "/api/v1/workspaces/agents",
             json={"name": "rotate-target"},
             headers=admin_headers,
         )
@@ -49,7 +49,7 @@ class TestRotateAgentToken:
         old_hash = hash_api_key(old_token)
 
         rotate_resp = await client.post(
-            f"/api/v1/terminal/agents/{agent_id}/rotate-token",
+            f"/api/v1/workspaces/agents/{agent_id}/rotate-token",
             headers=admin_headers,
         )
         assert rotate_resp.status_code == 200
@@ -64,7 +64,7 @@ class TestRotateAgentToken:
 
     async def test_rotate_unknown_agent_returns_404(self, client, admin_user, admin_headers):
         resp = await client.post(
-            "/api/v1/terminal/agents/000000000000000000000000/rotate-token",
+            "/api/v1/workspaces/agents/000000000000000000000000/rotate-token",
             headers=admin_headers,
         )
         assert resp.status_code == 404
@@ -74,7 +74,7 @@ class TestRotateAgentToken:
     ):
         # Create as admin
         create_resp = await client.post(
-            "/api/v1/terminal/agents",
+            "/api/v1/workspaces/agents",
             json={"name": "admin-only"},
             headers=admin_headers,
         )
@@ -82,13 +82,13 @@ class TestRotateAgentToken:
 
         # Regular user is not admin → 403 from get_admin_user
         resp = await client.post(
-            f"/api/v1/terminal/agents/{agent_id}/rotate-token",
+            f"/api/v1/workspaces/agents/{agent_id}/rotate-token",
             headers=user_headers,
         )
         assert resp.status_code == 403
 
     async def test_unauthenticated_rotate_rejected(self, client):
         resp = await client.post(
-            "/api/v1/terminal/agents/000000000000000000000000/rotate-token"
+            "/api/v1/workspaces/agents/000000000000000000000000/rotate-token"
         )
         assert resp.status_code == 401

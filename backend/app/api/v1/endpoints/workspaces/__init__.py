@@ -1,15 +1,20 @@
 """Workspaces endpoints package — Agent WebSocket + Workspace REST API.
 
 Renamed from ``endpoints/terminal/`` (Phase 1+2 of the terminal → workspaces
-rename, 2026-04-08). The package layout matches the previous terminal/
-package, only the parent router prefix changed from ``/terminal`` to
-``/workspaces``. A back-compat ``legacy_terminal_router`` exposing the
-old prefix is also exported until the running Agent has been updated to
-the new URL via self-update (removed in Phase 5).
+rename, 2026-04-08). Phase 5 dropped the back-compat ``legacy_terminal_router``
+once all agents had self-updated to v0.3.0 and switched to the new
+``/api/v1/workspaces/agent/ws`` URL.
+
+URL layout:
+- ``GET / POST /api/v1/workspaces``                 — workspace list / create
+- ``PATCH / DELETE /api/v1/workspaces/{id}``        — workspace update / delete
+- ``/api/v1/workspaces/agents/...``                 — remote agent CRUD + rotate-token + check-update
+- ``/api/v1/workspaces/releases/...``               — agent release upload / list / download
+- ``/api/v1/workspaces/agent/ws``                   — agent WebSocket
 """
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, status
 
 from .....core.config import settings  # re-exported for tests
 from . import _releases_util, _shared
@@ -22,30 +27,35 @@ from ._shared import reset_all_agents_online
 from .agents import router as _agents_router
 from .releases import router as _releases_router
 from .websocket import _RESPONSE_TYPES, router as _websocket_router
-from .workspaces import router as _workspaces_router
+from .workspaces import (
+    create_workspace,
+    list_workspaces,
+    router as _workspace_crud_router,
+)
 
+router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 
-def _build_router(prefix: str, tag: str) -> APIRouter:
-    r = APIRouter(prefix=prefix, tags=[tag])
-    r.include_router(_agents_router)
-    r.include_router(_workspaces_router)
-    r.include_router(_releases_router)
-    r.include_router(_websocket_router)
-    return r
+# Workspace CRUD root paths attach directly because FastAPI's
+# include_router refuses both prefix="" and route_path="" at the same time.
+router.add_api_route("", list_workspaces, methods=["GET"])
+router.add_api_route(
+    "",
+    create_workspace,
+    methods=["POST"],
+    status_code=status.HTTP_201_CREATED,
+)
 
+# Per-id workspace routes (PATCH/DELETE /{workspace_id}) live in the
+# workspaces.py sub-router.
+router.include_router(_workspace_crud_router)
 
-router = _build_router("/workspaces", "workspaces")
-
-# Back-compat alias router for the pre-rename /api/v1/terminal/* prefix.
-# The currently running Agent (built before the rename) still connects
-# to /api/v1/terminal/agent/ws and uses /terminal/releases/* for self-
-# update. This alias keeps it functional until a new binary has rolled
-# out via self-update. To be removed in Phase 5 of the rename.
-legacy_terminal_router = _build_router("/terminal", "terminal-legacy")
+# Other domain sub-routers
+router.include_router(_agents_router)
+router.include_router(_releases_router)
+router.include_router(_websocket_router)
 
 __all__ = [
     "router",
-    "legacy_terminal_router",
     "reset_all_agents_online",
     "settings",
     "_RESPONSE_TYPES",

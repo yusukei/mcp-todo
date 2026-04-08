@@ -1,4 +1,4 @@
-"""Shared schemas, constants, and helpers for terminal endpoint submodules.
+"""Shared schemas, constants, and helpers for workspaces endpoint submodules.
 
 All cross-module state (request schemas, validation constants, workspace and
 agent serializers, startup cleanup) lives here so the individual router
