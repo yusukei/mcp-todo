@@ -47,22 +47,6 @@ async def active_api_key(admin_user):
     doc = McpApiKey(
         key_hash=hash_api_key(RAW_KEY),
         name="Test Key",
-        project_scopes=[],
-        created_by=admin_user,
-        is_active=True,
-        last_used_at=None,
-    )
-    await doc.insert()
-    return doc
-
-
-@pytest_asyncio.fixture
-async def scoped_api_key(admin_user):
-    """Create an active McpApiKey with specific project scopes."""
-    doc = McpApiKey(
-        key_hash=hash_api_key("scoped-key-value"),
-        name="Scoped Key",
-        project_scopes=["proj-aaa", "proj-bbb"],
         created_by=admin_user,
         is_active=True,
         last_used_at=None,
@@ -77,7 +61,6 @@ async def inactive_api_key(admin_user):
     doc = McpApiKey(
         key_hash=hash_api_key("inactive-key-value"),
         name="Inactive Key",
-        project_scopes=[],
         created_by=admin_user,
         is_active=False,
         last_used_at=None,
@@ -121,13 +104,18 @@ class TestAuthenticate:
 
     @patch("app.mcp.auth.get_http_request")
     async def test_valid_api_key_returns_info(self, mock_get_request, active_api_key):
-        """Valid active key returns dict with key_id and project_scopes."""
+        """Valid active key returns dict with user identity and auth_kind."""
         mock_get_request.return_value = _mock_request(api_key=RAW_KEY)
 
         result = await authenticate()
 
         assert result["key_id"] == str(active_api_key.id)
-        assert result["project_scopes"] == []
+        assert result["auth_kind"] == "api_key"
+        assert result["user_id"] is not None
+        assert result["is_admin"] is True
+        # project_scopes is no longer part of the auth payload — access is
+        # decided per-call by check_project_access against Project.members.
+        assert "project_scopes" not in result
 
     @patch("app.mcp.auth.get_http_request")
     async def test_cache_hit_returns_cached(self, mock_get_request, active_api_key):
@@ -202,47 +190,56 @@ class TestAuthenticate:
         delta = abs((refreshed_ts - expected_ts).total_seconds())
         assert delta < 1, "last_used_at should not have been updated within 60s window"
 
-    @patch("app.mcp.auth.get_http_request")
-    async def test_valid_key_with_empty_scopes(self, mock_get_request, active_api_key):
-        """Key with empty project_scopes returns empty list (full access)."""
-        mock_get_request.return_value = _mock_request(api_key=RAW_KEY)
-
-        result = await authenticate()
-
-        assert result["project_scopes"] == []
-
-    @patch("app.mcp.auth.get_http_request")
-    async def test_valid_key_with_project_scopes(
-        self, mock_get_request, scoped_api_key
-    ):
-        """Key with specific project_scopes returns those scopes."""
-        mock_get_request.return_value = _mock_request(api_key="scoped-key-value")
-
-        result = await authenticate()
-
-        assert result["key_id"] == str(scoped_api_key.id)
-        assert result["project_scopes"] == ["proj-aaa", "proj-bbb"]
-
-
 class TestCheckProjectAccess:
-    """Tests for the check_project_access() function."""
+    """Tests for the check_project_access() function (post-refactor).
 
-    def test_empty_scopes_allows_all(self):
-        """Empty scopes list means full access - no error raised."""
-        check_project_access("any-project-id", [])
+    The new contract: ``check_project_access`` loads the project from the DB
+    and verifies the authenticated subject is either an admin or a member
+    of ``project.members``. Empty scopes / global access patterns no longer
+    exist.
+    """
 
-    def test_matching_scope_allows_access(self):
-        """project_id present in scopes does not raise."""
-        check_project_access("proj-aaa", ["proj-aaa", "proj-bbb"])
+    async def test_admin_bypasses_membership(self, admin_user, test_project):
+        """Admin users may access any project even if not a member."""
+        key_info = {"user_id": str(admin_user.id), "is_admin": True, "auth_kind": "api_key"}
+        result = await check_project_access(str(test_project.id), key_info)
+        assert str(result.id) == str(test_project.id)
 
-    def test_non_matching_scope_denies(self):
-        """project_id not in scopes raises McpAuthError."""
-        with pytest.raises(McpAuthError, match="No access to project proj-xxx"):
-            check_project_access("proj-xxx", ["proj-aaa", "proj-bbb"])
+    async def test_member_allowed(self, regular_user, test_project):
+        """Non-admin user that is a member of the project can access it."""
+        from app.models.project import ProjectMember
+        test_project.members.append(ProjectMember(user_id=str(regular_user.id)))
+        await test_project.save()
 
-    def test_multiple_scopes_with_match(self):
-        """Multiple scopes, one matches - no error raised."""
-        check_project_access("proj-ccc", ["proj-aaa", "proj-bbb", "proj-ccc"])
+        key_info = {"user_id": str(regular_user.id), "is_admin": False, "auth_kind": "oauth"}
+        result = await check_project_access(str(test_project.id), key_info)
+        assert str(result.id) == str(test_project.id)
+
+    async def test_non_member_denied(self, regular_user, test_project):
+        """Non-admin user that is not a member is denied."""
+        # Ensure regular_user is NOT in members (test_project may have been
+        # populated by fixtures)
+        test_project.members = [
+            m for m in test_project.members if m.user_id != str(regular_user.id)
+        ]
+        await test_project.save()
+
+        key_info = {"user_id": str(regular_user.id), "is_admin": False, "auth_kind": "oauth"}
+        with pytest.raises(McpAuthError, match="No access to project"):
+            await check_project_access(str(test_project.id), key_info)
+
+    async def test_missing_project_raises(self):
+        """Unknown project_id raises McpAuthError."""
+        from bson import ObjectId
+        key_info = {"user_id": "any", "is_admin": True, "auth_kind": "api_key"}
+        with pytest.raises(McpAuthError, match="not found"):
+            await check_project_access(str(ObjectId()), key_info)
+
+    async def test_missing_user_id_raises(self, test_project):
+        """Non-admin key_info without user_id raises McpAuthError."""
+        key_info = {"is_admin": False, "auth_kind": "oauth"}
+        with pytest.raises(McpAuthError, match="Authentication subject missing"):
+            await check_project_access(str(test_project.id), key_info)
 
 
 class TestBoundedTTLCache:

@@ -3,7 +3,9 @@ import logging
 
 from fastmcp.exceptions import ToolError
 
+from ...models import Project
 from ...models.bookmark import Bookmark, BookmarkCollection, ClipStatus
+from ...models.project import ProjectStatus
 from ...services.bookmark_cleanup import cleanup_bookmark_assets
 from ...services.bookmark_search import index_bookmark
 from ...services.clip_queue import clip_queue
@@ -14,9 +16,31 @@ from ...services.serializers import (
 )
 from ..auth import authenticate, check_project_access
 from ..server import mcp
-from .projects import _check_project_not_locked, _resolve_project_id
 
 logger = logging.getLogger(__name__)
+
+
+async def _get_common_project_id(key_info: dict) -> str:
+    """Resolve the singleton hidden Common project that hosts cross-cutting
+    features (bookmarks, chat) and verify the authenticated user can access
+    it. Raises :class:`ToolError` if the project is not provisioned.
+
+    Storage-wise bookmarks still live under a real Project document so the
+    existing schema (``Bookmark.project_id``) and indexes keep working
+    unchanged. From the MCP API surface, however, bookmarks are presented
+    as cross-cutting (no ``project_id`` parameter).
+    """
+    common = await Project.find_one(
+        {"hidden": True, "status": ProjectStatus.active.value},
+    )
+    if not common:
+        raise ToolError(
+            "Common project not provisioned. "
+            "Run `python -m app.cli setup-common-project` on the server."
+        )
+    common_id = str(common.id)
+    await check_project_access(common_id, key_info)
+    return common_id
 
 
 # ── Bookmark Collection Tools ────────────────────────────────
@@ -24,16 +48,14 @@ logger = logging.getLogger(__name__)
 
 @mcp.tool()
 async def create_bookmark_collection(
-    project_id: str,
     name: str,
     description: str = "",
     icon: str = "folder",
     color: str = "#6366f1",
 ) -> dict:
-    """Create a bookmark collection (folder) in a project.
+    """Create a bookmark collection (folder).
 
     Args:
-        project_id: Project ID or project name
         name: Collection name (max 255 chars)
         description: Collection description
         icon: Lucide icon name (default: folder)
@@ -45,9 +67,7 @@ async def create_bookmark_collection(
         raise ToolError("Name exceeds 255 characters")
 
     key_info = await authenticate()
-    project_id = await _resolve_project_id(project_id)
-    check_project_access(project_id, key_info["project_scopes"])
-    await _check_project_not_locked(project_id)
+    project_id = await _get_common_project_id(key_info)
 
     creator = f"mcp:{key_info['key_name']}" if key_info.get("key_name") else "mcp"
 
@@ -64,15 +84,10 @@ async def create_bookmark_collection(
 
 
 @mcp.tool()
-async def list_bookmark_collections(project_id: str) -> dict:
-    """List all bookmark collections in a project.
-
-    Args:
-        project_id: Project ID or project name
-    """
+async def list_bookmark_collections() -> dict:
+    """List all bookmark collections."""
     key_info = await authenticate()
-    project_id = await _resolve_project_id(project_id)
-    check_project_access(project_id, key_info["project_scopes"])
+    project_id = await _get_common_project_id(key_info)
 
     items = (
         await BookmarkCollection.find(
@@ -107,8 +122,7 @@ async def update_bookmark_collection(
     if not c or c.is_deleted:
         raise ToolError(f"Collection not found: {collection_id}")
 
-    check_project_access(c.project_id, key_info["project_scopes"])
-    await _check_project_not_locked(c.project_id)
+    await check_project_access(c.project_id, key_info)
 
     if name is not None:
         c.name = name.strip()
@@ -136,8 +150,7 @@ async def delete_bookmark_collection(collection_id: str) -> dict:
     if not c or c.is_deleted:
         raise ToolError(f"Collection not found: {collection_id}")
 
-    check_project_access(c.project_id, key_info["project_scopes"])
-    await _check_project_not_locked(c.project_id)
+    await check_project_access(c.project_id, key_info)
 
     c.is_deleted = True
     await c.save_updated()
@@ -155,7 +168,6 @@ async def delete_bookmark_collection(collection_id: str) -> dict:
 
 @mcp.tool()
 async def create_bookmark(
-    project_id: str,
     url: str,
     title: str = "",
     description: str = "",
@@ -165,7 +177,6 @@ async def create_bookmark(
     """Create a bookmark. Web clipping starts automatically in the background.
 
     Args:
-        project_id: Project ID or project name
         url: URL to bookmark
         title: Bookmark title (auto-fetched if empty)
         description: Description
@@ -178,9 +189,7 @@ async def create_bookmark(
         raise ToolError("URL exceeds 2048 characters")
 
     key_info = await authenticate()
-    project_id = await _resolve_project_id(project_id)
-    check_project_access(project_id, key_info["project_scopes"])
-    await _check_project_not_locked(project_id)
+    project_id = await _get_common_project_id(key_info)
 
     creator = f"mcp:{key_info['key_name']}" if key_info.get("key_name") else "mcp"
     normalized_tags = [t.strip().lower() for t in (tags or []) if t.strip()]
@@ -216,7 +225,7 @@ async def get_bookmark(bookmark_id: str) -> dict:
     if not bm or bm.is_deleted:
         raise ToolError(f"Bookmark not found: {bookmark_id}")
 
-    check_project_access(bm.project_id, key_info["project_scopes"])
+    await check_project_access(bm.project_id, key_info)
     return _bookmark_dict(bm)
 
 
@@ -245,8 +254,7 @@ async def update_bookmark(
     if not bm or bm.is_deleted:
         raise ToolError(f"Bookmark not found: {bookmark_id}")
 
-    check_project_access(bm.project_id, key_info["project_scopes"])
-    await _check_project_not_locked(bm.project_id)
+    await check_project_access(bm.project_id, key_info)
 
     if title is not None:
         bm.title = title.strip()
@@ -277,8 +285,7 @@ async def delete_bookmark(bookmark_id: str) -> dict:
     if not bm or bm.is_deleted:
         raise ToolError(f"Bookmark not found: {bookmark_id}")
 
-    check_project_access(bm.project_id, key_info["project_scopes"])
-    await _check_project_not_locked(bm.project_id)
+    await check_project_access(bm.project_id, key_info)
 
     bm.is_deleted = True
     await bm.save_updated()
@@ -323,8 +330,7 @@ async def batch_bookmark_action(
     # Check project access for all involved projects
     project_ids = {bm.project_id for bm in bookmarks}
     for pid in project_ids:
-        check_project_access(pid, key_info["project_scopes"])
-        await _check_project_not_locked(pid)
+        await check_project_access(pid, key_info)
 
     bm_map = {str(b.id): b for b in bookmarks}
 
@@ -377,17 +383,15 @@ async def batch_bookmark_action(
 
 @mcp.tool()
 async def list_bookmarks(
-    project_id: str,
     collection_id: str | None = None,
     tag: str | None = None,
     starred: bool | None = None,
     limit: int = 50,
     skip: int = 0,
 ) -> dict:
-    """List bookmarks in a project with optional filters.
+    """List bookmarks with optional filters.
 
     Args:
-        project_id: Project ID or project name
         collection_id: Filter by collection (empty string for uncategorized)
         tag: Filter by tag
         starred: Filter starred bookmarks only
@@ -395,8 +399,7 @@ async def list_bookmarks(
         skip: Offset for pagination
     """
     key_info = await authenticate()
-    project_id = await _resolve_project_id(project_id)
-    check_project_access(project_id, key_info["project_scopes"])
+    project_id = await _get_common_project_id(key_info)
 
     limit = min(limit, 200)
     filters: dict = {"project_id": project_id, "is_deleted": False}
@@ -426,7 +429,6 @@ async def list_bookmarks(
 @mcp.tool()
 async def search_bookmarks(
     query: str,
-    project_id: str | None = None,
     limit: int = 20,
 ) -> dict:
     """Full-text search across bookmarks (title, description, tags, URL, clipped content).
@@ -436,16 +438,13 @@ async def search_bookmarks(
 
     Args:
         query: Search query
-        project_id: Limit to a specific project (ID or name)
         limit: Max results (default 20)
     """
     if not query or not query.strip():
         raise ToolError("Query is required")
 
     key_info = await authenticate()
-    if project_id:
-        project_id = await _resolve_project_id(project_id)
-        check_project_access(project_id, key_info["project_scopes"])
+    project_id = await _get_common_project_id(key_info)
 
     from ...services.bookmark_search import BookmarkSearchService
 
@@ -464,21 +463,17 @@ async def search_bookmarks(
     # Fallback: MongoDB regex search
     import re as _re
     pattern = _re.escape(query.strip())
-    filters: dict = {"is_deleted": False}
-    if project_id:
-        filters["project_id"] = project_id
-
-    scopes = key_info["project_scopes"]
-    if scopes:
-        filters["project_id"] = {"$in": scopes}
-
-    filters["$or"] = [
-        {"title": {"$regex": pattern, "$options": "i"}},
-        {"url": {"$regex": pattern, "$options": "i"}},
-        {"description": {"$regex": pattern, "$options": "i"}},
-        {"tags": {"$regex": pattern, "$options": "i"}},
-        {"clip_markdown": {"$regex": pattern, "$options": "i"}},
-    ]
+    filters: dict = {
+        "is_deleted": False,
+        "project_id": project_id,
+        "$or": [
+            {"title": {"$regex": pattern, "$options": "i"}},
+            {"url": {"$regex": pattern, "$options": "i"}},
+            {"description": {"$regex": pattern, "$options": "i"}},
+            {"tags": {"$regex": pattern, "$options": "i"}},
+            {"clip_markdown": {"$regex": pattern, "$options": "i"}},
+        ],
+    }
 
     total = await Bookmark.find(filters).count()
     items = await Bookmark.find(filters).limit(limit).sort("-updated_at").to_list()
@@ -501,8 +496,7 @@ async def clip_bookmark(bookmark_id: str) -> dict:
     if not bm or bm.is_deleted:
         raise ToolError(f"Bookmark not found: {bookmark_id}")
 
-    check_project_access(bm.project_id, key_info["project_scopes"])
-    await _check_project_not_locked(bm.project_id)
+    await check_project_access(bm.project_id, key_info)
 
     bm.clip_status = ClipStatus.pending
     bm.clip_error = ""

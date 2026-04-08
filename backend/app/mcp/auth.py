@@ -20,7 +20,7 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_request
 
 from ..core.security import hash_api_key
-from ..models import McpApiKey, User
+from ..models import McpApiKey, Project, User
 
 logger = logging.getLogger(__name__)
 
@@ -83,9 +83,12 @@ async def authenticate() -> dict:
     2. X-API-Key ヘッダー -> 従来の API キー認証（フォールバック）
 
     Returns:
-        {"user_id": str, "user_name": str, "is_admin": bool, "project_scopes": list[str]}
-        OAuth の場合: project_scopes は空リスト（全プロジェクトアクセス可）
-        API Key の場合: project_scopes はキーに設定されたスコープ
+        {"user_id": str, "user_name": str, "is_admin": bool, "auth_kind": str}
+        ``auth_kind`` は ``"oauth"`` または ``"api_key"``。
+
+        プロジェクトアクセス制御は ``Project.members`` を唯一のソースとして
+        :func:`check_project_access` で都度判定する。API キー側に scopes 概念は
+        持たず、API キーはオーナーユーザーの権限を継承する単なる credential。
     """
     # 1. HTTP リクエストを取得
     try:
@@ -132,7 +135,7 @@ async def _resolve_oauth_user(token: object) -> dict:
         "user_id": str(user.id),
         "user_name": user.name,
         "is_admin": user.is_admin,
-        "project_scopes": [],  # OAuth ユーザーは全プロジェクトにアクセス可
+        "auth_kind": "oauth",
     }
 
 
@@ -169,19 +172,45 @@ async def _resolve_api_key_user(api_key: str) -> dict:
         api_key_doc.last_used_at = now
         await api_key_doc.save()
 
+    if not owner:
+        # Reject API keys without an owner: post-refactor the access decision
+        # is anchored on the owner's Project membership, so an unowned key
+        # has no defined access surface and must not authenticate.
+        raise McpAuthError("API key has no owner user")
+
     result = {
         "key_id": str(api_key_doc.id),
         "key_name": api_key_doc.name,
-        "user_id": str(owner.id) if owner else None,
-        "user_name": owner.name if owner else api_key_doc.name,
-        "is_admin": owner.is_admin if owner else False,
-        "project_scopes": api_key_doc.project_scopes,
+        "user_id": str(owner.id),
+        "user_name": owner.name,
+        "is_admin": owner.is_admin,
+        "auth_kind": "api_key",
     }
     await _auth_cache.aput(cache_key, (result, time.monotonic() + AUTH_CACHE_TTL))
     return result
 
 
-def check_project_access(project_id: str, scopes: list[str]) -> None:
-    """Check project access. Empty scopes list means full access to all projects."""
-    if scopes and project_id not in scopes:
+async def check_project_access(project_id: str, key_info: dict) -> Project:
+    """Verify the authenticated subject can access ``project_id``.
+
+    Loads the project and checks membership. Admin users (``is_admin``) bypass
+    the membership check. The loaded :class:`Project` is returned so callers
+    can avoid an extra round-trip.
+
+    Raises :class:`McpAuthError` if the project does not exist or the subject
+    is not authorized.
+    """
+    project = await Project.get(project_id)
+    if not project:
+        raise McpAuthError(f"Project {project_id} not found")
+
+    if key_info.get("is_admin"):
+        return project
+
+    user_id = key_info.get("user_id")
+    if not user_id:
+        raise McpAuthError("Authentication subject missing")
+
+    if not project.has_member(user_id):
         raise McpAuthError(f"No access to project {project_id}")
+    return project

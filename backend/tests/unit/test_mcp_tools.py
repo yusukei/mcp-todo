@@ -16,7 +16,7 @@ def mock_auth():
     with patch(
         "app.mcp.tools.tasks.authenticate",
         new_callable=AsyncMock,
-        return_value={"key_id": "test-key", "project_scopes": []},
+        return_value={"key_id": "test-key", "user_id": "test-user", "is_admin": True, "auth_kind": "api_key"},
     ) as m:
         yield m
 
@@ -39,7 +39,7 @@ def mock_publish():
 
 
 # Shared mock for authenticate + check_project_access
-_MOCK_KEY_INFO = {"key_id": "test-key", "project_scopes": []}
+_MOCK_KEY_INFO = {"key_id": "test-key", "user_id": "test-user", "is_admin": True, "auth_kind": "api_key"}
 
 
 def _patch_mcp_auth():
@@ -1170,7 +1170,7 @@ class TestSearchTasks:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import search_tasks
 
-            result = await search_tasks(query="Login")
+            result = await search_tasks(query="Login", project_id=pid)
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Login Bug"
@@ -1187,7 +1187,7 @@ class TestSearchTasks:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import search_tasks
 
-            result = await search_tasks(query="authentication")
+            result = await search_tasks(query="authentication", project_id=pid)
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Task A"
@@ -1201,7 +1201,7 @@ class TestSearchTasks:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import search_tasks
 
-            result = await search_tasks(query="uppercase")
+            result = await search_tasks(query="uppercase", project_id=pid)
 
         assert result["total"] == 1
 
@@ -1215,7 +1215,7 @@ class TestSearchTasks:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import search_tasks
 
-            result = await search_tasks(query="Bug")
+            result = await search_tasks(query="Bug", project_id=pid)
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Active Bug"
@@ -1248,7 +1248,7 @@ class TestSearchTasks:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import search_tasks
 
-            result = await search_tasks(query="Bug", status="todo")
+            result = await search_tasks(query="Bug", status="todo", project_id=pid)
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Bug Todo"
@@ -1262,7 +1262,7 @@ class TestSearchTasks:
         with patches[0], patches[1]:
             from app.mcp.tools.tasks import search_tasks
 
-            result = await search_tasks(query="nonexistent_xyz")
+            result = await search_tasks(query="nonexistent_xyz", project_id=pid)
 
         assert result["total"] == 0
         assert result["items"] == []
@@ -1814,35 +1814,38 @@ class TestListProjects:
         assert "Test Project" in names
         assert "Archived Project" not in names
 
-    async def test_respects_project_scopes(self, admin_user, test_project):
-        """list_projects filters by scoped project IDs when scopes set."""
-        from bson import ObjectId as BsonObjectId
-
+    async def test_filters_by_membership_for_non_admin(self, regular_user, admin_user, test_project):
+        """Non-admin users only see projects they are members of."""
+        from app.models.project import ProjectMember
         from tests.helpers.factories import make_project
 
-        project2 = await make_project(admin_user, name="Scoped Out")
+        # regular_user is a member of test_project but NOT of project2
+        # (project2 is created by admin_user so regular_user has no membership)
+        test_project.members.append(ProjectMember(user_id=str(regular_user.id)))
+        await test_project.save()
+        other = await make_project(admin_user, name="Other Unrelated Project")
+        # Strip any auto-added members so regular_user is definitely not in it
+        other.members = [m for m in other.members if m.user_id != str(regular_user.id)]
+        await other.save()
 
-        # mongomock stores _id as ObjectId, so scopes must also use ObjectId
-        scoped_key_info = {
+        non_admin_key_info = {
             "key_id": "test-key",
-            "project_scopes": [BsonObjectId(str(test_project.id))],
+            "user_id": str(regular_user.id),
+            "is_admin": False,
+            "auth_kind": "api_key",
         }
-        patches = [
-            patch(
-                "app.mcp.tools.projects.authenticate",
-                new_callable=AsyncMock,
-                return_value=scoped_key_info,
-            ),
-            patch("app.mcp.tools.projects.check_project_access"),
-        ]
-        with patches[0], patches[1]:
+        with patch(
+            "app.mcp.tools.projects.authenticate",
+            new_callable=AsyncMock,
+            return_value=non_admin_key_info,
+        ):
             from app.mcp.tools.projects import list_projects
 
             result = await list_projects()
 
         names = {p["name"] for p in result}
         assert "Test Project" in names
-        assert "Scoped Out" not in names
+        assert "Other Unrelated Project" not in names
 
     async def test_returns_project_dict_structure(self, admin_user, test_project):
         """list_projects returns properly structured project dicts."""

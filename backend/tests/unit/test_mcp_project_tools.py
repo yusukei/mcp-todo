@@ -11,7 +11,7 @@ from tests.helpers.factories import make_project, make_task
 
 
 # Shared mock for authenticate + check_project_access
-_MOCK_KEY_INFO = {"key_id": "test-key", "project_scopes": []}
+_MOCK_KEY_INFO = {"key_id": "test-key", "key_name": "test", "user_id": "test-user", "is_admin": True, "auth_kind": "api_key"}
 
 
 def _patch_project_auth():

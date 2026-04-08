@@ -12,7 +12,7 @@ from app.models.docsite import DocPage, DocSite, DocSiteSection
 _AUTH_PATCH = patch(
     "app.mcp.tools.docsites.authenticate",
     new_callable=AsyncMock,
-    return_value={"key_id": "test-key", "key_name": "test", "project_scopes": []},
+    return_value={"key_id": "test-key", "key_name": "test", "user_id": "test-user", "is_admin": True, "auth_kind": "api_key"},
 )
 
 

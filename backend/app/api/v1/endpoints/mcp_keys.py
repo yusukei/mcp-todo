@@ -14,14 +14,12 @@ router = APIRouter(prefix="/mcp-keys", tags=["api-keys"])
 
 class CreateKeyRequest(BaseModel):
     name: str
-    project_scopes: list[str] = []
 
 
 def _key_dict(k: McpApiKey) -> dict:
     return {
         "id": str(k.id),
         "name": k.name,
-        "project_scopes": k.project_scopes,
         "last_used_at": k.last_used_at.isoformat() if k.last_used_at else None,
         "created_at": k.created_at.isoformat(),
     }
@@ -43,7 +41,6 @@ async def create_my_key(body: CreateKeyRequest, user: User = Depends(get_current
     key = McpApiKey(
         key_hash=hash_api_key(raw_key),
         name=body.name,
-        project_scopes=body.project_scopes,
         created_by=user,
     )
     await key.insert()

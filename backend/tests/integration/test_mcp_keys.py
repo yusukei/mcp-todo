@@ -16,13 +16,12 @@ class TestCreateKey:
     ):
         resp = await client.post(
             "/api/v1/mcp-keys",
-            json={"name": "My Key", "project_scopes": ["proj-1"]},
+            json={"name": "My Key"},
             headers=admin_headers,
         )
         assert resp.status_code == 201
         data = resp.json()
         assert data["name"] == "My Key"
-        assert data["project_scopes"] == ["proj-1"]
         assert "key" in data  # raw key は作成時のみ返される
         assert data["key"].startswith("mtodo_")
         assert "id" in data

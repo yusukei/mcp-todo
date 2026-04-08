@@ -19,7 +19,7 @@ from tests.helpers.factories import make_project, make_task, make_admin_user
 _AUTH_PATCH = patch(
     "app.mcp.tools.tasks.authenticate",
     new_callable=AsyncMock,
-    return_value={"key_id": "test-key", "project_scopes": []},
+    return_value={"key_id": "test-key", "key_name": "test", "user_id": "test-user", "is_admin": True, "auth_kind": "api_key"},
 )
 _ACCESS_PATCH = patch("app.mcp.tools.tasks.check_project_access")
 
@@ -184,21 +184,10 @@ class TestListOverdueTasks:
         assert result["total"] == 0
         assert result["items"] == []
 
-    async def test_cross_project_without_filter(self, setup_data):
-        """Without project_id, tasks from all projects are returned."""
+    async def test_project_id_required(self, setup_data):
+        """Cross-project queries are no longer supported — project_id is required."""
         from app.mcp.tools.tasks import list_overdue_tasks
 
-        user, project = setup_data
-        pid = str(project.id)
-        yesterday = datetime.now(UTC) - timedelta(days=1)
-
-        project2 = await make_project(user, name="Second Project")
-        pid2 = str(project2.id)
-
-        await make_task(pid, user, title="P1 Overdue", due_date=yesterday)
-        await make_task(pid2, user, title="P2 Overdue", due_date=yesterday)
-
-        result = await list_overdue_tasks()
-
-        assert result["total"] == 2
+        with pytest.raises(TypeError, match="project_id"):
+            await list_overdue_tasks()
 

@@ -46,7 +46,7 @@ async def create_document(
 
     key_info = await authenticate()
     project_id = await _resolve_project_id(project_id)
-    check_project_access(project_id, key_info["project_scopes"])
+    await check_project_access(project_id, key_info)
     await _check_project_not_locked(project_id)
 
     creator = f"mcp:{key_info['key_name']}" if key_info.get("key_name") else "mcp"
@@ -78,7 +78,7 @@ async def get_document(document_id: str) -> dict:
     if not d or d.is_deleted:
         raise ToolError(f"Document not found: {document_id}")
 
-    check_project_access(d.project_id, key_info["project_scopes"])
+    await check_project_access(d.project_id, key_info)
     return _document_dict(d)
 
 
@@ -119,7 +119,7 @@ async def update_document(
     if not d or d.is_deleted:
         raise ToolError(f"Document not found: {document_id}")
 
-    check_project_access(d.project_id, key_info["project_scopes"])
+    await check_project_access(d.project_id, key_info)
     await _check_project_not_locked(d.project_id)
 
     changer = f"mcp:{key_info['key_name']}" if key_info.get("key_name") else "mcp"
@@ -167,7 +167,7 @@ async def delete_document(document_id: str) -> dict:
     if not d or d.is_deleted:
         raise ToolError(f"Document not found: {document_id}")
 
-    check_project_access(d.project_id, key_info["project_scopes"])
+    await check_project_access(d.project_id, key_info)
     await _check_project_not_locked(d.project_id)
 
     d.is_deleted = True
@@ -198,7 +198,7 @@ async def list_documents(
 
     key_info = await authenticate()
     project_id = await _resolve_project_id(project_id)
-    check_project_access(project_id, key_info["project_scopes"])
+    await check_project_access(project_id, key_info)
 
     limit = min(max(1, limit), 100)
     skip = max(0, skip)
@@ -223,7 +223,7 @@ async def list_documents(
 @mcp.tool()
 async def search_documents(
     query: str,
-    project_id: str | None = None,
+    project_id: str,
     category: str | None = None,
     tag: str | None = None,
     limit: int = 20,
@@ -236,7 +236,8 @@ async def search_documents(
 
     Args:
         query: Search keyword (supports Tantivy query syntax when full-text search is available)
-        project_id: Filter by project ID or project name (optional; omit to search across all accessible projects)
+        project_id: Project ID or project name (required — cross-project search
+            is not supported; loop over projects from list_projects if needed)
         category: Filter by category (spec, design, api, guide, notes)
         tag: Filter by tag
         limit: Maximum number of results (default 20, max 100)
@@ -248,12 +249,9 @@ async def search_documents(
         raise ToolError(f"Invalid category '{category}'. Valid: {', '.join(sorted(_VALID_CATEGORIES))}")
 
     key_info = await authenticate()
-    scopes = key_info["project_scopes"]
 
-    resolved_project_id: str | None = None
-    if project_id:
-        resolved_project_id = await _resolve_project_id(project_id)
-        check_project_access(resolved_project_id, scopes)
+    resolved_project_id = await _resolve_project_id(project_id)
+    await check_project_access(resolved_project_id, key_info)
 
     limit = min(max(1, limit), 100)
     skip = max(0, skip)
@@ -276,9 +274,8 @@ async def search_documents(
                 filters: dict = {
                     "_id": {"$in": [bson.ObjectId(did) for did in did_list]},
                     "is_deleted": False,
+                    "project_id": resolved_project_id,
                 }
-                if scopes and not resolved_project_id:
-                    filters["project_id"] = {"$in": [str(s) for s in scopes]}
 
                 entries = await ProjectDocument.find(filters).to_list()
                 entry_map = {str(e.id): e for e in entries}
@@ -305,16 +302,13 @@ async def search_documents(
     pattern = re.escape(query.strip())
     mongo_filters: dict = {
         "is_deleted": False,
+        "project_id": resolved_project_id,
         "$or": [
             {"title": {"$regex": pattern, "$options": "i"}},
             {"content": {"$regex": pattern, "$options": "i"}},
             {"tags": {"$regex": pattern, "$options": "i"}},
         ],
     }
-    if resolved_project_id:
-        mongo_filters["project_id"] = resolved_project_id
-    elif scopes:
-        mongo_filters["project_id"] = {"$in": [str(s) for s in scopes]}
     if category:
         mongo_filters["category"] = category
     if tag:
@@ -351,7 +345,7 @@ async def get_document_history(
     if not d or d.is_deleted:
         raise ToolError(f"Document not found: {document_id}")
 
-    check_project_access(d.project_id, key_info["project_scopes"])
+    await check_project_access(d.project_id, key_info)
 
     limit = min(max(1, limit), 100)
     skip = max(0, skip)
@@ -390,7 +384,7 @@ async def get_document_version(
     if not d or d.is_deleted:
         raise ToolError(f"Document not found: {document_id}")
 
-    check_project_access(d.project_id, key_info["project_scopes"])
+    await check_project_access(d.project_id, key_info)
 
     v = await DocumentVersion.find_one(
         DocumentVersion.document_id == str(d.id),

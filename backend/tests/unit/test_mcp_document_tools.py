@@ -12,7 +12,7 @@ from app.models.project import Project, ProjectMember, ProjectStatus
 _AUTH_PATCH = patch(
     "app.mcp.tools.documents.authenticate",
     new_callable=AsyncMock,
-    return_value={"key_id": "test-key", "key_name": "test", "project_scopes": []},
+    return_value={"key_id": "test-key", "key_name": "test", "user_id": "test-user", "is_admin": True, "auth_kind": "api_key"},
 )
 
 
@@ -274,24 +274,20 @@ class TestSearchDocuments:
         assert result["items"][0]["title"] == "認証フロー仕様"
         assert result["_meta"]["search_engine"] == "regex"
 
-    async def test_cross_project_search(self):
+    async def test_project_id_required(self):
+        """Cross-project search is no longer supported — project_id is required."""
         from app.mcp.tools.documents import search_documents
 
-        p1 = await _make_project("proj-a")
-        p2 = await _make_project("proj-b")
-        await _make_document(str(p1.id), title="共通仕様", content="共通の認証")
-        await _make_document(str(p2.id), title="個別仕様", content="個別の認証")
-
-        # Search across all projects
-        result = await search_documents(query="認証")
-        assert result["total"] == 2
+        with pytest.raises(TypeError, match="project_id"):
+            await search_documents(query="認証")
 
     async def test_rejects_empty_query(self):
         from app.mcp.tools.documents import search_documents
         from fastmcp.exceptions import ToolError
 
+        p = await _make_project()
         with pytest.raises(ToolError, match="Query is required"):
-            await search_documents(query="")
+            await search_documents(query="", project_id=str(p.id))
 
 
 class TestUpdateDocumentVersioning:

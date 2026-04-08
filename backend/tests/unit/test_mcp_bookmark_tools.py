@@ -13,12 +13,11 @@ import pytest
 from app.models.bookmark import Bookmark, BookmarkCollection, ClipStatus
 
 # ── Shared mock key_info ────────────────────────────────────────
-_MOCK_KEY_INFO = {"key_id": "test-key", "key_name": "test", "project_scopes": []}
+_MOCK_KEY_INFO = {"key_id": "test-key", "key_name": "test", "user_id": "test-user", "is_admin": True, "auth_kind": "api_key"}
 
 _AUTH_PATH = "app.mcp.tools.bookmarks.authenticate"
 _CHECK_PATH = "app.mcp.tools.bookmarks.check_project_access"
-_RESOLVE_PATH = "app.mcp.tools.bookmarks._resolve_project_id"
-_LOCK_PATH = "app.mcp.tools.bookmarks._check_project_not_locked"
+_GET_COMMON_PATH = "app.mcp.tools.bookmarks._get_common_project_id"
 _CLIP_ENQUEUE_PATH = "app.mcp.tools.bookmarks.clip_queue"
 _CLEANUP_PATH = "app.mcp.tools.bookmarks.cleanup_bookmark_assets"
 _INDEX_PATH = "app.mcp.tools.bookmarks.index_bookmark"
@@ -41,17 +40,11 @@ def mock_check():
 
 @pytest.fixture
 def mock_resolve(test_project):
-    """Mock _resolve_project_id to return the test project's ID."""
-    async def _resolve(pid):
+    """Mock _get_common_project_id to return the test project's ID."""
+    async def _get_common(key_info):
         return str(test_project.id)
 
-    with patch(_RESOLVE_PATH, side_effect=_resolve) as m:
-        yield m
-
-
-@pytest.fixture
-def mock_lock():
-    with patch(_LOCK_PATH, new_callable=AsyncMock) as m:
+    with patch(_GET_COMMON_PATH, side_effect=_get_common) as m:
         yield m
 
 
@@ -76,13 +69,12 @@ def mock_index():
 
 
 @pytest.fixture
-def all_mocks(mock_auth, mock_check, mock_resolve, mock_lock, mock_clip_queue, mock_cleanup, mock_index):
+def all_mocks(mock_auth, mock_check, mock_resolve, mock_clip_queue, mock_cleanup, mock_index):
     """Bundle all common mocks for convenience."""
     return {
         "auth": mock_auth,
         "check": mock_check,
         "resolve": mock_resolve,
-        "lock": mock_lock,
         "clip_queue": mock_clip_queue,
         "cleanup": mock_cleanup,
         "index": mock_index,
@@ -140,7 +132,6 @@ class TestCreateBookmarkCollection:
         from app.mcp.tools.bookmarks import create_bookmark_collection
 
         result = await create_bookmark_collection(
-            project_id=str(test_project.id),
             name="My Reads",
             description="Stuff to read",
             icon="book",
@@ -164,7 +155,7 @@ class TestCreateBookmarkCollection:
         from app.mcp.tools.bookmarks import create_bookmark_collection
 
         with pytest.raises(ToolError, match="Name is required"):
-            await create_bookmark_collection(project_id=str(test_project.id), name="")
+            await create_bookmark_collection(name="")
 
     async def test_whitespace_name_raises(self, test_project, all_mocks):
         from fastmcp.exceptions import ToolError
@@ -172,7 +163,7 @@ class TestCreateBookmarkCollection:
         from app.mcp.tools.bookmarks import create_bookmark_collection
 
         with pytest.raises(ToolError, match="Name is required"):
-            await create_bookmark_collection(project_id=str(test_project.id), name="   ")
+            await create_bookmark_collection(name="   ")
 
     async def test_name_exceeds_255_chars_raises(self, test_project, all_mocks):
         from fastmcp.exceptions import ToolError
@@ -181,16 +172,16 @@ class TestCreateBookmarkCollection:
 
         with pytest.raises(ToolError, match="255 characters"):
             await create_bookmark_collection(
-                project_id=str(test_project.id), name="A" * 256
+                name="A" * 256
             )
 
-    async def test_creator_without_key_name(self, test_project, mock_check, mock_resolve, mock_lock, mock_clip_queue, mock_cleanup, mock_index):
+    async def test_creator_without_key_name(self, test_project, mock_check, mock_resolve, mock_clip_queue, mock_cleanup, mock_index):
         """When key_name is absent, created_by falls back to 'mcp'."""
         from app.mcp.tools.bookmarks import create_bookmark_collection
 
-        with patch(_AUTH_PATH, new_callable=AsyncMock, return_value={"key_id": "k", "project_scopes": []}):
+        with patch(_AUTH_PATH, new_callable=AsyncMock, return_value={"key_id": "k", "user_id": "test-user", "is_admin": True, "auth_kind": "api_key"}):
             result = await create_bookmark_collection(
-                project_id=str(test_project.id), name="No key name"
+                name="No key name"
             )
 
         db_coll = await BookmarkCollection.get(result["id"])
@@ -201,7 +192,7 @@ class TestListBookmarkCollections:
     async def test_list_empty(self, test_project, all_mocks):
         from app.mcp.tools.bookmarks import list_bookmark_collections
 
-        result = await list_bookmark_collections(project_id=str(test_project.id))
+        result = await list_bookmark_collections()
         assert result["items"] == []
         assert result["total"] == 0
 
@@ -212,7 +203,7 @@ class TestListBookmarkCollections:
         await _make_collection(pid, name="Active")
         await _make_collection(pid, name="Deleted", is_deleted=True)
 
-        result = await list_bookmark_collections(project_id=pid)
+        result = await list_bookmark_collections()
         assert result["total"] == 1
         assert result["items"][0]["name"] == "Active"
 
@@ -223,7 +214,7 @@ class TestListBookmarkCollections:
         await _make_collection(pid, name="Alpha")
         await _make_collection(pid, name="Beta")
 
-        result = await list_bookmark_collections(project_id=pid)
+        result = await list_bookmark_collections()
         assert result["total"] == 2
 
 
@@ -343,7 +334,6 @@ class TestCreateBookmark:
         from app.mcp.tools.bookmarks import create_bookmark
 
         result = await create_bookmark(
-            project_id=str(test_project.id),
             url="https://example.com/article",
             title="Good Article",
             description="A nice read",
@@ -366,7 +356,6 @@ class TestCreateBookmark:
         from app.mcp.tools.bookmarks import create_bookmark
 
         result = await create_bookmark(
-            project_id=str(test_project.id),
             url="https://example.com/page",
             title="",
         )
@@ -376,7 +365,6 @@ class TestCreateBookmark:
         from app.mcp.tools.bookmarks import create_bookmark
 
         result = await create_bookmark(
-            project_id=str(test_project.id),
             url="https://example.com",
             tags=["  Python ", "TESTING", ""],
         )
@@ -388,7 +376,7 @@ class TestCreateBookmark:
         from app.mcp.tools.bookmarks import create_bookmark
 
         with pytest.raises(ToolError, match="URL is required"):
-            await create_bookmark(project_id=str(test_project.id), url="")
+            await create_bookmark(url="")
 
     async def test_url_too_long_raises(self, test_project, all_mocks):
         from fastmcp.exceptions import ToolError
@@ -397,7 +385,7 @@ class TestCreateBookmark:
 
         with pytest.raises(ToolError, match="2048 characters"):
             await create_bookmark(
-                project_id=str(test_project.id), url="https://x.com/" + "a" * 2040
+                url="https://x.com/" + "a" * 2040
             )
 
     async def test_creates_with_collection_id(self, test_project, all_mocks):
@@ -407,7 +395,6 @@ class TestCreateBookmark:
         coll = await _make_collection(pid)
 
         result = await create_bookmark(
-            project_id=pid,
             url="https://example.com",
             collection_id=str(coll.id),
         )
@@ -587,7 +574,7 @@ class TestListBookmarks:
     async def test_list_empty(self, test_project, all_mocks):
         from app.mcp.tools.bookmarks import list_bookmarks
 
-        result = await list_bookmarks(project_id=str(test_project.id))
+        result = await list_bookmarks()
         assert result["items"] == []
         assert result["total"] == 0
 
@@ -598,7 +585,7 @@ class TestListBookmarks:
         await _make_bookmark(pid, url="https://active.com", title="Active")
         await _make_bookmark(pid, url="https://deleted.com", title="Deleted", is_deleted=True)
 
-        result = await list_bookmarks(project_id=pid)
+        result = await list_bookmarks()
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Active"
 
@@ -610,7 +597,7 @@ class TestListBookmarks:
         await _make_bookmark(pid, url="https://a.com", title="In coll", collection_id=str(coll.id))
         await _make_bookmark(pid, url="https://b.com", title="No coll")
 
-        result = await list_bookmarks(project_id=pid, collection_id=str(coll.id))
+        result = await list_bookmarks(collection_id=str(coll.id))
         assert result["total"] == 1
         assert result["items"][0]["title"] == "In coll"
 
@@ -622,7 +609,7 @@ class TestListBookmarks:
         await _make_bookmark(pid, url="https://a.com", title="Has coll", collection_id=str(coll.id))
         await _make_bookmark(pid, url="https://b.com", title="No coll")
 
-        result = await list_bookmarks(project_id=pid, collection_id="")
+        result = await list_bookmarks(collection_id="")
         assert result["total"] == 1
         assert result["items"][0]["title"] == "No coll"
 
@@ -633,7 +620,7 @@ class TestListBookmarks:
         await _make_bookmark(pid, url="https://a.com", title="Python", tags=["python"])
         await _make_bookmark(pid, url="https://b.com", title="Rust", tags=["rust"])
 
-        result = await list_bookmarks(project_id=pid, tag="python")
+        result = await list_bookmarks(tag="python")
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Python"
 
@@ -644,7 +631,7 @@ class TestListBookmarks:
         await _make_bookmark(pid, url="https://a.com", title="Starred", is_starred=True)
         await _make_bookmark(pid, url="https://b.com", title="Normal")
 
-        result = await list_bookmarks(project_id=pid, starred=True)
+        result = await list_bookmarks(starred=True)
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Starred"
 
@@ -655,7 +642,7 @@ class TestListBookmarks:
         for i in range(5):
             await _make_bookmark(pid, url=f"https://example.com/{i}", title=f"BM {i}")
 
-        result = await list_bookmarks(project_id=pid, limit=2, skip=0)
+        result = await list_bookmarks(limit=2, skip=0)
         assert result["total"] == 5
         assert len(result["items"]) == 2
         assert result["limit"] == 2
@@ -665,7 +652,7 @@ class TestListBookmarks:
         from app.mcp.tools.bookmarks import list_bookmarks
 
         pid = str(test_project.id)
-        result = await list_bookmarks(project_id=pid, limit=500)
+        result = await list_bookmarks(limit=500)
         assert result["limit"] == 200
 
 
@@ -679,7 +666,7 @@ class TestSearchBookmarks:
         await _make_bookmark(pid, url="https://rust-lang.org", title="Rust Docs")
 
         with patch("app.services.bookmark_search.BookmarkSearchService.get_instance", return_value=None):
-            result = await search_bookmarks(query="Python", project_id=pid)
+            result = await search_bookmarks(query="Python")
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "Python Docs"
@@ -708,7 +695,7 @@ class TestSearchBookmarks:
         await _make_bookmark(pid, url="https://django.com", title="Django")
 
         with patch("app.services.bookmark_search.BookmarkSearchService.get_instance", return_value=None):
-            result = await search_bookmarks(query="fastapi", project_id=pid)
+            result = await search_bookmarks(query="fastapi")
 
         assert result["total"] == 1
 
@@ -720,7 +707,7 @@ class TestSearchBookmarks:
         await _make_bookmark(pid, url="https://b.com", title="B", tags=["other"])
 
         with patch("app.services.bookmark_search.BookmarkSearchService.get_instance", return_value=None):
-            result = await search_bookmarks(query="specialtag", project_id=pid)
+            result = await search_bookmarks(query="specialtag")
 
         assert result["total"] == 1
 

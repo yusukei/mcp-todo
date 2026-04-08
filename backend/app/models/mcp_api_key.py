@@ -9,7 +9,10 @@ from .user import User
 class McpApiKey(Document):
     key_hash: Indexed(str, unique=True)
     name: str
-    project_scopes: list[str] = Field(default_factory=list)  # [] = all projects
+    # ``project_scopes`` was removed: API keys now inherit access from their
+    # owner's :class:`Project.members` membership instead of carrying their
+    # own scope list. Existing documents with this field are ignored by
+    # Beanie's pydantic model.
     created_by: Link[User]
     last_used_at: datetime | None = None
     is_active: bool = True

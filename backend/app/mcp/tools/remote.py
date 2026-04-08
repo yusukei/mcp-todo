@@ -67,9 +67,9 @@ def _validate_remote_command(command: str) -> str:
     ``|``, ``;``, ``&&``, ``>``, glob, etc. are intentionally allowed —
     blocking them would break legitimate use (``git log | head``,
     ``cd x && pytest``, …). The real security boundary for ``remote_exec``
-    is API-key authentication × project_scopes × workspace path isolation,
-    enforced upstream by ``authenticate()`` / ``_resolve_binding`` and on
-    the agent side by its own path/exec safeguards.
+    is authentication + Project.members access control + workspace path
+    isolation, enforced upstream by ``authenticate()`` / ``_resolve_binding``
+    and on the agent side by its own path/exec safeguards.
 
     What this function actually does:
 
@@ -135,18 +135,14 @@ def _validate_remote_pattern(pattern: str, *, kind: str) -> str:
     return pattern
 
 
-async def _resolve_binding(project_id: str, scopes: list[str]) -> ResolvedBinding:
+async def _resolve_binding(project_id: str, key_info: dict) -> ResolvedBinding:
     """Resolve project_id to a :class:`ResolvedBinding` with access checks.
 
     Reads the embedded ``Project.remote`` field. Raises ``ToolError`` if
     the project has no remote binding configured.
     """
     project_id = await _resolve_project_id(project_id)
-    check_project_access(project_id, scopes)
-
-    project = await Project.get(project_id)
-    if not project:
-        raise ToolError(f"Project not found: {project_id}")
+    project = await check_project_access(project_id, key_info)
     if not project.remote:
         raise ToolError(f"No remote agent bound to project {project_id}")
     return ResolvedBinding(
@@ -285,7 +281,7 @@ async def remote_exec(
         can detect output that exceeded the 2MB agent buffer.
     """
     key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info)
     _validate_remote_command(command)
 
     timeout = max(1, min(timeout, MAX_TIMEOUT))
@@ -359,7 +355,7 @@ async def remote_read_file(
         ``is_binary``, ``total_lines``, ``truncated``.
     """
     key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info)
     _validate_remote_path(path)
 
     payload: dict = {"path": path, "cwd": binding.remote_path}
@@ -410,7 +406,7 @@ async def remote_write_file(
     Parent directories are created automatically.
     """
     key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info)
     _validate_remote_path(path)
 
     if len(content.encode("utf-8")) > MAX_FILE_BYTES:
@@ -445,7 +441,7 @@ async def remote_list_dir(
     Path is relative to the project's remote directory, or absolute.
     """
     key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info)
     _validate_remote_path(path)
 
     t0 = time.monotonic()
@@ -480,7 +476,7 @@ async def remote_stat(project_id: str, path: str) -> dict:
     full ``remote_read_file``.
     """
     key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info)
     _validate_remote_path(path)
 
     result = await _send_to_agent(
@@ -500,7 +496,7 @@ async def remote_file_exists(project_id: str, path: str) -> dict:
     when you only need a yes/no answer (e.g. before creating a file).
     """
     key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info)
     _validate_remote_path(path)
 
     result = await _send_to_agent(
@@ -521,7 +517,7 @@ async def remote_mkdir(project_id: str, path: str, parents: bool = True) -> dict
     With ``parents=True`` (default), missing parents are created (mkdir -p).
     """
     key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info)
     _validate_remote_path(path)
 
     result = await _send_to_agent(
@@ -543,7 +539,7 @@ async def remote_delete_file(
     workspace root.
     """
     key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info)
     _validate_remote_path(path)
 
     result = await _send_to_agent(
@@ -561,7 +557,7 @@ async def remote_move_file(
 ) -> dict:
     """Move/rename a file or directory on the remote machine."""
     key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info)
     _validate_remote_path(src)
     _validate_remote_path(dst)
 
@@ -580,7 +576,7 @@ async def remote_copy_file(
 ) -> dict:
     """Copy a file or directory on the remote machine."""
     key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info)
     _validate_remote_path(src)
     _validate_remote_path(dst)
 
@@ -610,7 +606,7 @@ async def remote_glob(
         path: Base directory (relative to workspace, default ``.``)
     """
     key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info)
     _validate_remote_path(path)
     _validate_remote_pattern(pattern, kind="glob")
 
@@ -666,7 +662,7 @@ async def remote_grep(
     - Files whose first 8 KB contain a NUL byte (binary heuristic)
     """
     key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info["project_scopes"])
+    binding = await _resolve_binding(project_id, key_info)
     _validate_remote_path(path)
     _validate_remote_pattern(pattern, kind="grep")
 

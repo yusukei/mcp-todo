@@ -15,13 +15,19 @@ logger = logging.getLogger(__name__)
 
 @mcp.tool()
 async def list_projects() -> list[dict]:
-    """List all accessible projects."""
+    """List projects accessible to the authenticated user.
+
+    Admin users see all active projects; non-admin users see only the
+    projects whose ``members`` list contains them.
+    """
     key_info = await authenticate()
-    scopes = key_info["project_scopes"]
 
     query = Project.find(Project.status == ProjectStatus.active)
-    if scopes:
-        query = query.find({"_id": {"$in": scopes}})
+    if not key_info.get("is_admin"):
+        user_id = key_info.get("user_id")
+        if not user_id:
+            return []
+        query = query.find({"members.user_id": user_id})
     projects = await query.to_list()
     return [_project_dict(p) for p in projects]
 
@@ -35,7 +41,7 @@ async def get_project(project_id: str) -> dict:
     """
     key_info = await authenticate()
     project_id = await _resolve_project_id(project_id)
-    check_project_access(project_id, key_info["project_scopes"])
+    await check_project_access(project_id, key_info)
 
     project = await Project.get(project_id)
     if not project or project.status == ProjectStatus.archived:
@@ -95,7 +101,7 @@ async def update_project(
     """
     key_info = await authenticate()
     project_id = await _resolve_project_id(project_id)
-    check_project_access(project_id, key_info["project_scopes"])
+    await check_project_access(project_id, key_info)
 
     project = await Project.get(project_id)
     if not project or project.status == ProjectStatus.archived:
@@ -130,7 +136,7 @@ async def delete_project(project_id: str) -> dict:
     """
     key_info = await authenticate()
     project_id = await _resolve_project_id(project_id)
-    check_project_access(project_id, key_info["project_scopes"])
+    await check_project_access(project_id, key_info)
 
     project = await Project.get(project_id)
     if not project or project.status == ProjectStatus.archived:
@@ -156,7 +162,7 @@ async def get_project_summary(project_id: str) -> dict:
     """
     key_info = await authenticate()
     project_id = await _resolve_project_id(project_id)
-    check_project_access(project_id, key_info["project_scopes"])
+    await check_project_access(project_id, key_info)
 
     project = await Project.get(project_id)
     if not project or project.status == ProjectStatus.archived:

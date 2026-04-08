@@ -30,12 +30,12 @@ async def _deindex_task(task_id: str) -> None:
     await deindex_task(task_id)
 
 
-async def _get_task_or_raise(task_id: str, scopes: list[str]) -> Task:
+async def _get_task_or_raise(task_id: str, key_info: dict) -> Task:
     """Fetch a task by ID, verify it exists and is not deleted, and check project access."""
     task = await Task.get(task_id)
     if not task or task.is_deleted:
         raise ToolError("Task not found")
-    check_project_access(task.project_id, scopes)
+    await check_project_access(task.project_id, key_info)
     return task
 
 
@@ -69,11 +69,6 @@ def _parse_date_filter(value: str) -> datetime:
 
     # ISO 8601 fallback
     return datetime.fromisoformat(value)
-
-
-def _scope_meta(scopes: list[str]) -> dict:
-    """Build _meta dict showing which project scopes are applied."""
-    return {"scoped_projects": scopes if scopes else None}
 
 
 def _parse_decision_context(value: dict | None) -> DecisionContext | None:
@@ -142,7 +137,7 @@ async def list_tasks(
     """
     key_info = await authenticate()
     project_id = await _resolve_project_id(project_id)
-    check_project_access(project_id, key_info["project_scopes"])
+    await check_project_access(project_id, key_info)
 
     filters: dict = {
         "project_id": project_id,
@@ -193,7 +188,7 @@ async def list_tasks(
         query.clone().sort(sort_expr, secondary).skip(skip).limit(limit).to_list(),
     )
     serialize = _task_summary if summary else _task_dict
-    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip, "_meta": _scope_meta(key_info["project_scopes"])}
+    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
 
 
 @mcp.tool()
@@ -204,7 +199,7 @@ async def get_task(task_id: str) -> dict:
         task_id: Task ID
     """
     key_info = await authenticate()
-    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info)
     return _task_dict(task)
 
 
@@ -220,7 +215,7 @@ async def get_task_context(task_id: str, activity_limit: int = 20) -> dict:
         activity_limit: Maximum number of activity log entries (default 20, most recent first)
     """
     key_info = await authenticate()
-    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info)
 
     subtasks = await Task.find(
         Task.parent_task_id == task_id,
@@ -260,7 +255,7 @@ async def get_task_context(task_id: str, activity_limit: int = 20) -> dict:
 
 @mcp.tool()
 async def get_work_context(
-    project_id: str | None = None,
+    project_id: str,
     limit: int = 20,
 ) -> dict:
     """Get a comprehensive work context for the current session.
@@ -269,20 +264,16 @@ async def get_work_context(
     investigation in a single call. Designed to be called at session start.
 
     Args:
-        project_id: Limit to a specific project by ID or name (omit for all projects)
+        project_id: Project ID or project name (required — cross-project queries
+            are not supported; loop over projects from list_projects if needed)
         limit: Maximum number of tasks per category (default 20)
     """
     key_info = await authenticate()
-    scopes = key_info["project_scopes"]
     now = datetime.now(UTC)
 
-    base_filters: dict = {"is_deleted": False}
-    if project_id:
-        project_id = await _resolve_project_id(project_id)
-        check_project_access(project_id, scopes)
-        base_filters["project_id"] = project_id
-    elif scopes:
-        base_filters["project_id"] = {"$in": scopes}
+    project_id = await _resolve_project_id(project_id)
+    await check_project_access(project_id, key_info)
+    base_filters: dict = {"is_deleted": False, "project_id": project_id}
 
     approved_q = Task.find({**base_filters, "approved": True, "status": {"$in": ["todo", "in_progress"]}})
     in_progress_q = Task.find({**base_filters, "status": "in_progress"})
@@ -301,7 +292,6 @@ async def get_work_context(
         "in_progress": {"items": [_task_summary(t) for t in in_progress_tasks], "total": len(in_progress_tasks)},
         "overdue": {"items": [_task_summary(t) for t in overdue_tasks], "total": len(overdue_tasks)},
         "needs_detail": {"items": [_task_summary(t) for t in needs_detail_tasks], "total": len(needs_detail_tasks)},
-        "_meta": _scope_meta(scopes),
     }
 
 
@@ -317,7 +307,7 @@ async def get_task_activity(task_id: str, limit: int = 20) -> dict:
         limit: Maximum number of entries to return (default 20, most recent first)
     """
     key_info = await authenticate()
-    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info)
 
     entries = sorted(task.activity_log, key=lambda e: e.changed_at, reverse=True)[:limit]
     return {
@@ -387,7 +377,7 @@ async def create_task(
 
     key_info = await authenticate()
     project_id = await _resolve_project_id(project_id)
-    check_project_access(project_id, key_info["project_scopes"])
+    await check_project_access(project_id, key_info)
     await _check_project_not_locked(project_id)
     creator = f"mcp:{key_info['key_name']}" if key_info.get("key_name") else "mcp"
 
@@ -477,7 +467,7 @@ async def update_task(
     if task_type is not None and task_type not in VALID_TASK_TYPES:
         raise ToolError(f"Invalid task_type '{task_type}'. Valid: {', '.join(sorted(VALID_TASK_TYPES))}")
 
-    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info)
     await _check_project_not_locked(task.project_id)
 
     updates: dict = {}
@@ -552,7 +542,7 @@ async def delete_task(task_id: str) -> dict:
         task_id: Task ID
     """
     key_info = await authenticate()
-    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info)
     await _check_project_not_locked(task.project_id)
 
     task.is_deleted = True
@@ -574,7 +564,7 @@ async def complete_task(task_id: str, completion_report: str | None = None) -> d
         raise ToolError("Completion report exceeds maximum length of 10000 characters")
 
     key_info = await authenticate()
-    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info)
     await _check_project_not_locked(task.project_id)
 
     actor = f"mcp:{key_info['key_name']}" if key_info.get("key_name") else "mcp"
@@ -602,7 +592,7 @@ async def reopen_task(task_id: str) -> dict:
         task_id: Task ID
     """
     key_info = await authenticate()
-    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info)
     await _check_project_not_locked(task.project_id)
     actor = f"mcp:{key_info['key_name']}" if key_info.get("key_name") else "mcp"
 
@@ -623,7 +613,7 @@ async def archive_task(task_id: str) -> dict:
         task_id: Task ID
     """
     key_info = await authenticate()
-    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info)
     await _check_project_not_locked(task.project_id)
 
     task.archived = True
@@ -641,7 +631,7 @@ async def unarchive_task(task_id: str) -> dict:
         task_id: Task ID
     """
     key_info = await authenticate()
-    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info)
     await _check_project_not_locked(task.project_id)
 
     task.archived = False
@@ -665,7 +655,7 @@ async def add_comment(task_id: str, content: str) -> dict:
     key_info = await authenticate()
     if len(content) > 10000:
         raise ToolError("Comment content exceeds maximum length of 10000 characters")
-    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info)
     await _check_project_not_locked(task.project_id)
 
     author_name = key_info.get("key_name", "Claude")
@@ -690,7 +680,7 @@ async def delete_comment(task_id: str, comment_id: str) -> dict:
         comment_id: Comment ID to delete
     """
     key_info = await authenticate()
-    task = await _get_task_or_raise(task_id, key_info["project_scopes"])
+    task = await _get_task_or_raise(task_id, key_info)
     await _check_project_not_locked(task.project_id)
 
     comment = next((c for c in task.comments if c.id == comment_id), None)
@@ -709,7 +699,7 @@ async def delete_comment(task_id: str, comment_id: str) -> dict:
 @mcp.tool()
 async def search_tasks(
     query: str,
-    project_id: str | None = None,
+    project_id: str,
     status: str | None = None,
     needs_detail: bool | None = None,
     approved: bool | None = None,
@@ -724,7 +714,8 @@ async def search_tasks(
 
     Args:
         query: Search keyword (supports Tantivy query syntax when full-text search is available)
-        project_id: Limit search to a specific project by ID or name (omit for all projects)
+        project_id: Project ID or project name (required — cross-project search
+            is not supported; loop over projects from list_projects if needed)
         status: Filter by status
         needs_detail: Filter by needs_detail flag (true/false)
         approved: Filter by approved flag (true/false)
@@ -733,19 +724,16 @@ async def search_tasks(
         summary: If true, exclude comments and attachments from response for lighter payload (default false)
     """
     key_info = await authenticate()
-    scopes = key_info["project_scopes"]
 
-    resolved_project_id = None
-    if project_id:
-        resolved_project_id = await _resolve_project_id(project_id)
-        check_project_access(resolved_project_id, scopes)
+    resolved_project_id = await _resolve_project_id(project_id)
+    await check_project_access(resolved_project_id, key_info)
 
     # Try Tantivy full-text search first
     from ...services.search import SearchService
     search_svc = SearchService.get_instance()
     if search_svc is not None:
         try:
-            project_ids = [resolved_project_id] if resolved_project_id else (scopes if scopes else None)
+            project_ids = [resolved_project_id]
             result = await asyncio.to_thread(
                 search_svc.search,
                 query,
@@ -782,10 +770,10 @@ async def search_tasks(
                     "total": len(ordered_tasks),
                     "limit": limit,
                     "skip": skip,
-                    "_meta": {**_scope_meta(scopes), "search_engine": "tantivy"},
+                    "_meta": {"search_engine": "tantivy"},
                 }
             else:
-                return {"items": [], "total": 0, "limit": limit, "skip": skip, "_meta": {**_scope_meta(scopes), "search_engine": "tantivy"}}
+                return {"items": [], "total": 0, "limit": limit, "skip": skip, "_meta": {"search_engine": "tantivy"}}
         except Exception as e:
             logger.warning("Tantivy search failed, falling back to $regex: %s", e)
 
@@ -798,10 +786,7 @@ async def search_tasks(
         "is_deleted": False,
     }
 
-    if resolved_project_id:
-        filters["project_id"] = resolved_project_id
-    elif scopes:
-        filters["project_id"] = {"$in": scopes}
+    filters["project_id"] = resolved_project_id
 
     if status:
         filters["status"] = TaskStatus(status)
@@ -816,12 +801,12 @@ async def search_tasks(
         db_query.clone().skip(skip).limit(limit).to_list(),
     )
     serialize = _task_summary if summary else _task_dict
-    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip, "_meta": {**_scope_meta(scopes), "search_engine": "regex"}}
+    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip, "_meta": {"search_engine": "regex"}}
 
 
 @mcp.tool()
 async def list_overdue_tasks(
-    project_id: str | None = None,
+    project_id: str,
     limit: int = 50,
     skip: int = 0,
     summary: bool = False,
@@ -829,27 +814,24 @@ async def list_overdue_tasks(
     """List overdue tasks (past their due date and not completed).
 
     Args:
-        project_id: Limit to a specific project by ID or name (omit for all projects)
+        project_id: Project ID or project name (required — cross-project queries
+            are not supported; loop over projects from list_projects if needed)
         limit: Maximum number of results (default 50)
         skip: Number of tasks to skip for pagination (default 0)
         summary: If true, exclude comments and attachments from response for lighter payload (default false)
     """
     key_info = await authenticate()
-    scopes = key_info["project_scopes"]
     now = datetime.now(UTC)
+
+    project_id = await _resolve_project_id(project_id)
+    await check_project_access(project_id, key_info)
 
     filters: dict = {
         "is_deleted": False,
+        "project_id": project_id,
         "due_date": {"$ne": None, "$lt": now},
         "status": {"$nin": [TaskStatus.on_hold, TaskStatus.done, TaskStatus.cancelled]},
     }
-
-    if project_id:
-        project_id = await _resolve_project_id(project_id)
-        check_project_access(project_id, scopes)
-        filters["project_id"] = project_id
-    elif scopes:
-        filters["project_id"] = {"$in": scopes}
 
     db_query = Task.find(filters)
     total, tasks = await asyncio.gather(
@@ -857,7 +839,7 @@ async def list_overdue_tasks(
         db_query.clone().sort(+Task.due_date).skip(skip).limit(limit).to_list(),
     )
     serialize = _task_summary if summary else _task_dict
-    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip, "_meta": _scope_meta(scopes)}
+    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
 
 
 @mcp.tool()
@@ -880,7 +862,7 @@ async def batch_create_tasks(project_id: str, tasks: list[dict]) -> dict:
     """
     key_info = await authenticate()
     project_id = await _resolve_project_id(project_id)
-    check_project_access(project_id, key_info["project_scopes"])
+    await check_project_access(project_id, key_info)
     await _check_project_not_locked(project_id)
     creator = f"mcp:{key_info['key_name']}" if key_info.get("key_name") else "mcp"
 
@@ -976,7 +958,7 @@ async def list_review_tasks(
     """
     key_info = await authenticate()
     project_id = await _resolve_project_id(project_id)
-    check_project_access(project_id, key_info["project_scopes"])
+    await check_project_access(project_id, key_info)
 
     query = Task.find(Task.project_id == project_id, Task.is_deleted == False)  # noqa: E712
     if flag == "needs_detail":
@@ -991,12 +973,12 @@ async def list_review_tasks(
     total = await query.count()
     tasks = await query.sort(+Task.sort_order, +Task.created_at).limit(limit).to_list()
     serialize = _task_summary if summary else _task_dict
-    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": 0, "_meta": _scope_meta(key_info["project_scopes"])}
+    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": 0}
 
 
 @mcp.tool()
 async def list_approved_tasks(
-    project_id: str | None = None,
+    project_id: str,
     status: str | None = None,
     limit: int = 50,
     summary: bool = False,
@@ -1008,25 +990,22 @@ async def list_approved_tasks(
     asks to "implement approved tasks" or "work on checked tasks".
 
     Args:
-        project_id: Project ID or project name (omit for all projects)
+        project_id: Project ID or project name (required — cross-project queries
+            are not supported; loop over projects from list_projects if needed)
         status: Filter by status (todo / in_progress / on_hold / done / cancelled)
         limit: Maximum number of results (default 50)
         summary: If true, exclude comments and attachments from response for lighter payload (default false)
     """
     key_info = await authenticate()
-    scopes = key_info["project_scopes"]
+
+    project_id = await _resolve_project_id(project_id)
+    await check_project_access(project_id, key_info)
 
     filters: dict = {
         "approved": True,
         "is_deleted": False,
+        "project_id": project_id,
     }
-
-    if project_id:
-        project_id = await _resolve_project_id(project_id)
-        check_project_access(project_id, scopes)
-        filters["project_id"] = project_id
-    elif scopes:
-        filters["project_id"] = {"$in": scopes}
 
     if status:
         filters["status"] = TaskStatus(status)
@@ -1035,7 +1014,7 @@ async def list_approved_tasks(
     total = await db_query.count()
     tasks = await db_query.sort(+Task.sort_order, +Task.created_at).limit(limit).to_list()
     serialize = _task_summary if summary else _task_dict
-    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": 0, "_meta": _scope_meta(scopes)}
+    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": 0}
 
 
 @mcp.tool()
@@ -1048,7 +1027,6 @@ async def batch_update_tasks(updates: list[dict]) -> dict:
                  priority, status, due_date, assignee_id, tags
     """
     key_info = await authenticate()
-    scopes = key_info["project_scopes"]
     updates_input_for_cascade = list(updates)
 
     updated = []
@@ -1069,7 +1047,7 @@ async def batch_update_tasks(updates: list[dict]) -> dict:
                 failed.append({"task_id": task_id, "error": "Task not found"})
                 continue
 
-            check_project_access(task.project_id, scopes)
+            await check_project_access(task.project_id, key_info)
             await _check_project_not_locked(task.project_id)
 
             fields = {k: v for k, v in item.items() if k != "task_id" and v is not None}
@@ -1151,7 +1129,7 @@ async def get_subtasks(
         summary: If true, exclude comments and attachments from response for lighter payload (default false)
     """
     key_info = await authenticate()
-    parent = await _get_task_or_raise(task_id, key_info["project_scopes"])
+    parent = await _get_task_or_raise(task_id, key_info)
 
     query = Task.find(
         Task.parent_task_id == task_id,
@@ -1165,7 +1143,7 @@ async def get_subtasks(
         query.clone().sort(+Task.sort_order, +Task.created_at).skip(skip).limit(limit).to_list(),
     )
     serialize = _task_summary if summary else _task_dict
-    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip, "_meta": _scope_meta(key_info["project_scopes"])}
+    return {"items": [serialize(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
 
 
 @mcp.tool()
@@ -1177,7 +1155,7 @@ async def list_tags(project_id: str) -> list[str]:
     """
     key_info = await authenticate()
     project_id = await _resolve_project_id(project_id)
-    check_project_access(project_id, key_info["project_scopes"])
+    await check_project_access(project_id, key_info)
 
     pipeline = [
         {"$match": {"project_id": project_id, "is_deleted": False}},
@@ -1204,12 +1182,12 @@ async def duplicate_task(
         title: Override title (defaults to original title with "（コピー）" suffix)
     """
     key_info = await authenticate()
-    source = await _get_task_or_raise(task_id, key_info["project_scopes"])
+    source = await _get_task_or_raise(task_id, key_info)
 
     target_project_id = source.project_id
     if project_id:
         target_project_id = await _resolve_project_id(project_id)
-        check_project_access(target_project_id, key_info["project_scopes"])
+        await check_project_access(target_project_id, key_info)
     await _check_project_not_locked(target_project_id)
 
     creator = f"mcp:{key_info['key_name']}" if key_info.get("key_name") else "mcp"
@@ -1244,7 +1222,6 @@ async def bulk_complete_tasks(
         completion_report: Optional completion report applied to all tasks
     """
     key_info = await authenticate()
-    scopes = key_info["project_scopes"]
 
     completed = []
     failed = []
@@ -1257,7 +1234,7 @@ async def bulk_complete_tasks(
             if not task or task.is_deleted:
                 failed.append({"task_id": tid, "error": "Task not found"})
                 continue
-            check_project_access(task.project_id, scopes)
+            await check_project_access(task.project_id, key_info)
             await _check_project_not_locked(task.project_id)
 
             if task.status != TaskStatus.done:
@@ -1301,7 +1278,6 @@ async def bulk_archive_tasks(
         task_ids: List of task IDs to archive
     """
     key_info = await authenticate()
-    scopes = key_info["project_scopes"]
 
     archived = []
     failed = []
@@ -1314,7 +1290,7 @@ async def bulk_archive_tasks(
             if not task or task.is_deleted:
                 failed.append({"task_id": tid, "error": "Task not found"})
                 continue
-            check_project_access(task.project_id, scopes)
+            await check_project_access(task.project_id, key_info)
             await _check_project_not_locked(task.project_id)
 
             task.archived = True

@@ -11,7 +11,7 @@ from app.models.knowledge import Knowledge, KnowledgeCategory
 _AUTH_PATCH = patch(
     "app.mcp.tools.knowledge.authenticate",
     new_callable=AsyncMock,
-    return_value={"key_id": "test-key", "key_name": "test", "project_scopes": []},
+    return_value={"key_id": "test-key", "key_name": "test", "user_id": "test-user", "is_admin": True, "auth_kind": "api_key"},
 )
 
 
