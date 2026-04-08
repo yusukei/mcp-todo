@@ -2,7 +2,7 @@
  * Smoke tests for the Admin area.
  *
  * Covers tab switching on AdminPage and basic list/render flows for the
- * four tabs (Users, AllowedEmails, Projects, BackupRestore). Mutation
+ * five tabs (Users, AllowedEmails, Projects, BackupRestore, McpUsage). Mutation
  * happy paths are exercised through user interactions where they're
  * cheap to drive without elaborate fixtures.
  */
@@ -50,6 +50,7 @@ describe('AdminPage', () => {
     expect(screen.getByRole('button', { name: '許可メール' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'プロジェクト' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'バックアップ' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'MCP 使用状況' })).toBeInTheDocument()
   })
 
   it('switches the active tab when a tab button is clicked', async () => {

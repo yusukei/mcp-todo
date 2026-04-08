@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     LOGIN_MAX_ATTEMPTS: int = 20
     LOGIN_LOCKOUT_SECONDS: int = 300  # 5 minutes
 
+    # ── MCP tool usage tracking ───────────────────────────────
+    # Hybrid bucket + event-log measurement of MCP tool calls.
+    # See "MCP サーバー仕様" project document for details.
+    MCP_USAGE_TRACKING_ENABLED: bool = True
+    MCP_USAGE_SAMPLING_RATE: float = 0.05  # 5% sampling for non-error/non-slow events
+    MCP_USAGE_SLOW_CALL_MS: int = 2000  # threshold for "slow call" event capture
+
     model_config = {"env_file": ("../.env", ".env"), "extra": "ignore"}
 
 

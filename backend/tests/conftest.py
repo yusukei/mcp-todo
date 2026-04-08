@@ -30,7 +30,7 @@ import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.models import AgentRelease, AllowedEmail, Bookmark, BookmarkCollection, ChatMessage, ChatSession, DocPage, DocSite, DocumentVersion, Knowledge, McpApiKey, Project, ProjectDocument, RemoteAgent, RemoteExecLog, RemoteWorkspace, Task, User
+from app.models import AgentRelease, AllowedEmail, Bookmark, BookmarkCollection, ChatMessage, ChatSession, DocPage, DocSite, DocumentVersion, Knowledge, McpApiKey, McpToolCallEvent, McpToolUsageBucket, Project, ProjectDocument, RemoteAgent, RemoteExecLog, RemoteWorkspace, Task, User
 from app.models.project import ProjectMember
 from app.models.user import AuthType
 from app.core.redis import get_redis
@@ -41,7 +41,7 @@ from app.core.security import create_access_token, hash_password
 # Session スコープ: DB / Redis の初期化
 # ---------------------------------------------------------------------------
 
-_ALL_MODELS = [User, AllowedEmail, Project, Task, McpApiKey, Knowledge, ProjectDocument, DocumentVersion, DocSite, DocPage, Bookmark, BookmarkCollection, RemoteAgent, RemoteWorkspace, RemoteExecLog, AgentRelease, ChatSession, ChatMessage]
+_ALL_MODELS = [User, AllowedEmail, Project, Task, McpApiKey, McpToolUsageBucket, McpToolCallEvent, Knowledge, ProjectDocument, DocumentVersion, DocSite, DocPage, Bookmark, BookmarkCollection, RemoteAgent, RemoteWorkspace, RemoteExecLog, AgentRelease, ChatSession, ChatMessage]
 
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
@@ -84,7 +84,7 @@ async def _setup_infra():
 @pytest.fixture(scope="session")
 def test_app(_setup_infra):
     """テスト用 FastAPI アプリ (lifespan なし、ルーターのみ)"""
-    from app.api.v1.endpoints import attachments, auth, backup, bookmark_assets, bookmarks, chat, docsites, documents, events, knowledge, mcp_keys, projects, tasks, users, workspaces
+    from app.api.v1.endpoints import attachments, auth, backup, bookmark_assets, bookmarks, chat, docsites, documents, events, knowledge, mcp_keys, mcp_usage, projects, tasks, users, workspaces
 
     app = FastAPI()
     app.include_router(auth.router, prefix="/api/v1")
@@ -103,6 +103,7 @@ def test_app(_setup_infra):
     app.include_router(backup.router, prefix="/api/v1")
     app.include_router(workspaces.router, prefix="/api/v1")
     app.include_router(chat.router, prefix="/api/v1")
+    app.include_router(mcp_usage.router, prefix="/api/v1")
     return app
 
 

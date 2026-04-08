@@ -5,6 +5,7 @@ from .docsite import DocPage, DocSite, DocSiteSection
 from .document import DocumentCategory, DocumentVersion, ProjectDocument
 from .knowledge import Knowledge
 from .mcp_api_key import McpApiKey
+from .mcp_tool_usage import McpToolCallEvent, McpToolUsageBucket
 from .project import Project, ProjectMember
 from .task import Attachment, Comment, Task
 from .remote import AgentRelease, RemoteAgent, RemoteExecLog, RemoteWorkspace
@@ -20,6 +21,8 @@ __all__ = [
     "Attachment",
     "Comment",
     "McpApiKey",
+    "McpToolUsageBucket",
+    "McpToolCallEvent",
     "Knowledge",
     "ProjectDocument",
     "DocumentCategory",
