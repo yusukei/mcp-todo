@@ -240,7 +240,7 @@ graph TB
 - `index:tasks` Redis Stream consumer (consumer group `indexer`)
 - `clip:requests` Redis Stream consumer (consumer group `clipper`)
 - Periodic full reindex / compaction loops (existing `flush_loop`s)
-- Its own `/metrics` endpoint on a separate port (`8001`)
+- Its own `/health` endpoint (no `/metrics` — Prometheus instrumentation was removed in `ecaba9d`)
 
 **Does NOT own:**
 - ❌ HTTP API routes (`ENABLE_API=0`)
@@ -249,7 +249,7 @@ graph TB
 - ❌ Agent WebSocket endpoint
 
 **Startup hooks gated by env vars:**
-- `ENABLE_API=0` → skip router mounting, mount only `/health` and `/metrics`
+- `ENABLE_API=0` → skip router mounting, mount only `/health`
 - `ENABLE_INDEXERS=1` → run `_init_search_index` registry, attach
   `flush_loop` tasks
 - `ENABLE_CLIP_QUEUE=1` → run `clip_queue.start()` and `recover_pending`
@@ -397,7 +397,7 @@ sequenceDiagram
 
 | Variable | Default | API | Indexer | Purpose |
 |---|---|---|---|---|
-| `ENABLE_API` | `1` | `1` | `0` | Mount FastAPI routes (otherwise only `/health`, `/metrics`) |
+| `ENABLE_API` | `1` | `1` | `0` | Mount FastAPI routes (otherwise only `/health`) |
 | `ENABLE_INDEXERS` | `1` | `0` | `1` | Run Tantivy `IndexWriter` initialisation + flush loops |
 | `ENABLE_CLIP_QUEUE` | `1` | `0` | `1` | Run `clip_queue.start()` and `recover_pending` |
 | `WEB_CONCURRENCY` | `1` | `2` | `1` | uvicorn worker count (1 for indexer is mandatory) |
@@ -456,9 +456,8 @@ on the API workers from corrupting the index.
 
 ### nginx.conf additions
 
-No changes required for the API path. Optional: a separate
-`/metrics-indexer` location that proxies to the indexer's port `8001`
-for Prometheus scraping (still blocked from external by default).
+No changes required. The `/metrics` location block was removed
+along with the Prometheus instrumentation (commit `ecaba9d`).
 
 ---
 
@@ -472,8 +471,9 @@ for Prometheus scraping (still blocked from external by default).
 - Wrap `clip_queue.start()` and `recover_pending` in
   `if settings.ENABLE_CLIP_QUEUE`.
 - Wrap router `include_router` calls in `if settings.ENABLE_API`.
-- Add `/health` and `/metrics` always (regardless of `ENABLE_API`).
-- Test: existing 1251 tests stay green at default config.
+- Add `/health` always (regardless of `ENABLE_API`) so both
+  containers can be health-checked by docker-compose.
+- Test: existing 1245 tests stay green at default config.
 - **Risk**: zero (defaults preserve current behaviour).
 
 ### PR 2 — Index notification contract
@@ -529,8 +529,8 @@ for Prometheus scraping (still blocked from external by default).
 - Bump `WEB_CONCURRENCY` default to `2` for the API container.
 - **Manual smoke test**: create a task / bookmark / knowledge entry,
   observe it in Mongo immediately, observe it in search results
-  within ~1 s. Verify `/metrics` on both containers. Verify chat,
-  remote agent RPCs.
+  within ~1 s. Verify chat and remote agent RPCs work across
+  workers.
 - **Risk**: high — this is the production cutover. Roll back by
   setting `WEB_CONCURRENCY=1`, `ENABLE_INDEXERS=1`,
   `ENABLE_CLIP_QUEUE=1` on the API container and removing the
@@ -560,14 +560,14 @@ designed into the re-introduction from day one.
 | Integration | API + Mongo + fakeredis: insert task → assert `XADD` happened on the stream | pytest |
 | Integration | Indexer consumer: inject XADD payload → assert Tantivy write | pytest |
 | End-to-end | Full docker-compose with the sidecar running, real Redis Streams, real Tantivy | docker-compose.test.yml |
-| Load test | 24 h soak with `WEB_CONCURRENCY=2`, mixed bookmark imports + chat sessions + remote_exec calls | locust + Prometheus dashboards |
+| Load test | 24 h soak with `WEB_CONCURRENCY=2`, mixed bookmark imports + chat sessions + remote_exec calls | locust + container logs (no Prometheus dashboards — instrumentation was removed) |
 
 The **end-to-end docker-compose test** is the gating test for
 PR 5: it must run for at least 24 h without index corruption,
 duplicate clips, lost chat messages, or memory leaks before we
 flip the production default.
 
-The existing 1251 unit tests cover the API + agent_bus +
+The existing 1245 unit tests cover the API + agent_bus +
 chat_manager paths and should continue to pass after every PR.
 PR 1 explicitly adds a "default config" smoke test that boots the
 manager with all `ENABLE_*=1` to confirm we have not broken the
@@ -641,7 +641,7 @@ single-process path.
 | # | Risk | Likelihood | Mitigation |
 |---|---|---|---|
 | R1 | Read-after-write semantics broken for users who expect newly-created items to appear in search immediately | High | Document the 1 s lag in the API response; the admin UI reads from Mongo not search, so the lag is invisible for the common case |
-| R2 | Indexer crashes silently and the stream backlog grows unbounded | Medium | `MAXLEN ~ 100000` cap + `/metrics` `index_stream_lag` gauge + Grafana alert at lag > 10k |
+| R2 | Indexer crashes silently and the stream backlog grows unbounded | Medium | `MAXLEN ~ 100000` cap + periodic `XLEN index:tasks` check from the indexer's `/health` endpoint (returns 503 if lag > 10k) so docker-compose restart triggers automatically |
 | R3 | Notification / consumption schema drift between API and indexer (they ship independently in theory) | Medium | Keep both in the **same Docker image** so they always share the same code version. Document this in `Dockerfile` |
 | R4 | Existing in-process index writes (used by tests) and stream-based writes diverge subtly | High | PR 1's test gate: every existing search test runs against both the in-process and the consumer-driven indexer. CI must run both modes |
 | R5 | docker-compose newcomers do not realise the indexer container is mandatory | Medium | `README.md` deployment section explicitly says "the indexer sidecar is required when WEB_CONCURRENCY > 1"; nginx returns 503 from `/health` if the indexer is missing |
@@ -682,7 +682,7 @@ did NOT meet this DoD and was retroactively reopened on
 | `backend/app/mcp/tools/{tasks,bookmarks,knowledge,documents}.py` | 2 | Same pattern for MCP tool writes |
 | `backend/Dockerfile` | 4 | `CMD` becomes a thin shell wrapper that respects `ENABLE_*` |
 | `docker-compose.yml` | 4, 5 | New `backend-indexer` service; default env on `backend` flips to API-only |
-| `nginx/nginx.conf` | 5 (optional) | `/metrics-indexer` proxy if Prometheus scraping is enabled |
+| `nginx/nginx.conf` | — | No changes (the `/metrics` block was removed in commit `ecaba9d`) |
 | `backend/tests/integration/test_indexer_consumer.py` (new) | 3 | Stream → fetch → write integration test |
 | `backend/tests/integration/test_multi_worker_e2e.py` (new) | 5 | docker-compose-driven 24 h smoke |
 | `backend/tests/unit/test_chat_manager.py` | (existing, done) | `6b3d515` |
@@ -709,8 +709,9 @@ did NOT meet this DoD and was retroactively reopened on
   to subsequent reads. Mongo writes have RAW immediately; index
   writes have RAW within ~1 s.
 - **`worker_id`**: a process-unique uuid4 generated at startup,
-  used by `RedisAgentBus` for routing and (PR 6) by Prometheus
-  metrics labels.
+  used by `RedisAgentBus` for routing. (It was briefly considered
+  as a Prometheus metric label too, but the metrics were removed
+  in commit `ecaba9d`.)
 
 ---
 
