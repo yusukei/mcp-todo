@@ -338,17 +338,21 @@ class TestGoogleCallbackBoundary:
         with patch(
             "app.api.v1.endpoints.auth.google.AsyncOAuth2Client", return_value=mock_oauth
         ):
+            client.cookies.clear()
             resp = await client.get(
-                "/api/v1/auth/google/callback?code=fake-code&state=consume-test"
+                "/api/v1/auth/google/callback?code=fake-code&state=consume-test",
+                cookies={"oauth_state": "consume-test"},
             )
         assert resp.status_code == 200
 
         # state が Redis から削除されていることを確認
         assert await redis.get("oauth:state:consume-test") is None
 
-        # 同じ state で再度リクエストすると 400
+        # 同じ state で再度リクエストすると 400 (cookie 越しに同じ state を送っても Redis 側で消費済み)
+        client.cookies.clear()
         resp = await client.get(
-            "/api/v1/auth/google/callback?code=fake-code&state=consume-test"
+            "/api/v1/auth/google/callback?code=fake-code&state=consume-test",
+            cookies={"oauth_state": "consume-test"},
         )
         assert resp.status_code == 400
 
@@ -375,8 +379,10 @@ class TestGoogleCallbackBoundary:
         with patch(
             "app.api.v1.endpoints.auth.google.AsyncOAuth2Client", return_value=mock_oauth
         ):
+            client.cookies.clear()
             resp = await client.get(
-                "/api/v1/auth/google/callback?code=fake-code&state=test-state"
+                "/api/v1/auth/google/callback?code=fake-code&state=test-state",
+                cookies={"oauth_state": "test-state"},
             )
         assert resp.status_code == 403
 
@@ -406,8 +412,10 @@ class TestGoogleCallbackBoundary:
         with patch(
             "app.api.v1.endpoints.auth.google.AsyncOAuth2Client", return_value=mock_oauth
         ):
+            client.cookies.clear()
             resp = await client.get(
-                "/api/v1/auth/google/callback?code=fake-code&state=test-state-2"
+                "/api/v1/auth/google/callback?code=fake-code&state=test-state-2",
+                cookies={"oauth_state": "test-state-2"},
             )
 
         assert resp.status_code == 200
@@ -417,3 +425,186 @@ class TestGoogleCallbackBoundary:
         user = await User.find_one(User.email == "newuser@example.com")
         assert user is not None
         assert user.auth_type == AuthType.google
+
+
+def _patched_oauth_response(email: str, name: str = "U", sub: str = "g-sub", picture: str | None = None):
+    """Build an AsyncOAuth2Client mock that returns a fixed userinfo dict."""
+    from unittest.mock import AsyncMock, MagicMock
+    info: dict[str, str | None] = {"email": email, "name": name, "sub": sub}
+    if picture is not None:
+        info["picture"] = picture
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = info
+    mock_oauth = AsyncMock()
+    mock_oauth.fetch_token = AsyncMock(return_value={"access_token": "fake"})
+    mock_oauth.get = AsyncMock(return_value=mock_resp)
+    mock_oauth.__aenter__ = AsyncMock(return_value=mock_oauth)
+    mock_oauth.__aexit__ = AsyncMock(return_value=False)
+    return mock_oauth
+
+
+class TestGoogleCallbackStateBinding:
+    """G1: state cookie の double-submit 検証
+
+    攻撃者が自分の Google アカウントで OAuth を開始し、生成された
+    state を被害者のブラウザに踏ませる「login CSRF」を防ぐため、
+    /google/callback は ?state=... と oauth_state cookie の一致を要求する。
+    """
+
+    async def test_callback_rejects_when_cookie_missing(self, client):
+        """cookie が無い場合は 400 (リダイレクトを直接踏んだケース)"""
+        from app.core.redis import get_redis
+        redis = get_redis()
+        await redis.set("oauth:state:no-cookie", "1", ex=600)
+
+        client.cookies.clear()
+        resp = await client.get(
+            "/api/v1/auth/google/callback?code=fake&state=no-cookie",
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Invalid state"
+
+    async def test_callback_rejects_when_cookie_mismatch(self, client):
+        """cookie の値と URL の state が一致しない → 400 (login CSRF 防止)"""
+        from app.core.redis import get_redis
+        redis = get_redis()
+        await redis.set("oauth:state:victim-state", "1", ex=600)
+
+        client.cookies.clear()
+        resp = await client.get(
+            "/api/v1/auth/google/callback?code=fake&state=victim-state",
+            cookies={"oauth_state": "attacker-state"},
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "Invalid state"
+
+    async def test_login_redirect_sets_state_cookie(self, client):
+        """/google エンドポイントは oauth_state cookie を Set する"""
+        client.cookies.clear()
+        resp = await client.get("/api/v1/auth/google", follow_redirects=False)
+        assert resp.status_code == 307
+        cookies_set = resp.headers.get_list("set-cookie")
+        oauth_state_cookie = next(
+            (c for c in cookies_set if c.startswith("oauth_state=")),
+            None,
+        )
+        assert oauth_state_cookie is not None
+        assert "HttpOnly" in oauth_state_cookie
+        assert "Path=/api/v1/auth/google" in oauth_state_cookie
+
+
+class TestGoogleCallbackUserBranches:
+    """既存ユーザー更新 / 非active / DuplicateKeyError race のテスト"""
+
+    async def test_callback_updates_existing_google_user(self, client):
+        """既存 Google ユーザーは name/picture/google_id が更新される"""
+        from unittest.mock import patch
+        from app.core.redis import get_redis
+
+        await AllowedEmail(email="existing@example.com").insert()
+        existing = User(
+            email="existing@example.com",
+            name="Old Name",
+            auth_type=AuthType.google,
+            google_id="old-sub",
+            picture_url="https://old.example.com/pic.jpg",
+        )
+        await existing.insert()
+
+        redis = get_redis()
+        await redis.set("oauth:state:upd-state", "1", ex=600)
+
+        with patch(
+            "app.api.v1.endpoints.auth.google.AsyncOAuth2Client",
+            return_value=_patched_oauth_response(
+                "existing@example.com",
+                name="New Name",
+                sub="new-sub",
+                picture="https://new.example.com/pic.jpg",
+            ),
+        ):
+            client.cookies.clear()
+            resp = await client.get(
+                "/api/v1/auth/google/callback?code=fake&state=upd-state",
+                cookies={"oauth_state": "upd-state"},
+            )
+
+        assert resp.status_code == 200
+        refreshed = await User.find_one(User.email == "existing@example.com")
+        assert refreshed is not None
+        assert refreshed.name == "New Name"
+        assert refreshed.google_id == "new-sub"
+        assert refreshed.picture_url == "https://new.example.com/pic.jpg"
+
+    async def test_callback_inactive_user_returns_403(self, client):
+        """is_active=False のユーザーは Google 経由でも 403"""
+        from unittest.mock import patch
+        from app.core.redis import get_redis
+
+        await AllowedEmail(email="inactive-google@example.com").insert()
+        u = User(
+            email="inactive-google@example.com",
+            name="Inactive",
+            auth_type=AuthType.google,
+            google_id="g-inactive",
+            is_active=False,
+        )
+        await u.insert()
+
+        redis = get_redis()
+        await redis.set("oauth:state:inact-state", "1", ex=600)
+
+        with patch(
+            "app.api.v1.endpoints.auth.google.AsyncOAuth2Client",
+            return_value=_patched_oauth_response("inactive-google@example.com"),
+        ):
+            client.cookies.clear()
+            resp = await client.get(
+                "/api/v1/auth/google/callback?code=fake&state=inact-state",
+                cookies={"oauth_state": "inact-state"},
+            )
+        assert resp.status_code == 403
+        assert resp.json()["detail"] == "Account disabled"
+
+    async def test_callback_duplicate_key_race_recovers(self, client):
+        """並行登録で DuplicateKeyError → 既存レコードを返す経路"""
+        from unittest.mock import patch
+        from pymongo.errors import DuplicateKeyError
+        from app.core.redis import get_redis
+
+        await AllowedEmail(email="race@example.com").insert()
+        # 別のリクエストが既に作っていた状況をシミュレートするため、
+        # User.insert を DuplicateKeyError でこかす一方、find_one は
+        # 既存ユーザーを返すよう先に挿入しておく。
+        pre_existing = User(
+            email="race@example.com",
+            name="Race Winner",
+            auth_type=AuthType.google,
+            google_id="race-sub",
+        )
+        await pre_existing.insert()
+
+        redis = get_redis()
+        await redis.set("oauth:state:race-state", "1", ex=600)
+
+        # User.insert を DuplicateKeyError で上書き → race の起きた側
+        original_insert = User.insert
+
+        async def _raise_dup(self):  # type: ignore[no-untyped-def]
+            raise DuplicateKeyError("simulated race")
+
+        User.insert = _raise_dup  # type: ignore[method-assign]
+        try:
+            with patch(
+                "app.api.v1.endpoints.auth.google.AsyncOAuth2Client",
+                return_value=_patched_oauth_response("race@example.com"),
+            ):
+                client.cookies.clear()
+                resp = await client.get(
+                    "/api/v1/auth/google/callback?code=fake&state=race-state",
+                    cookies={"oauth_state": "race-state"},
+                )
+        finally:
+            User.insert = original_insert  # type: ignore[method-assign]
+
+        assert resp.status_code == 200

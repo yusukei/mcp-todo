@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
@@ -41,6 +42,19 @@ router = APIRouter()
 _WEBAUTHN_CHALLENGE_TTL = 300  # 5 minutes
 
 
+def _require_local_user(user: User) -> None:
+    """Reject WebAuthn API access from non-local (Google etc.) users.
+
+    Passkeys are only meaningful for the password/admin auth path; a
+    Google-authenticated user would be relying on Google's own MFA.
+    """
+    if user.auth_type != AuthType.admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Passkey is only available for local users",
+        )
+
+
 def _b64url_encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 
@@ -58,13 +72,18 @@ class WebAuthnCredentialResponse(BaseModel):
     created_at: str
 
 
+# `credential` is the SimpleWebAuthn-shaped registration / authentication
+# response from the browser. We treat it as opaque JSON here and let
+# `parse_*_credential_json` validate the structure inside the handler;
+# this keeps Pydantic from rejecting valid SimpleWebAuthn payloads
+# whose schema we do not own.
 class WebAuthnRegisterVerifyRequest(BaseModel):
-    credential: dict
+    credential: dict[str, Any]
     name: str = ""
 
 
 class WebAuthnAuthenticateVerifyRequest(BaseModel):
-    credential: dict
+    credential: dict[str, Any]
 
 
 class WebAuthnAuthenticateOptionsRequest(BaseModel):
@@ -78,8 +97,7 @@ class PasswordDisabledRequest(BaseModel):
 @router.post("/webauthn/register/options")
 async def webauthn_register_options(user: User = Depends(get_current_user)) -> dict:
     """Generate registration options for the current user (admin only)."""
-    if user.auth_type != AuthType.admin:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Passkey is only available for local users")
+    _require_local_user(user)
 
     exclude_credentials = [
         PublicKeyCredentialDescriptor(id=_b64url_decode(c.credential_id))
@@ -122,8 +140,7 @@ async def webauthn_register_verify(
     user: User = Depends(get_current_user),
 ) -> WebAuthnCredentialResponse:
     """Verify registration and store the new credential."""
-    if user.auth_type != AuthType.admin:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Passkey is only available for local users")
+    _require_local_user(user)
 
     redis = get_redis()
     challenge_b64 = await redis.get(f"webauthn:reg:{user.id}")
@@ -333,8 +350,7 @@ async def webauthn_toggle_password(
     user: User = Depends(get_current_user),
 ) -> dict:
     """Enable or disable password login. Requires at least one passkey to disable."""
-    if user.auth_type != AuthType.admin:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only available for local users")
+    _require_local_user(user)
     if body.disabled and not user.webauthn_credentials:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

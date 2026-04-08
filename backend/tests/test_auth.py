@@ -11,7 +11,7 @@ import jwt
 import pytest
 
 from app.core.config import settings
-from app.api.v1.endpoints import auth as _auth_module
+from app.api.v1.endpoints.auth._shared import _LOGIN_MAX_ATTEMPTS
 from app.core.security import ALGORITHM, create_refresh_token
 
 
@@ -56,7 +56,7 @@ class TestLogin:
 
     async def test_login_rate_limit_after_max_attempts(self, client, admin_user):
         """5回連続で失敗するとレートリミット (429)"""
-        for _ in range(_auth_module._LOGIN_MAX_ATTEMPTS):
+        for _ in range(_LOGIN_MAX_ATTEMPTS):
             await client.post(
                 "/api/v1/auth/login",
                 json={"username": "admin@test.com", "password": "wrongpass"},
@@ -71,7 +71,7 @@ class TestLogin:
 
     async def test_login_rate_limit_blocks_correct_password_too(self, client, admin_user):
         """レートリミット中は正しいパスワードでも 429"""
-        for _ in range(_auth_module._LOGIN_MAX_ATTEMPTS):
+        for _ in range(_LOGIN_MAX_ATTEMPTS):
             await client.post(
                 "/api/v1/auth/login",
                 json={"username": "admin@test.com", "password": "wrongpass"},
@@ -85,7 +85,7 @@ class TestLogin:
 
     async def test_login_rate_limit_is_per_email(self, client, admin_user):
         """レートリミットはメールアドレスごとに独立"""
-        for _ in range(_auth_module._LOGIN_MAX_ATTEMPTS):
+        for _ in range(_LOGIN_MAX_ATTEMPTS):
             await client.post(
                 "/api/v1/auth/login",
                 json={"username": "admin@test.com", "password": "wrongpass"},
@@ -101,7 +101,7 @@ class TestLogin:
     async def test_successful_login_clears_rate_limit(self, client, admin_user):
         """ログイン成功で失敗カウンターがリセットされる"""
         # Accumulate 4 failures (just below the limit)
-        for _ in range(_auth_module._LOGIN_MAX_ATTEMPTS - 1):
+        for _ in range(_LOGIN_MAX_ATTEMPTS - 1):
             await client.post(
                 "/api/v1/auth/login",
                 json={"username": "admin@test.com", "password": "wrongpass"},
@@ -115,7 +115,7 @@ class TestLogin:
         assert resp.status_code == 200
 
         # Now 5 more failures should be needed to trigger rate limit
-        for _ in range(_auth_module._LOGIN_MAX_ATTEMPTS - 1):
+        for _ in range(_LOGIN_MAX_ATTEMPTS - 1):
             await client.post(
                 "/api/v1/auth/login",
                 json={"username": "admin@test.com", "password": "wrongpass"},
@@ -345,7 +345,7 @@ class TestRefreshRateLimitBypass:
         refresh_token = login_resp.json()["refresh_token"]
 
         # Trigger login rate limit
-        for _ in range(_auth_module._LOGIN_MAX_ATTEMPTS):
+        for _ in range(_LOGIN_MAX_ATTEMPTS):
             await client.post(
                 "/api/v1/auth/login",
                 json={"username": "admin@test.com", "password": "wrongpass"},
@@ -381,7 +381,7 @@ class TestRefreshRateLimitBypass:
         assert first_resp.status_code == 200
 
         # All subsequent attempts with the same token fail
-        for _ in range(_auth_module._LOGIN_MAX_ATTEMPTS):
+        for _ in range(_LOGIN_MAX_ATTEMPTS):
             resp = await client.post(
                 "/api/v1/auth/refresh",
                 cookies={"refresh_token": stolen_token},

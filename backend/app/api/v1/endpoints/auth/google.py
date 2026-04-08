@@ -7,7 +7,7 @@ import secrets
 
 import httpx
 from authlib.integrations.httpx_client import AsyncOAuth2Client, OAuthError
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, HTTPException, Response, status
 from fastapi.responses import RedirectResponse
 from pymongo.errors import DuplicateKeyError
 
@@ -26,6 +26,37 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 
+# State double-submit cookie. The /google route plants this cookie on
+# the browser that initiated the flow; /google/callback rejects the
+# request unless the cookie matches the `state` query parameter. This
+# closes a "login CSRF" hole where an attacker could start an OAuth
+# flow against their own Google account, then trick a victim into
+# completing it (the victim would end up logged in as the attacker).
+_OAUTH_STATE_COOKIE = "oauth_state"
+
+
+def _set_oauth_state_cookie(response: Response, state: str) -> None:
+    response.set_cookie(
+        key=_OAUTH_STATE_COOKIE,
+        value=state,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        # Lax is required: Google bounces the user back via a top-level
+        # navigation, and Strict would strip the cookie on that hop.
+        samesite="lax",
+        path="/api/v1/auth/google",
+        max_age=_OAUTH_STATE_TTL,
+        domain=settings.COOKIE_DOMAIN or None,
+    )
+
+
+def _clear_oauth_state_cookie(response: Response) -> None:
+    response.delete_cookie(
+        _OAUTH_STATE_COOKIE,
+        path="/api/v1/auth/google",
+        domain=settings.COOKIE_DOMAIN or None,
+    )
+
 
 @router.get("/google")
 async def google_login() -> RedirectResponse:
@@ -39,16 +70,32 @@ async def google_login() -> RedirectResponse:
         scope="openid email profile",
     )
     url, _ = client.create_authorization_url(GOOGLE_AUTH_URL, state=state)
-    return RedirectResponse(url)
+    redirect = RedirectResponse(url)
+    _set_oauth_state_cookie(redirect, state)
+    return redirect
 
 
 @router.get("/google/callback", response_model=TokenResponse)
-async def google_callback(code: str, state: str, response: Response) -> TokenResponse:
+async def google_callback(
+    code: str,
+    state: str,
+    response: Response,
+    oauth_state: str | None = Cookie(default=None, alias=_OAUTH_STATE_COOKIE),
+) -> TokenResponse:
+    # Double-submit: the state in the URL must match the state in the
+    # cookie that we planted on this very browser when the flow started.
+    # secrets.compare_digest avoids leaking timing information.
+    if not oauth_state or not secrets.compare_digest(oauth_state, state):
+        _clear_oauth_state_cookie(response)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid state")
+
     redis = get_redis()
     key = f"oauth:state:{state}"
     if not await redis.get(key):
+        _clear_oauth_state_cookie(response)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid state")
     await redis.delete(key)
+    _clear_oauth_state_cookie(response)
 
     async with AsyncOAuth2Client(
         client_id=settings.GOOGLE_CLIENT_ID,

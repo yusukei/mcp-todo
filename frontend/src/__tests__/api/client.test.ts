@@ -137,4 +137,31 @@ describe('api client cookie refresh', () => {
 
     expect(refreshCalled).toBe(false)
   })
+
+  it('does intercept /auth/refresh-like endpoints that are not the loop paths', async () => {
+    // Regression test for the prefix-vs-substring change. A
+    // hypothetical endpoint named /auth/refresher MUST still be
+    // refreshed-on-401 because only "/auth/refresh" + ("/" | "?" | EOL)
+    // counts as the loop path.
+    let refreshCalled = false
+    let resourceCalls = 0
+    server.use(
+      http.get('/api/v1/auth/refresher', () => {
+        resourceCalls++
+        if (resourceCalls === 1) {
+          return HttpResponse.json({ detail: 'Unauthorized' }, { status: 401 })
+        }
+        return HttpResponse.json({ ok: true })
+      }),
+      http.post('/api/v1/auth/refresh', () => {
+        refreshCalled = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    const res = await api.get('/auth/refresher')
+    expect(res.data).toEqual({ ok: true })
+    expect(refreshCalled).toBe(true)
+    expect(resourceCalls).toBe(2)
+  })
 })

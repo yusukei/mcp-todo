@@ -9,7 +9,7 @@ import pytest
 from fastapi import HTTPException
 from unittest.mock import patch
 
-from app.api.v1.endpoints.auth import (
+from app.api.v1.endpoints.auth._shared import (
     _check_rate_limit,
     _clear_login_attempts,
     _record_failed_login,

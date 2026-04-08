@@ -428,3 +428,150 @@ async def test_toggle_password_google_user_rejected(client: AsyncClient, regular
         json={"disabled": True},
     )
     assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Challenge user binding (G1 / WebAuthn spec compliance)
+# ---------------------------------------------------------------------------
+
+
+@patch("app.api.v1.endpoints.auth.webauthn.verify_authentication_response")
+async def test_authenticate_verify_rejects_cross_user_challenge(
+    mock_verify, client: AsyncClient, admin_user
+):
+    """Challenge issued for user A must NOT be consumable by user B's credential.
+
+    Setup:
+      - Two admin users, each with their own passkey
+      - Issue an authentication challenge for user A (email pre-filter)
+      - Try to consume that same challenge with user B's credential
+    Expectation:
+      - 401 "Challenge user mismatch"
+    """
+    cred_a = b"\xa1\xa2\xa3"
+    cred_b = b"\xb1\xb2\xb3"
+
+    # User A (the original admin_user fixture)
+    admin_user.webauthn_credentials = [
+        WebAuthnCredential(
+            credential_id=_b64url_encode(cred_a),
+            public_key=_b64url_encode(b"pk-a"),
+            sign_count=0,
+            name="A's Key",
+        )
+    ]
+    await admin_user.save_updated()
+
+    # User B — second admin
+    user_b = User(
+        email="userb@test.com",
+        name="User B",
+        password_hash=hash_password("pwbpwbpw"),
+        auth_type=AuthType.admin,
+        is_admin=True,
+        webauthn_credentials=[
+            WebAuthnCredential(
+                credential_id=_b64url_encode(cred_b),
+                public_key=_b64url_encode(b"pk-b"),
+                sign_count=0,
+                name="B's Key",
+            )
+        ],
+    )
+    await user_b.insert()
+
+    # Issue authentication options scoped to user A.
+    options_resp = await client.post(
+        "/api/v1/auth/webauthn/authenticate/options",
+        json={"email": admin_user.email},
+    )
+    assert options_resp.status_code == 200
+    challenge = options_resp.json()["challenge"]
+
+    # Mock the underlying crypto so the test only exercises *our*
+    # binding logic — the lib would otherwise reject the fake assertion.
+    mock_result = MagicMock()
+    mock_result.new_sign_count = 1
+    mock_verify.return_value = mock_result
+
+    client_data = json.dumps({
+        "type": "webauthn.get",
+        "challenge": challenge,
+        "origin": "http://localhost:3000",
+    }).encode()
+
+    # Try to consume A's challenge with B's credential.
+    resp = await client.post(
+        "/api/v1/auth/webauthn/authenticate/verify",
+        json={
+            "credential": {
+                "id": _b64url_encode(cred_b),
+                "rawId": _b64url_encode(cred_b),
+                "response": {
+                    "authenticatorData": _b64url_encode(b"fake"),
+                    "clientDataJSON": _b64url_encode(client_data),
+                    "signature": _b64url_encode(b"fake"),
+                },
+                "type": "public-key",
+                "authenticatorAttachment": "platform",
+            }
+        },
+    )
+    assert resp.status_code == 401
+    assert "mismatch" in resp.json()["detail"].lower()
+
+
+@patch("app.api.v1.endpoints.auth.webauthn.verify_authentication_response")
+async def test_discoverable_challenge_accepts_any_user(
+    mock_verify, client: AsyncClient, admin_user
+):
+    """email を指定せずに発行した challenge ("*") はどのユーザのクレデンシャルでも通る。
+
+    これは passkey の "discoverable credential" フローで必要な挙動。
+    user-bind の追加で誤って壊していないことを確認する。
+    """
+    cred_id = b"\xc1\xc2\xc3"
+    admin_user.webauthn_credentials = [
+        WebAuthnCredential(
+            credential_id=_b64url_encode(cred_id),
+            public_key=_b64url_encode(b"pk"),
+            sign_count=0,
+            name="Discoverable",
+        )
+    ]
+    await admin_user.save_updated()
+
+    # email 指定なし → "*" として保存
+    options_resp = await client.post(
+        "/api/v1/auth/webauthn/authenticate/options",
+        json={},
+    )
+    challenge = options_resp.json()["challenge"]
+
+    mock_result = MagicMock()
+    mock_result.new_sign_count = 1
+    mock_verify.return_value = mock_result
+
+    client_data = json.dumps({
+        "type": "webauthn.get",
+        "challenge": challenge,
+        "origin": "http://localhost:3000",
+    }).encode()
+
+    resp = await client.post(
+        "/api/v1/auth/webauthn/authenticate/verify",
+        json={
+            "credential": {
+                "id": _b64url_encode(cred_id),
+                "rawId": _b64url_encode(cred_id),
+                "response": {
+                    "authenticatorData": _b64url_encode(b"fake"),
+                    "clientDataJSON": _b64url_encode(client_data),
+                    "signature": _b64url_encode(b"fake"),
+                },
+                "type": "public-key",
+                "authenticatorAttachment": "platform",
+            }
+        },
+    )
+    assert resp.status_code == 200
