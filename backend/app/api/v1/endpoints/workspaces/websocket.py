@@ -36,7 +36,13 @@ router = APIRouter()
 
 
 async def _server_ping_loop(ws: WebSocket, agent_id: str) -> None:
-    """Send periodic pings to detect dead connections from the server side."""
+    """Send periodic pings to detect dead connections from the server side.
+
+    A failed send means the connection is dead — this is an expected
+    termination signal, not an error. We still include ``exc_info`` so
+    operators can see *why* the send failed (timeout vs. broken pipe
+    vs. WS state drift) when debugging agents that keep disconnecting.
+    """
     while True:
         await asyncio.sleep(PING_INTERVAL)
         try:
@@ -44,9 +50,30 @@ async def _server_ping_loop(ws: WebSocket, agent_id: str) -> None:
                 ws.send_text(json.dumps({"type": "ping"})),
                 timeout=PING_TIMEOUT,
             )
-        except Exception:
-            logger.info("Agent %s: ping failed, connection appears dead", agent_id)
+        except (asyncio.TimeoutError, WebSocketDisconnect, RuntimeError, OSError) as e:
+            logger.info(
+                "Agent %s: ping failed, connection appears dead: %s",
+                agent_id, e, exc_info=e,
+            )
             break
+
+
+async def _safe_close(ws: WebSocket, *, code: int, reason: str) -> None:
+    """Best-effort ``ws.close`` that logs — never silently swallows — failures.
+
+    Close is called from error paths where the connection may already
+    be half-dead, so a close failure is usually benign (the socket is
+    going away anyway). We still emit a debug-level log with
+    ``exc_info`` so ws lifecycle anomalies are visible to operators
+    instead of vanishing into an ``except: pass``.
+    """
+    try:
+        await ws.close(code=code, reason=reason)
+    except (RuntimeError, OSError, WebSocketDisconnect) as e:
+        logger.info(
+            "agent_websocket: ws.close(code=%s) failed (already closed?): %s",
+            code, e, exc_info=e,
+        )
 
 
 def _allowed_origins() -> set[str]:
@@ -86,28 +113,31 @@ async def agent_websocket(ws: WebSocket):
     try:
         raw = await asyncio.wait_for(ws.receive_text(), timeout=10.0)
         msg = json.loads(raw)
-    except (asyncio.TimeoutError, json.JSONDecodeError, WebSocketDisconnect):
-        try:
-            await ws.close(code=4008, reason="Auth timeout")
-        except Exception:
-            pass
+    except (asyncio.TimeoutError, json.JSONDecodeError, WebSocketDisconnect) as e:
+        logger.info("agent_websocket: auth handshake failed: %s", e, exc_info=e)
+        await _safe_close(ws, code=4008, reason="Auth timeout")
         return
 
     if msg.get("type") != "auth" or not msg.get("token"):
-        try:
-            await ws.close(code=4008, reason="Expected auth message")
-        except Exception:
-            pass
+        logger.warning(
+            "agent_websocket: first message was not an auth frame (type=%r)",
+            msg.get("type"),
+        )
+        await _safe_close(ws, code=4008, reason="Expected auth message")
         return
 
     key_hash = hash_api_key(msg["token"])
     agent = await RemoteAgent.find_one({"key_hash": key_hash})
     if not agent:
+        logger.warning("agent_websocket: rejected connection with invalid token")
         try:
             await ws.send_text(json.dumps({"type": "auth_error", "message": "Invalid token"}))
-            await ws.close(code=4008, reason="Invalid agent token")
-        except Exception:
-            pass
+        except (RuntimeError, OSError, WebSocketDisconnect) as e:
+            logger.info(
+                "agent_websocket: could not deliver auth_error frame: %s",
+                e, exc_info=e,
+            )
+        await _safe_close(ws, code=4008, reason="Invalid agent token")
         return
 
     agent_id = str(agent.id)
@@ -116,10 +146,7 @@ async def agent_websocket(ws: WebSocket):
     # Register and close old connection if replaced
     old_ws = agent_manager.register(agent_id, ws)
     if old_ws is not None:
-        try:
-            await old_ws.close(code=1012, reason="Replaced by new connection")
-        except Exception:
-            pass
+        await _safe_close(old_ws, code=1012, reason="Replaced by new connection")
 
     agent.is_online = True
     agent.last_seen_at = datetime.now(UTC)
@@ -137,6 +164,14 @@ async def agent_websocket(ws: WebSocket):
             try:
                 msg = json.loads(raw)
             except json.JSONDecodeError:
+                # Loudly surface protocol drift instead of silently
+                # dropping the frame. Per CLAUDE.md "No error hiding":
+                # malformed input is information the operator needs,
+                # not something to throw away on the floor.
+                logger.warning(
+                    "Agent %s: dropped non-JSON frame: %r",
+                    agent_id, raw[:200],
+                )
                 continue
 
             msg_type = msg.get("type")
@@ -184,8 +219,12 @@ async def agent_websocket(ws: WebSocket):
 
     except WebSocketDisconnect:
         logger.info("Agent disconnected: %s (%s)", agent.name, agent_id)
-    except Exception as e:
-        logger.error("Agent WebSocket error: %s", e)
+    except Exception:
+        # Agent WebSocket dispatcher is the protocol boundary for the
+        # inner message loop; we must log the full traceback before
+        # letting ``finally`` tear the connection down. CLAUDE.md
+        # forbids ``logger.error(..., e)`` without ``exc_info``.
+        logger.exception("Agent WebSocket error (%s)", agent_id)
     finally:
         ping_task.cancel()
         agent_manager.unregister(agent_id, ws)  # Only remove if this is still the current connection
@@ -194,4 +233,12 @@ async def agent_websocket(ws: WebSocket):
         try:
             await agent.save()
         except Exception:
-            pass
+            # Cleanup path: the WS is already tearing down. A failure
+            # to persist the offline flag is a monitoring concern,
+            # not a recoverable one — log the full traceback so it is
+            # visible, but do not re-raise (would mask the triggering
+            # disconnect in the task's parent scope).
+            logger.exception(
+                "Failed to persist agent offline state on disconnect (%s)",
+                agent_id,
+            )

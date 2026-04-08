@@ -138,8 +138,13 @@ def build_update_payload(release: AgentRelease) -> dict:
 async def maybe_push_update(ws: WebSocket, agent: RemoteAgent) -> None:
     """Check whether a newer release exists for ``agent`` and push notification.
 
-    Silently swallows lookup errors so a misconfigured release table never
-    breaks the agent connect handshake.
+    This runs inside the agent WebSocket auth handshake, so we cannot
+    let a release-table lookup or a transient WS send failure tear the
+    connection down. Both fail-cases are logged with a full traceback
+    (CLAUDE.md "No error hiding" — warnings without ``exc_info`` are
+    forbidden) and then swallowed at this explicit boundary. The
+    handshake continues either way; the next reconnect will retry the
+    update push.
     """
     if not agent.auto_update:
         return
@@ -147,8 +152,10 @@ async def maybe_push_update(ws: WebSocket, agent: RemoteAgent) -> None:
         return  # Agent hasn't reported os_type yet
     try:
         latest = await find_latest_release(agent.os_type, agent.update_channel or "stable")
-    except Exception as e:
-        logger.warning("update check: failed to query releases for %s: %s", agent.id, e)
+    except Exception:
+        logger.exception(
+            "update check: failed to query releases for %s", agent.id,
+        )
         return
     if latest is None:
         return
@@ -157,9 +164,12 @@ async def maybe_push_update(ws: WebSocket, agent: RemoteAgent) -> None:
     payload = build_update_payload(latest)
     try:
         await ws.send_text(json.dumps(payload))
-        logger.info(
-            "update_available pushed to agent=%s current=%s latest=%s",
-            agent.id, agent.agent_version, latest.version,
+    except Exception:
+        logger.exception(
+            "update_available send failed for %s", agent.id,
         )
-    except Exception as e:
-        logger.warning("update_available send failed for %s: %s", agent.id, e)
+        return
+    logger.info(
+        "update_available pushed to agent=%s current=%s latest=%s",
+        agent.id, agent.agent_version, latest.version,
+    )

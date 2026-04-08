@@ -803,7 +803,7 @@ async def _grep_with_rg(
             stderr=asyncio.subprocess.PIPE,
         )
     except OSError as e:
-        logger.error("[grep] failed to launch ripgrep at %s: %s", RG_PATH, e)
+        logger.exception("[grep] failed to launch ripgrep at %s", RG_PATH)
         raise RipgrepError(f"failed to launch ripgrep ({RG_PATH}): {e}") from e
 
     logger.info("[grep] ripgrep started (pid=%s); awaiting communicate()", proc.pid)
@@ -940,7 +940,11 @@ async def handle_grep(msg: dict) -> dict:
     try:
         base_dir = _resolve_safe_path(path, cwd)
     except ValueError as e:
-        logger.error("[grep] path validation failed: %s", e)
+        # Known rejection: we return a structured error to the MCP
+        # layer rather than raising, so the full traceback must be
+        # captured here (``logger.exception``) — otherwise the
+        # operator only sees the message string.
+        logger.exception("[grep] path validation failed")
         return {"error": str(e)}
     logger.info("[grep] resolved base_dir=%s", base_dir)
 
@@ -959,8 +963,11 @@ async def handle_grep(msg: dict) -> dict:
         )
     except RipgrepError as e:
         # Known failure modes (launch failure / timeout / non-zero exit)
-        # surface as a structured error to the MCP layer.
-        logger.error("[grep] RipgrepError: %s", e)
+        # surface as a structured error to the MCP layer. We swallow
+        # the exception here because the caller wants a structured
+        # error dict — but we must keep the traceback visible in
+        # logs (CLAUDE.md "No error hiding").
+        logger.exception("[grep] RipgrepError")
         return {"error": str(e)}
     # Any other exception (JSONDecodeError, programmer bugs, …) intentionally
     # propagates. The agent's outer dispatcher will log a stack trace and
@@ -1122,6 +1129,15 @@ class ChatManager:
                 try:
                     event = json.loads(text)
                 except json.JSONDecodeError:
+                    # stream-json from claude should always be valid
+                    # JSON-per-line. A malformed line means the CLI is
+                    # wedged or a future version changed the contract —
+                    # both are operator-visible bugs, not noise to drop
+                    # on the floor. CLAUDE.md "No error hiding".
+                    logger.warning(
+                        "Chat: dropped non-JSON line from claude (session=%s): %r",
+                        session_id, text[:200],
+                    )
                     continue
 
                 if event.get("type") == "result":
@@ -1172,17 +1188,28 @@ class ChatManager:
             if proc and proc.returncode is None:
                 _kill_process(proc)
             raise
-        except Exception as e:
-            logger.error("Chat exception: session=%s, error=%s", session_id, e)
+        except Exception:
+            # Boundary: chat task is a background task spawned by the
+            # WS dispatcher. We log the full traceback here because
+            # nothing upstream will — then make a best-effort to tell
+            # the client before giving up.
+            logger.exception("Chat exception: session=%s", session_id)
             try:
                 await send_fn(json.dumps({
                     "type": "chat_error",
                     "request_id": request_id,
                     "session_id": session_id,
-                    "error": str(e),
+                    "error": "internal error (see agent logs)",
                 }))
             except Exception:
-                pass
+                # The WS is already dead — the client cannot be told.
+                # Surface the send failure with full traceback so the
+                # operator can correlate it with the parent exception
+                # instead of losing it to a bare ``pass``.
+                logger.exception(
+                    "Chat: failed to notify client of chat error (session=%s)",
+                    session_id,
+                )
         finally:
             self._active.pop(session_id, None)
             # Ensure process is dead
@@ -1229,15 +1256,25 @@ class WorkspaceAgent:
         self._background_tasks: set[asyncio.Task] = set()
 
     async def _safe_send(self, data: str) -> None:
-        """Send data on WebSocket with lock to prevent frame interleaving."""
+        """Send data on WebSocket with lock to prevent frame interleaving.
+
+        Send failures here mean the WS is dead — the outer ``_connect``
+        loop will detect this and reconnect, so we intentionally do not
+        re-raise. But we DO log with full traceback (CLAUDE.md "No
+        error hiding") so operators can see *why* the send failed
+        instead of just a terse warning.
+        """
         ws = self._ws
         if not ws:
             return
         async with self._send_lock:
             try:
                 await ws.send(data)
-            except Exception as e:
-                logger.warning("Send failed: %s", e)
+            except Exception:
+                logger.exception(
+                    "Send failed (agent_id=%s); connection will be retried",
+                    self._agent_id,
+                )
 
     def _spawn_task(self, coro) -> None:
         """Spawn a background task and track it for cleanup."""
@@ -1253,8 +1290,13 @@ class WorkspaceAgent:
             try:
                 await self._connect()
                 backoff = 1
-            except Exception as e:
-                logger.error("Connection failed: %s", e)
+            except Exception:
+                # Reconnect loop: full traceback is essential for
+                # diagnosing *why* the agent cannot stay connected
+                # (auth token invalid, TLS mismatch, DNS, etc.).
+                # CLAUDE.md forbids ``logger.error(..., e)`` without
+                # exc_info — use ``logger.exception`` here.
+                logger.exception("Connection failed")
 
             if not self._running:
                 break
@@ -1306,6 +1348,18 @@ class WorkspaceAgent:
                     try:
                         msg = json.loads(raw)
                     except json.JSONDecodeError:
+                        # Unexpected: backend is the only WS peer and it
+                        # always sends valid JSON frames. Surface the
+                        # malformed frame loudly so we notice protocol
+                        # drift instead of silently dropping it.
+                        preview = (
+                            raw[:200] if isinstance(raw, str)
+                            else raw[:200].decode("utf-8", errors="replace")
+                        )
+                        logger.warning(
+                            "Agent: dropped non-JSON frame from server: %r",
+                            preview,
+                        )
                         continue
                     await self._handle_message(msg)
             finally:
@@ -1442,11 +1496,15 @@ class WorkspaceAgent:
                 token=self.token,
                 restart_argv=sys.argv[1:],
             )
-        except UpdateError as e:
-            logger.error("Update failed: %s", e)
+        except UpdateError:
+            # UpdateError is a *known* failure mode from apply_update
+            # (checksum mismatch, bad download, etc.). We still want
+            # the full traceback in logs because operators need to see
+            # which sub-step failed, not just the outer message.
+            logger.exception("Update failed")
             return
-        except Exception as e:
-            logger.exception("Unexpected error during update: %s", e)
+        except Exception:
+            logger.exception("Unexpected error during update")
             return
 
         logger.info(
@@ -1479,7 +1537,11 @@ class WorkspaceAgent:
             try:
                 await self._ws.close()
             except Exception:
-                pass
+                # Shutdown path: the ws may already be gone. We still
+                # want the traceback in logs so a stuck shutdown can
+                # be diagnosed, but we do not re-raise — the process
+                # is on its way out.
+                logger.exception("shutdown: ws.close() failed")
 
 
 # ── Config ───────────────────────────────────────────────────
@@ -1526,12 +1588,16 @@ def main() -> None:
     _log_grep_engine()
 
     # Remove leftover .old/.new artifacts from a previous self-update.
+    # This is a best-effort boot-time cleanup — a failure must not
+    # prevent the agent from starting, but must leave a traceback in
+    # logs (CLAUDE.md "No error hiding": ``logger.warning(..., e)``
+    # without ``exc_info`` is forbidden).
     try:
         removed = cleanup_old_files()
         if removed:
             logger.info("Cleaned up %d stale update artifacts", removed)
-    except Exception as e:
-        logger.warning("Update cleanup failed: %s", e)
+    except Exception:
+        logger.exception("Update cleanup failed")
 
     server_url = args.url
     token = args.token

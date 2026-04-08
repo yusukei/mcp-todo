@@ -105,7 +105,15 @@ async def rotate_agent_token(
         try:
             await agent.save()
         except Exception:
-            pass
+            # The token has already been rotated in the DB above, so
+            # losing the is_online flag here is a monitoring concern,
+            # not a security one. Log with full traceback instead of
+            # swallowing silently — the operator needs to know if
+            # agent writes are starting to fail.
+            logger.exception(
+                "rotate-token: failed to persist is_online=False for agent %s",
+                agent_id,
+            )
 
     logger.info("Rotated token for agent %s (%s)", agent.name, agent_id)
     return {**agent_dict(agent), "token": raw_token}
@@ -151,7 +159,12 @@ async def check_agent_update(
     except AgentOfflineError as exc:
         raise HTTPException(status_code=409, detail="Agent disconnected during check") from exc
     except Exception as exc:
-        logger.warning("check-update: send failed for %s: %s", agent_id, exc)
+        # HTTP boundary: convert to a 500 so the admin UI sees a real
+        # failure instead of a hanging request. Log with full traceback
+        # (CLAUDE.md forbids ``logger.warning(..., e)`` without exc_info)
+        # so operators can diagnose whether the send failure was a WS
+        # issue, a serialization bug, or something else.
+        logger.exception("check-update: send failed for %s", agent_id)
         raise HTTPException(status_code=500, detail=f"Push failed: {exc}") from exc
     logger.info(
         "Manual update check: pushed v%s to agent=%s (current=%s)",

@@ -2,8 +2,10 @@
 
 import logging
 import time
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import PurePosixPath
+from typing import Any
 
 from fastmcp.exceptions import ToolError
 
@@ -163,23 +165,111 @@ async def _log_operation(
     stderr_len: int = 0,
     error: str = "",
 ) -> None:
-    """Record operation to audit log."""
+    """Record operation to audit log.
+
+    Per CLAUDE.md "No error hiding": DB write failures are **not**
+    swallowed. An audit record dropped on the floor is a critical
+    event — operators need to see it. If ``log.insert()`` raises,
+    the exception propagates to the MCP tool caller, which is the
+    correct boundary to convert it into a protocol-level error.
+    """
+    log = RemoteExecLog(
+        project_id=binding.project_id,
+        agent_id=binding.agent_id,
+        operation=operation,
+        detail=detail[:500],
+        exit_code=exit_code,
+        stdout_len=stdout_len,
+        stderr_len=stderr_len,
+        duration_ms=duration_ms,
+        error=error[:500],
+        mcp_key_id=mcp_key_id,
+    )
+    await log.insert()
+
+
+async def _log_denied(
+    *,
+    operation: str,
+    project_id: str,
+    agent_id: str,
+    mcp_key_id: str,
+    detail: str,
+    reason: str,
+) -> None:
+    """Record a denied/rejected attempt to the audit log.
+
+    Used for authentication, authorization, and input-validation
+    failures that happen **before** the request is dispatched to the
+    agent. Recording these attempts is a Security H-3 requirement —
+    without them, attack probes against ``remote_*`` tools leave no
+    trace in the audit trail.
+
+    Partial information is expected: ``project_id``/``agent_id`` may
+    be empty strings when the failure occurred before the binding
+    was resolved. Exceptions from the DB insert propagate — losing
+    an audit record of a rejected attempt is a critical event.
+    """
+    log = RemoteExecLog(
+        project_id=project_id or "",
+        agent_id=agent_id or "",
+        operation=operation,
+        detail=(detail or "")[:500],
+        error=(f"denied: {reason}")[:500],
+        mcp_key_id=mcp_key_id or "",
+    )
+    await log.insert()
+
+
+class _PreflightCtx:
+    """Mutable slot passed into the :func:`_audit_on_denied` context.
+
+    The tool body assigns ``key_info`` and ``binding`` as each step
+    completes; on an exception the context manager uses whatever was
+    populated so the denied audit entry still carries as much
+    information as possible.
+    """
+
+    __slots__ = ("key_info", "binding")
+
+    def __init__(self) -> None:
+        self.key_info: dict[str, Any] | None = None
+        self.binding: ResolvedBinding | None = None
+
+
+@asynccontextmanager
+async def _audit_on_denied(operation: str, project_id: str, detail: str = ""):
+    """Async context that records a denied audit entry on any exception.
+
+    Wrap the authenticate → resolve_binding → validate prelude of each
+    MCP tool in this context. If anything in the ``with`` body raises,
+    the denial is persisted to :class:`RemoteExecLog` with whatever
+    identifiers have been populated on the yielded :class:`_PreflightCtx`
+    so far, and the exception is re-raised unchanged.
+
+    Scope: only covers pre-execution validation. Operational failures
+    raised by :func:`_send_to_agent` (AgentOfflineError, timeout, …)
+    are logged separately via :func:`_log_operation` on their
+    dedicated error paths and must NOT be wrapped in this context to
+    avoid double-logging.
+    """
+    ctx = _PreflightCtx()
     try:
-        log = RemoteExecLog(
-            project_id=binding.project_id,
-            agent_id=binding.agent_id,
-            operation=operation,
-            detail=detail[:500],
-            exit_code=exit_code,
-            stdout_len=stdout_len,
-            stderr_len=stderr_len,
-            duration_ms=duration_ms,
-            error=error[:500],
-            mcp_key_id=mcp_key_id,
+        yield ctx
+    except Exception as exc:
+        logger.warning(
+            "[audit] denied %s project_id=%s: %s",
+            operation, project_id, exc, exc_info=exc,
         )
-        await log.insert()
-    except Exception as e:
-        logger.warning("Failed to log remote operation: %s", e)
+        await _log_denied(
+            operation=operation,
+            project_id=(ctx.binding.project_id if ctx.binding else (project_id or "")),
+            agent_id=(ctx.binding.agent_id if ctx.binding else ""),
+            mcp_key_id=(ctx.key_info.get("key_id", "") if ctx.key_info else ""),
+            detail=detail,
+            reason=f"{type(exc).__name__}: {exc}",
+        )
+        raise
 
 
 async def _send_to_agent(
@@ -280,9 +370,20 @@ async def remote_exec(
         original ``stdout_total_bytes`` / ``stderr_total_bytes`` so callers
         can detect output that exceeded the 2MB agent buffer.
     """
-    key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info)
-    _validate_remote_command(command)
+    async with _audit_on_denied("exec", project_id, detail=str(command)[:500]) as audit:
+        audit.key_info = await authenticate()
+        audit.binding = await _resolve_binding(project_id, audit.key_info)
+        _validate_remote_command(command)
+        if cwd is not None:
+            _validate_remote_path(cwd)
+        if env is not None:
+            if not isinstance(env, dict):
+                raise ToolError("env must be a dict of string→string")
+            for k, v in env.items():
+                if not isinstance(k, str) or not isinstance(v, str):
+                    raise ToolError("env keys and values must be strings")
+    key_info = audit.key_info
+    binding = audit.binding
 
     timeout = max(1, min(timeout, MAX_TIMEOUT))
     payload: dict = {
@@ -291,14 +392,8 @@ async def remote_exec(
         "timeout": timeout,
     }
     if cwd is not None:
-        _validate_remote_path(cwd)
         payload["cwd_override"] = cwd
     if env is not None:
-        if not isinstance(env, dict):
-            raise ToolError("env must be a dict of string→string")
-        for k, v in env.items():
-            if not isinstance(k, str) or not isinstance(v, str):
-                raise ToolError("env keys and values must be strings")
         payload["env"] = env
 
     t0 = time.monotonic()
@@ -354,18 +449,21 @@ async def remote_read_file(
         dict with ``content``, ``size``, ``path``, ``encoding``,
         ``is_binary``, ``total_lines``, ``truncated``.
     """
-    key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info)
-    _validate_remote_path(path)
+    async with _audit_on_denied("read_file", project_id, detail=str(path)[:500]) as audit:
+        audit.key_info = await authenticate()
+        audit.binding = await _resolve_binding(project_id, audit.key_info)
+        _validate_remote_path(path)
+        if offset is not None and offset < 1:
+            raise ToolError("offset must be >= 1")
+        if limit is not None and limit < 0:
+            raise ToolError("limit must be >= 0")
+    key_info = audit.key_info
+    binding = audit.binding
 
     payload: dict = {"path": path, "cwd": binding.remote_path}
     if offset is not None:
-        if offset < 1:
-            raise ToolError("offset must be >= 1")
         payload["offset"] = offset
     if limit is not None:
-        if limit < 0:
-            raise ToolError("limit must be >= 0")
         payload["limit"] = limit
     if encoding:
         payload["encoding"] = encoding
@@ -405,12 +503,14 @@ async def remote_write_file(
     Path is relative to the project's remote directory, or absolute.
     Parent directories are created automatically.
     """
-    key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info)
-    _validate_remote_path(path)
-
-    if len(content.encode("utf-8")) > MAX_FILE_BYTES:
-        raise ToolError(f"Content too large (max {MAX_FILE_BYTES // 1024 // 1024} MB)")
+    async with _audit_on_denied("write_file", project_id, detail=str(path)[:500]) as audit:
+        audit.key_info = await authenticate()
+        audit.binding = await _resolve_binding(project_id, audit.key_info)
+        _validate_remote_path(path)
+        if len(content.encode("utf-8")) > MAX_FILE_BYTES:
+            raise ToolError(f"Content too large (max {MAX_FILE_BYTES // 1024 // 1024} MB)")
+    key_info = audit.key_info
+    binding = audit.binding
 
     t0 = time.monotonic()
     result = await _send_to_agent(
@@ -440,9 +540,12 @@ async def remote_list_dir(
 
     Path is relative to the project's remote directory, or absolute.
     """
-    key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info)
-    _validate_remote_path(path)
+    async with _audit_on_denied("list_dir", project_id, detail=str(path)[:500]) as audit:
+        audit.key_info = await authenticate()
+        audit.binding = await _resolve_binding(project_id, audit.key_info)
+        _validate_remote_path(path)
+    key_info = audit.key_info
+    binding = audit.binding
 
     t0 = time.monotonic()
     result = await _send_to_agent(
@@ -475,9 +578,12 @@ async def remote_stat(project_id: str, path: str) -> dict:
     raising — callers can use this as a cheap existence check before a
     full ``remote_read_file``.
     """
-    key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info)
-    _validate_remote_path(path)
+    async with _audit_on_denied("stat", project_id, detail=str(path)[:500]) as audit:
+        audit.key_info = await authenticate()
+        audit.binding = await _resolve_binding(project_id, audit.key_info)
+        _validate_remote_path(path)
+    key_info = audit.key_info
+    binding = audit.binding
 
     result = await _send_to_agent(
         binding, "stat",
@@ -495,9 +601,12 @@ async def remote_file_exists(project_id: str, path: str) -> dict:
     Equivalent to ``remote_stat`` but returns the minimal subset; useful
     when you only need a yes/no answer (e.g. before creating a file).
     """
-    key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info)
-    _validate_remote_path(path)
+    async with _audit_on_denied("stat", project_id, detail=str(path)[:500]) as audit:
+        audit.key_info = await authenticate()
+        audit.binding = await _resolve_binding(project_id, audit.key_info)
+        _validate_remote_path(path)
+    key_info = audit.key_info
+    binding = audit.binding
 
     result = await _send_to_agent(
         binding, "stat",
@@ -516,9 +625,12 @@ async def remote_mkdir(project_id: str, path: str, parents: bool = True) -> dict
 
     With ``parents=True`` (default), missing parents are created (mkdir -p).
     """
-    key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info)
-    _validate_remote_path(path)
+    async with _audit_on_denied("mkdir", project_id, detail=str(path)[:500]) as audit:
+        audit.key_info = await authenticate()
+        audit.binding = await _resolve_binding(project_id, audit.key_info)
+        _validate_remote_path(path)
+    key_info = audit.key_info
+    binding = audit.binding
 
     result = await _send_to_agent(
         binding, "mkdir",
@@ -538,9 +650,12 @@ async def remote_delete_file(
     Directories require ``recursive=True``. Refuses to delete the
     workspace root.
     """
-    key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info)
-    _validate_remote_path(path)
+    async with _audit_on_denied("delete", project_id, detail=str(path)[:500]) as audit:
+        audit.key_info = await authenticate()
+        audit.binding = await _resolve_binding(project_id, audit.key_info)
+        _validate_remote_path(path)
+    key_info = audit.key_info
+    binding = audit.binding
 
     result = await _send_to_agent(
         binding, "delete",
@@ -556,10 +671,15 @@ async def remote_move_file(
     project_id: str, src: str, dst: str, overwrite: bool = False
 ) -> dict:
     """Move/rename a file or directory on the remote machine."""
-    key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info)
-    _validate_remote_path(src)
-    _validate_remote_path(dst)
+    async with _audit_on_denied(
+        "move", project_id, detail=f"{src} -> {dst}"[:500],
+    ) as audit:
+        audit.key_info = await authenticate()
+        audit.binding = await _resolve_binding(project_id, audit.key_info)
+        _validate_remote_path(src)
+        _validate_remote_path(dst)
+    key_info = audit.key_info
+    binding = audit.binding
 
     result = await _send_to_agent(
         binding, "move",
@@ -575,10 +695,15 @@ async def remote_copy_file(
     project_id: str, src: str, dst: str, overwrite: bool = False
 ) -> dict:
     """Copy a file or directory on the remote machine."""
-    key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info)
-    _validate_remote_path(src)
-    _validate_remote_path(dst)
+    async with _audit_on_denied(
+        "copy", project_id, detail=f"{src} -> {dst}"[:500],
+    ) as audit:
+        audit.key_info = await authenticate()
+        audit.binding = await _resolve_binding(project_id, audit.key_info)
+        _validate_remote_path(src)
+        _validate_remote_path(dst)
+    key_info = audit.key_info
+    binding = audit.binding
 
     result = await _send_to_agent(
         binding, "copy",
@@ -605,10 +730,15 @@ async def remote_glob(
         pattern: Glob pattern, e.g. ``**/*.py`` or ``src/**/*.tsx``
         path: Base directory (relative to workspace, default ``.``)
     """
-    key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info)
-    _validate_remote_path(path)
-    _validate_remote_pattern(pattern, kind="glob")
+    async with _audit_on_denied(
+        "glob", project_id, detail=f"{pattern} @ {path}"[:500],
+    ) as audit:
+        audit.key_info = await authenticate()
+        audit.binding = await _resolve_binding(project_id, audit.key_info)
+        _validate_remote_path(path)
+        _validate_remote_pattern(pattern, kind="glob")
+    key_info = audit.key_info
+    binding = audit.binding
 
     result = await _send_to_agent(
         binding, "glob",
@@ -661,13 +791,17 @@ async def remote_grep(
     - Files larger than 10 MB
     - Files whose first 8 KB contain a NUL byte (binary heuristic)
     """
-    key_info = await authenticate()
-    binding = await _resolve_binding(project_id, key_info)
-    _validate_remote_path(path)
-    _validate_remote_pattern(pattern, kind="grep")
-
-    if not isinstance(max_results, int) or max_results < 1 or max_results > 2000:
-        raise ToolError("max_results must be an integer between 1 and 2000")
+    async with _audit_on_denied(
+        "grep", project_id, detail=f"{pattern} @ {path}"[:500],
+    ) as audit:
+        audit.key_info = await authenticate()
+        audit.binding = await _resolve_binding(project_id, audit.key_info)
+        _validate_remote_path(path)
+        _validate_remote_pattern(pattern, kind="grep")
+        if not isinstance(max_results, int) or max_results < 1 or max_results > 2000:
+            raise ToolError("max_results must be an integer between 1 and 2000")
+    key_info = audit.key_info
+    binding = audit.binding
 
     payload: dict = {
         "pattern": pattern,

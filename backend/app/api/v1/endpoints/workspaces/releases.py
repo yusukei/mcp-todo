@@ -129,11 +129,17 @@ async def upload_release(
                 size += len(chunk)
                 f.write(chunk)
     except Exception as e:
-        # Clean up partial file on failure
+        # Clean up partial file on failure. Cleanup failures are
+        # logged with a full traceback (CLAUDE.md "No error hiding")
+        # but not re-raised — we want to surface the *original*
+        # write error to the caller, not the cleanup symptom.
         try:
             target_path.unlink(missing_ok=True)
         except Exception:
-            pass
+            logger.exception(
+                "release upload: failed to clean up partial file at %s",
+                target_path,
+            )
         raise HTTPException(status_code=500, detail=f"Failed to write release file: {e}") from e
 
     if size == 0:
@@ -171,8 +177,12 @@ async def delete_release(release_id: str, user: User = Depends(get_admin_user)) 
     except HTTPException:
         # storage_path was malformed — still delete the DB record
         logger.warning("Release %s had invalid storage path; deleting record only", release_id)
-    except Exception as e:
-        logger.warning("Failed to delete release file %s: %s", release_id, e)
+    except Exception:
+        # File-delete failures are non-fatal (we still drop the DB
+        # record below so the release stops serving), but we want the
+        # full traceback visible — CLAUDE.md forbids
+        # ``logger.warning(..., e)`` without ``exc_info``.
+        logger.exception("Failed to delete release file for %s", release_id)
     await release.delete()
 
 

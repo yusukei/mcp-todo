@@ -21,6 +21,7 @@ import pytest
 from fastmcp.exceptions import ToolError
 
 from app.mcp.tools import remote
+from app.models.remote import RemoteExecLog
 
 
 _MOCK_KEY_INFO = {"key_id": "test-key", "key_name": "test", "user_id": "test-user", "is_admin": True, "auth_kind": "api_key"}
@@ -622,3 +623,174 @@ class TestListRemoteAgents:
         assert entry["auto_update"] is True  # model default
         assert entry["update_channel"] == "stable"  # model default
 
+
+# ──────────────────────────────────────────────
+# Regression: CLAUDE.md "No error hiding" / Security H-3
+#
+# The tests below lock in the audit-trail guarantees added alongside the
+# error-hiding sweep (task 69d62a50):
+#
+#   1. Denied attempts (auth failure, _resolve_binding failure,
+#      _validate_remote_path failure) MUST be recorded to
+#      RemoteExecLog with error="denied: ...". Silently rejecting
+#      a request was the Security H-3 finding.
+#
+#   2. _log_operation DB write failures MUST propagate. An audit
+#      record dropped on the floor is a critical event — swallowing
+#      the exception would re-introduce the exact pattern CLAUDE.md
+#      forbids.
+#
+#   3. Successful operations must NOT double-log (no denied row
+#      when the happy path ran to completion).
+# ──────────────────────────────────────────────
+
+
+class TestDeniedAuditTrail:
+    """Security H-3: rejected MCP tool calls must leave an audit trail."""
+
+    async def test_auth_failure_is_recorded_as_denied(self):
+        """An McpAuthError from authenticate() must produce a denied entry."""
+        from app.mcp.auth import McpAuthError
+
+        with patch(
+            "app.mcp.tools.remote.authenticate",
+            new=AsyncMock(side_effect=McpAuthError("Invalid API key")),
+        ):
+            with pytest.raises(ToolError):
+                await remote.remote_exec(project_id="p-1", command="ls")
+
+        logs = await RemoteExecLog.find_all().to_list()
+        assert len(logs) == 1
+        assert logs[0].operation == "exec"
+        assert logs[0].error.startswith("denied: ")
+        assert "Invalid API key" in logs[0].error
+        # Before the binding is resolved, project_id falls back to the
+        # raw argument so the operator can still correlate the attempt.
+        assert logs[0].project_id == "p-1"
+        assert logs[0].agent_id == ""
+
+    async def test_resolve_binding_failure_is_recorded_as_denied(self):
+        """A ToolError from _resolve_binding() must produce a denied entry."""
+        with patch(
+            "app.mcp.tools.remote.authenticate",
+            new=AsyncMock(return_value=_MOCK_KEY_INFO),
+        ), patch(
+            "app.mcp.tools.remote._resolve_binding",
+            new=AsyncMock(side_effect=ToolError("No remote agent bound to project p-1")),
+        ):
+            with pytest.raises(ToolError):
+                await remote.remote_stat(project_id="p-1", path="x.txt")
+
+        logs = await RemoteExecLog.find_all().to_list()
+        assert len(logs) == 1
+        assert logs[0].operation == "stat"
+        assert logs[0].error.startswith("denied: ")
+        assert "No remote agent bound" in logs[0].error
+        assert logs[0].mcp_key_id == _MOCK_KEY_INFO["key_id"]
+
+    async def test_path_validation_failure_is_recorded_as_denied(self):
+        """Path traversal probes must leave an audit entry (attack signal)."""
+        binding = _fake_binding()
+        with patch(
+            "app.mcp.tools.remote.authenticate",
+            new=AsyncMock(return_value=_MOCK_KEY_INFO),
+        ), patch(
+            "app.mcp.tools.remote._resolve_binding",
+            new=AsyncMock(return_value=binding),
+        ):
+            with pytest.raises(ToolError, match="traversal"):
+                await remote.remote_read_file(
+                    project_id="p-1", path="../../etc/passwd",
+                )
+
+        logs = await RemoteExecLog.find_all().to_list()
+        assert len(logs) == 1
+        assert logs[0].operation == "read_file"
+        assert logs[0].error.startswith("denied: ")
+        assert "traversal" in logs[0].error
+        # binding was resolved before validation failed, so project_id
+        # / agent_id come from the binding not the raw arg.
+        assert logs[0].project_id == binding.project_id
+        assert logs[0].agent_id == binding.agent_id
+
+    async def test_command_validation_failure_is_recorded_as_denied(self):
+        """Rejected remote_exec payloads (newline/NUL/too long) must audit."""
+        binding = _fake_binding()
+        with patch(
+            "app.mcp.tools.remote.authenticate",
+            new=AsyncMock(return_value=_MOCK_KEY_INFO),
+        ), patch(
+            "app.mcp.tools.remote._resolve_binding",
+            new=AsyncMock(return_value=binding),
+        ):
+            with pytest.raises(ToolError, match="Invalid"):
+                await remote.remote_exec(
+                    project_id="p-1", command="ls\nrm -rf /",
+                )
+
+        logs = await RemoteExecLog.find_all().to_list()
+        assert len(logs) == 1
+        assert logs[0].operation == "exec"
+        assert logs[0].error.startswith("denied: ")
+
+    async def test_happy_path_does_not_record_denied_entry(self):
+        """Regression guard: successful calls must not emit a denied row."""
+        binding = _fake_binding()
+        send_request = AsyncMock(return_value={
+            "exit_code": 0, "stdout": "ok", "stderr": "",
+        })
+        with patch(
+            "app.mcp.tools.remote.authenticate",
+            new=AsyncMock(return_value=_MOCK_KEY_INFO),
+        ), patch(
+            "app.mcp.tools.remote._resolve_binding",
+            new=AsyncMock(return_value=binding),
+        ), patch(
+            "app.mcp.tools.remote.agent_manager.send_request", send_request,
+        ):
+            await remote.remote_exec(project_id="p-1", command="echo hi")
+
+        denied = await RemoteExecLog.find({"error": {"$regex": "^denied:"}}).to_list()
+        assert denied == []
+
+
+class TestAuditLogPropagates:
+    """CLAUDE.md "No error hiding": audit write failures must NOT be swallowed."""
+
+    async def test_log_operation_insert_failure_propagates(self):
+        """If RemoteExecLog.insert() blows up, the exception reaches the caller.
+
+        Previously ``_log_operation`` wrapped the insert in
+        ``except Exception: logger.warning(...)`` which meant a broken
+        audit store would silently drop rows. The sweep removed that
+        swallow — verify the new behavior.
+        """
+        binding = _fake_binding()
+
+        with patch.object(
+            RemoteExecLog, "insert",
+            new=AsyncMock(side_effect=RuntimeError("mongo is down")),
+        ):
+            with pytest.raises(RuntimeError, match="mongo is down"):
+                await remote._log_operation(
+                    binding=binding,
+                    operation="exec",
+                    detail="ls",
+                    mcp_key_id="test-key",
+                )
+
+    async def test_log_denied_insert_failure_propagates(self):
+        """Same guarantee for the denied audit helper."""
+        with patch.object(
+            RemoteExecLog, "insert",
+            new=AsyncMock(side_effect=RuntimeError("audit store unavailable")),
+        ):
+            with pytest.raises(RuntimeError, match="audit store unavailable"):
+                await remote._log_denied(
+                    operation="exec",
+                    project_id="p-1",
+                    agent_id="a-1",
+                    mcp_key_id="k-1",
+                    detail="ls",
+                    reason="test",
+                )
