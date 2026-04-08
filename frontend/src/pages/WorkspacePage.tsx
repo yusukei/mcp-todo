@@ -11,6 +11,7 @@ interface Workspace {
   id: string
   agent_id: string
   agent_name: string
+  agent_version: string | null
   project_id: string
   project_name: string
   remote_path: string
@@ -253,6 +254,11 @@ export default function WorkspacePage() {
                         </p>
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                           Agent: {ws.agent_name}
+                          {ws.agent_version && (
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 font-mono text-[10px]">
+                              v{ws.agent_version}
+                            </span>
+                          )}
                         </p>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0 ml-4">
