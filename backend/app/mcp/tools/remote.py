@@ -13,6 +13,7 @@ from fastmcp.exceptions import ToolError
 from ...core.config import settings
 from ...models import Project
 from ...models.remote import RemoteAgent, RemoteExecLog
+from ...services.remote_tool_spec import REMOTE_TOOLS
 
 
 @dataclass(frozen=True)
@@ -374,23 +375,40 @@ async def _send_to_agent(
     binding: ResolvedBinding,
     msg_type: str,
     payload: dict,
-    timeout: float,
-    operation: str,
+    *,
     detail: str,
     key_info: dict,
+    timeout: float | None = None,
 ) -> dict:
     """Common request/response wrapper with audit logging + agent wait.
 
-    Centralizes the AgentOfflineError / CommandTimeoutError / RuntimeError
-    handling so individual MCP tools stay short.
+    Looks up ``msg_type`` in the :data:`REMOTE_TOOLS` registry to
+    derive the default timeout and audit-log label, then forwards to
+    :meth:`agent_manager.send_request`. Callers can override the
+    default timeout via the ``timeout`` keyword (used by
+    ``remote_exec`` to add a small buffer on top of the user-supplied
+    execution timeout).
+
+    Centralizes the AgentOfflineError / CommandTimeoutError /
+    RuntimeError handling so individual MCP tools stay short.
     """
+    spec = REMOTE_TOOLS.get(msg_type)
+    if spec is None:
+        # Loud failure: an MCP tool tried to dispatch an op that the
+        # backend does not know how to describe. This is a backend
+        # bug, not a runtime error from the agent — surface it as
+        # ToolError so it lands in the operator's logs.
+        raise ToolError(f"Unknown remote tool msg_type: {msg_type!r}")
+    effective_timeout = timeout if timeout is not None else spec.default_timeout
+    operation = spec.operation_label
+
     t0 = time.monotonic()
     try:
         result = await agent_manager.send_request(
             binding.agent_id,
             msg_type,
             payload,
-            timeout=timeout,
+            timeout=effective_timeout,
             wait_for_agent=settings.REMOTE_DEFAULT_AGENT_WAIT_SECONDS,
         )
     except AgentOfflineError:
@@ -400,7 +418,7 @@ async def _send_to_agent(
         duration_ms = int((time.monotonic() - t0) * 1000)
         await _log_operation(binding, operation, detail, key_info["key_id"],
                              duration_ms=duration_ms, error="timeout")
-        raise ToolError(f"Request timed out after {timeout}s")
+        raise ToolError(f"Request timed out after {effective_timeout}s")
     except RuntimeError as e:
         duration_ms = int((time.monotonic() - t0) * 1000)
         await _log_operation(binding, operation, detail, key_info["key_id"],
@@ -497,8 +515,8 @@ async def remote_exec(
 
     t0 = time.monotonic()
     result = await _send_to_agent(
-        binding, "exec", payload, timeout=timeout + 5,
-        operation="exec", detail=command, key_info=key_info,
+        binding, "exec", payload,
+        detail=command, key_info=key_info, timeout=timeout + 5,
     )
     duration_ms = int((time.monotonic() - t0) * 1000)
 
@@ -569,8 +587,8 @@ async def remote_read_file(
 
     t0 = time.monotonic()
     result = await _send_to_agent(
-        binding, "read_file", payload, timeout=30,
-        operation="read_file", detail=path, key_info=key_info,
+        binding, "read_file", payload,
+        detail=path, key_info=key_info,
     )
     duration_ms = int((time.monotonic() - t0) * 1000)
     content = result.get("content", "")
@@ -617,7 +635,7 @@ async def remote_write_file(
     result = await _send_to_agent(
         binding, "write_file",
         {"path": path, "cwd": binding.remote_path, "content": content},
-        timeout=30, operation="write_file", detail=path, key_info=key_info,
+        detail=path, key_info=key_info,
     )
     duration_ms = int((time.monotonic() - t0) * 1000)
     await _log_operation(
@@ -652,7 +670,7 @@ async def remote_list_dir(
     result = await _send_to_agent(
         binding, "list_dir",
         {"path": path, "cwd": binding.remote_path},
-        timeout=15, operation="list_dir", detail=path, key_info=key_info,
+        detail=path, key_info=key_info,
     )
     duration_ms = int((time.monotonic() - t0) * 1000)
     entries = result.get("entries", [])
@@ -689,7 +707,7 @@ async def remote_stat(project_id: str, path: str) -> dict:
     result = await _send_to_agent(
         binding, "stat",
         {"path": path, "cwd": binding.remote_path},
-        timeout=10, operation="stat", detail=path, key_info=key_info,
+        detail=path, key_info=key_info,
     )
     await _log_operation(binding, "stat", path, key_info["key_id"])
     return result
@@ -712,7 +730,7 @@ async def remote_file_exists(project_id: str, path: str) -> dict:
     result = await _send_to_agent(
         binding, "stat",
         {"path": path, "cwd": binding.remote_path},
-        timeout=10, operation="stat", detail=path, key_info=key_info,
+        detail=path, key_info=key_info,
     )
     return {
         "exists": result.get("exists", False),
@@ -736,7 +754,7 @@ async def remote_mkdir(project_id: str, path: str, parents: bool = True) -> dict
     result = await _send_to_agent(
         binding, "mkdir",
         {"path": path, "cwd": binding.remote_path, "parents": parents},
-        timeout=10, operation="mkdir", detail=path, key_info=key_info,
+        detail=path, key_info=key_info,
     )
     await _log_operation(binding, "mkdir", path, key_info["key_id"])
     return result
@@ -761,7 +779,7 @@ async def remote_delete_file(
     result = await _send_to_agent(
         binding, "delete",
         {"path": path, "cwd": binding.remote_path, "recursive": recursive},
-        timeout=30, operation="delete", detail=path, key_info=key_info,
+        detail=path, key_info=key_info,
     )
     await _log_operation(binding, "delete", path, key_info["key_id"])
     return result
@@ -785,7 +803,7 @@ async def remote_move_file(
     result = await _send_to_agent(
         binding, "move",
         {"src": src, "dst": dst, "cwd": binding.remote_path, "overwrite": overwrite},
-        timeout=30, operation="move", detail=f"{src} -> {dst}", key_info=key_info,
+        detail=f"{src} -> {dst}", key_info=key_info,
     )
     await _log_operation(binding, "move", f"{src} -> {dst}", key_info["key_id"])
     return result
@@ -809,7 +827,7 @@ async def remote_copy_file(
     result = await _send_to_agent(
         binding, "copy",
         {"src": src, "dst": dst, "cwd": binding.remote_path, "overwrite": overwrite},
-        timeout=60, operation="copy", detail=f"{src} -> {dst}", key_info=key_info,
+        detail=f"{src} -> {dst}", key_info=key_info,
     )
     await _log_operation(binding, "copy", f"{src} -> {dst}", key_info["key_id"])
     return result
@@ -844,7 +862,7 @@ async def remote_glob(
     result = await _send_to_agent(
         binding, "glob",
         {"pattern": pattern, "path": path, "cwd": binding.remote_path},
-        timeout=30, operation="glob", detail=f"{pattern} @ {path}", key_info=key_info,
+        detail=f"{pattern} @ {path}", key_info=key_info,
     )
     await _log_operation(binding, "glob", f"{pattern} @ {path}", key_info["key_id"])
     return result
@@ -916,8 +934,8 @@ async def remote_grep(
         payload["glob"] = glob
 
     result = await _send_to_agent(
-        binding, "grep", payload, timeout=60,
-        operation="grep", detail=f"{pattern} @ {path}", key_info=key_info,
+        binding, "grep", payload,
+        detail=f"{pattern} @ {path}", key_info=key_info,
     )
     await _log_operation(binding, "grep", f"{pattern} @ {path}", key_info["key_id"])
     return result
