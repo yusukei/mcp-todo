@@ -584,9 +584,12 @@ class TestGracefulShutdown:
         result = await manager.drain(timeout=0.1)
         assert result is False
 
-        # Cleanup so the task doesn't leak past the test.
+        # Cleanup so the task doesn't leak past the test. Awaiting a
+        # cancelled task raises CancelledError; that is the *only*
+        # exception we want to swallow here — anything else means the
+        # send path itself is broken and the test should report it.
         send_task.cancel()
-        with contextlib.suppress(Exception, BaseException):
+        with contextlib.suppress(asyncio.CancelledError):
             await send_task
 
     async def test_shutdown_increments_error_counter(self, manager):

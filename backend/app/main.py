@@ -243,20 +243,37 @@ async def lifespan(app: FastAPI):
     logger.info("MCP server mounted at %s (stateful + RedisEventStore + OAuth)", MOUNT_PREFIX)
 
     # MCP subapp lifespan (Starlette mount doesn't auto-execute subapp lifespan)
+    #
+    # Shutdown ordering note: ``agent_manager.start_shutdown()`` MUST run
+    # while the MCP subapp is still alive, otherwise MCP tool handlers
+    # mid-await on ``send_request`` get cancelled by the FastMCP teardown
+    # before they have a chance to either complete or observe the
+    # shutdown flag. We do that in the ``finally`` of an inner try below.
+    # ``drain()`` then runs *after* the MCP subapp has unwound, by which
+    # point any in-flight handler is either done or has had its future
+    # rejected by the agent disconnect path — both reach the drain event.
+    from .services.agent_manager import agent_manager as _agent_mgr
     if not _is_testing:
         async with _mcp_app.lifespan(_mcp_app):
-            yield
+            try:
+                yield
+            finally:
+                # Stop accepting new agent requests while MCP tool
+                # handlers can still observe the rejection. New
+                # callers raise AgentShuttingDownError immediately;
+                # in-flight callers continue to completion.
+                _agent_mgr.start_shutdown()
     else:
-        yield
+        try:
+            yield
+        finally:
+            _agent_mgr.start_shutdown()
 
     # Shutdown
-    # Stop accepting new agent requests and wait for in-flight RPCs
-    # to finish before any other teardown. Long-running remote_exec
+    # Wait for in-flight RPCs to finish. Long-running remote_exec
     # calls can take up to REMOTE_MAX_TIMEOUT_SECONDS, so this drain
     # is the only thing standing between a clean restart and a wave
     # of user-visible CommandTimeoutError responses.
-    from .services.agent_manager import agent_manager as _agent_mgr
-    _agent_mgr.start_shutdown()
     await _agent_mgr.drain(timeout=settings.AGENT_SHUTDOWN_DRAIN_TIMEOUT_SECONDS)
     if not _is_testing:
         from .services.clip_queue import clip_queue
@@ -338,11 +355,16 @@ async def metrics() -> Response:
     """Prometheus scrape endpoint.
 
     Exposes the default ``prometheus_client`` registry. Authentication
-    is intentionally not enforced here — the endpoint is meant to be
-    blocked from external traffic at the reverse proxy (nginx) and
-    only reachable from the internal Prometheus scraper. The endpoint
-    leaks operational shape (number of agents, op latencies) which is
-    not sensitive in itself but should not be public.
+    is intentionally not enforced here — the endpoint is blocked from
+    external traffic by the ``location = /metrics`` rule in
+    ``nginx/nginx.conf`` (which returns 404 to all callers by
+    default). Operators who want to scrape this with a real
+    Prometheus server must replace that nginx block with an explicit
+    ``allow`` list per the comment there.
+
+    The endpoint exposes operational shape (number of agents, op
+    latencies, per-agent labels) which is not sensitive in itself
+    but should not be public.
     """
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 

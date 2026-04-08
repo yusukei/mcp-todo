@@ -201,12 +201,17 @@ class LocalAgentTransport:
     def _get_inflight_semaphore(self, agent_id: str) -> asyncio.Semaphore:
         sem = self._inflight_semaphores.get(agent_id)
         if sem is None:
-            # Late binding so tests can monkeypatch
-            # ``agent_manager.MAX_INFLIGHT_PER_AGENT`` and have it take
-            # effect on the next semaphore creation. Importing the
-            # facade module here (rather than at file top) also avoids
-            # the circular import that would otherwise form between
-            # agent_manager and this module.
+            # Late binding so tests that monkeypatch
+            # ``agent_manager.MAX_INFLIGHT_PER_AGENT`` see the
+            # override on **agents whose semaphore has not yet been
+            # created**. Existing semaphores keep whatever capacity
+            # they had at construction time — that is fine for the
+            # current test which uses a fresh manager + fresh agent
+            # id, but worth knowing if you patch mid-run.
+            #
+            # Importing the facade module here (rather than at file
+            # top) also avoids the circular import that would
+            # otherwise form between agent_manager and this module.
             from . import agent_manager as _am
             sem = asyncio.Semaphore(_am.MAX_INFLIGHT_PER_AGENT)
             self._inflight_semaphores[agent_id] = sem
@@ -225,6 +230,16 @@ class LocalAgentTransport:
         else:
             self._pending_count[agent_id] = cur - 1
         agent_pending_requests.labels(agent_id=agent_id).dec()
+        # If the last in-flight request for a *disconnected* agent
+        # just finished, drop the gauge label so it stops emitting
+        # forever. ``unregister`` deferred this when it ran with
+        # work still outstanding; we are the closing bracket.
+        if (
+            agent_id not in self._pending_count
+            and agent_id not in self._connections
+        ):
+            with contextlib.suppress(KeyError):
+                agent_pending_requests.remove(agent_id)
         # Wake ``drain()`` if the last in-flight request just finished.
         if not self._pending_count:
             self._drain_event.set()
@@ -338,9 +353,20 @@ class LocalAgentTransport:
             if removed is not None:
                 agent_connections.dec()
                 # Drop the per-agent pending gauge label so a long-gone
-                # agent does not keep emitting a stale 0 forever.
-                with contextlib.suppress(KeyError):
-                    agent_pending_requests.remove(agent_id)
+                # agent does not keep emitting a stale 0 forever — but
+                # ONLY when nothing is in-flight for it. Otherwise the
+                # in-flight request's ``finally _decrement_pending``
+                # would re-create the label at -1 (prometheus client
+                # auto-creates labels on .dec()), leaving the gauge to
+                # drift negative until the agent reconnects. The
+                # in-flight cancel path below will set the futures'
+                # exceptions, the callers will run their finally, and
+                # _decrement_pending will eventually call .set() on
+                # _drain_event when the count hits zero — but the
+                # gauge label survives that and is reused on reconnect.
+                if not self._pending_count.get(agent_id):
+                    with contextlib.suppress(KeyError):
+                        agent_pending_requests.remove(agent_id)
             # The handler that owned this ws will cancel its own
             # ping_task in its finally clause; we just drop our
             # reference so we don't touch it after replace.
