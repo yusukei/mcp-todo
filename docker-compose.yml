@@ -20,19 +20,23 @@ services:
     networks:
       - todo-net
 
-  # ── backend (single-process default) ────────────────────
+  # ── backend (API workers, multi-worker default) ────────
   #
-  # This service runs every subsystem in one process:
-  # API, MCP, chat, agent bus, Tantivy indexers, and clip queue.
-  # This is the default deployment topology — no sidecar needed.
+  # The API container runs the HTTP / MCP / WebSocket / chat /
+  # agent transport surface with ``WEB_CONCURRENCY=2`` by
+  # default. Tantivy writes and the clip queue run in the
+  # ``backend-indexer`` sidecar, so this container sets
+  # ``ENABLE_INDEXERS=0 ENABLE_CLIP_QUEUE=0``.
   #
-  # To switch to the multi-worker sidecar topology:
-  #   1. Set ENABLE_INDEXERS=0 and ENABLE_CLIP_QUEUE=0 on this
-  #      service (they default to 1).
-  #   2. Bump WEB_CONCURRENCY=2 (or higher).
-  #   3. Start the ``backend-indexer`` service from the
-  #      ``sidecar`` profile: ``docker compose --profile sidecar up -d``.
-  # See docs/architecture/multi-worker-sidecar.md.
+  # Rollback to single-process mode (emergency):
+  #   ENABLE_INDEXERS=1 ENABLE_CLIP_QUEUE=1 WEB_CONCURRENCY=1 \
+  #   docker compose up -d
+  # and stop the backend-indexer container. The tantivy volumes
+  # are still mounted below so the rollback path still works
+  # without editing docker-compose.yml.
+  #
+  # See docs/architecture/multi-worker-sidecar.md for the full
+  # topology diagram and the migration plan.
   backend:
     build:
       context: ./backend
@@ -58,16 +62,20 @@ services:
       - BOOKMARK_ASSETS_DIR=/app/bookmark_assets
       - BOOKMARK_INDEX_DIR=/app/search_index_bookmarks
       - AGENT_RELEASES_DIR=/app/agent_releases
-      # Subsystem gates (see docs/architecture/multi-worker-sidecar.md).
-      # Defaults match the single-process topology — every
-      # subsystem lives in this container. The operator flips
-      # ENABLE_INDEXERS and ENABLE_CLIP_QUEUE to 0 to hand them
-      # off to the ``backend-indexer`` sidecar.
+      # Subsystem gates — see docs/architecture/multi-worker-sidecar.md
+      # and the ``backend-indexer`` service below. Defaults
+      # correspond to the multi-worker topology. Flip to 1 / 1 / 1
+      # on the host (plus WEB_CONCURRENCY=1) as an emergency
+      # single-process rollback.
       - ENABLE_API=${ENABLE_API:-1}
-      - ENABLE_INDEXERS=${ENABLE_INDEXERS:-1}
-      - ENABLE_CLIP_QUEUE=${ENABLE_CLIP_QUEUE:-1}
-      - WEB_CONCURRENCY=${WEB_CONCURRENCY:-1}
+      - ENABLE_INDEXERS=${ENABLE_INDEXERS:-0}
+      - ENABLE_CLIP_QUEUE=${ENABLE_CLIP_QUEUE:-0}
+      - WEB_CONCURRENCY=${WEB_CONCURRENCY:-2}
     volumes:
+      # Index volumes stay mounted so the emergency rollback
+      # (ENABLE_INDEXERS=1) still writes to the correct path.
+      # The sidecar also mounts these — only one writer at a
+      # time is safe, which the ENABLE_INDEXERS flag enforces.
       - search_index:/app/search_index
       - docsite_assets:/app/docsite_assets
       - docsite_index:/app/search_index_docsites
@@ -100,28 +108,27 @@ services:
     networks:
       - todo-net
 
-  # ── backend-indexer (sidecar, multi-worker topology) ───
+  # ── backend-indexer (sidecar, always runs) ─────────────
   #
-  # Only started when the ``sidecar`` profile is requested:
-  #   docker compose --profile sidecar up -d
+  # Owns the Tantivy writers and the clip queue worker. The
+  # ``backend`` service runs with ENABLE_INDEXERS=0 and
+  # ENABLE_CLIP_QUEUE=0 by default (see above), and this
+  # container picks up the slack:
+  #   - Subscribes to the ``index:tasks`` Redis Stream
+  #     published by the backend API workers.
+  #   - Re-reads each notified document from MongoDB before
+  #     updating its Tantivy index.
+  #   - Runs ``clip_queue.recover_pending()`` at startup and
+  #     processes new bookmark clip requests.
   #
-  # This container:
-  #   - Does NOT mount the FastAPI routes (ENABLE_API=0).
-  #   - Owns the Tantivy writers and the clip queue worker.
-  #   - Consumes the ``index:tasks`` Redis Stream published by
-  #     the backend service (when it runs with ENABLE_INDEXERS=0).
+  # WEB_CONCURRENCY MUST be 1 — Tantivy IndexWriter is a
+  # single-writer resource, so more than one worker here
+  # corrupts the index.
   #
-  # When this sidecar runs, the main backend container MUST be
-  # reconfigured with ENABLE_INDEXERS=0 and ENABLE_CLIP_QUEUE=0
-  # on the host (e.g. in .env). Otherwise both containers would
-  # race for the same on-disk Tantivy index.
-  #
-  # WEB_CONCURRENCY MUST be 1 — Tantivy IndexWriter is a single-
-  # writer resource, so an indexer container with more than one
-  # worker corrupts the index.
+  # Emergency rollback: stop this container and flip the
+  # backend service's ENABLE_INDEXERS / ENABLE_CLIP_QUEUE back
+  # to 1 (plus WEB_CONCURRENCY=1). No data migration needed.
   backend-indexer:
-    profiles:
-      - sidecar
     build:
       context: ./backend
       dockerfile: Dockerfile
