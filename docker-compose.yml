@@ -20,6 +20,19 @@ services:
     networks:
       - todo-net
 
+  # ── backend (single-process default) ────────────────────
+  #
+  # This service runs every subsystem in one process:
+  # API, MCP, chat, agent bus, Tantivy indexers, and clip queue.
+  # This is the default deployment topology — no sidecar needed.
+  #
+  # To switch to the multi-worker sidecar topology:
+  #   1. Set ENABLE_INDEXERS=0 and ENABLE_CLIP_QUEUE=0 on this
+  #      service (they default to 1).
+  #   2. Bump WEB_CONCURRENCY=2 (or higher).
+  #   3. Start the ``backend-indexer`` service from the
+  #      ``sidecar`` profile: ``docker compose --profile sidecar up -d``.
+  # See docs/architecture/multi-worker-sidecar.md.
   backend:
     build:
       context: ./backend
@@ -45,12 +58,14 @@ services:
       - BOOKMARK_ASSETS_DIR=/app/bookmark_assets
       - BOOKMARK_INDEX_DIR=/app/search_index_bookmarks
       - AGENT_RELEASES_DIR=/app/agent_releases
-      # Number of uvicorn workers. Defaults to 1 because the
-      # search index flush loop and clip queue are not yet
-      # multi-worker safe (see Dockerfile). The agent transport
-      # layer IS multi-worker safe via the Redis bus, so once
-      # those subsystems are factored out you can opt in by
-      # setting ``WEB_CONCURRENCY=2`` (or higher) on the host.
+      # Subsystem gates (see docs/architecture/multi-worker-sidecar.md).
+      # Defaults match the single-process topology — every
+      # subsystem lives in this container. The operator flips
+      # ENABLE_INDEXERS and ENABLE_CLIP_QUEUE to 0 to hand them
+      # off to the ``backend-indexer`` sidecar.
+      - ENABLE_API=${ENABLE_API:-1}
+      - ENABLE_INDEXERS=${ENABLE_INDEXERS:-1}
+      - ENABLE_CLIP_QUEUE=${ENABLE_CLIP_QUEUE:-1}
       - WEB_CONCURRENCY=${WEB_CONCURRENCY:-1}
     volumes:
       - search_index:/app/search_index
@@ -81,6 +96,83 @@ services:
         limits:
           cpus: "1"
           memory: 1536M
+    restart: unless-stopped
+    networks:
+      - todo-net
+
+  # ── backend-indexer (sidecar, multi-worker topology) ───
+  #
+  # Only started when the ``sidecar`` profile is requested:
+  #   docker compose --profile sidecar up -d
+  #
+  # This container:
+  #   - Does NOT mount the FastAPI routes (ENABLE_API=0).
+  #   - Owns the Tantivy writers and the clip queue worker.
+  #   - Consumes the ``index:tasks`` Redis Stream published by
+  #     the backend service (when it runs with ENABLE_INDEXERS=0).
+  #
+  # When this sidecar runs, the main backend container MUST be
+  # reconfigured with ENABLE_INDEXERS=0 and ENABLE_CLIP_QUEUE=0
+  # on the host (e.g. in .env). Otherwise both containers would
+  # race for the same on-disk Tantivy index.
+  #
+  # WEB_CONCURRENCY MUST be 1 — Tantivy IndexWriter is a single-
+  # writer resource, so an indexer container with more than one
+  # worker corrupts the index.
+  backend-indexer:
+    profiles:
+      - sidecar
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: todo-backend-indexer
+    environment:
+      - MONGO_URI=mongodb://${MONGO_USER:-todoadmin}:${MONGO_PASSWORD:-changeme}@mongo:27017/${MONGO_DBNAME:-claude_todo}?authSource=admin
+      - MONGO_DBNAME=${MONGO_DBNAME:-claude_todo}
+      - REDIS_URI=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
+      - REDIS_MCP_URI=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/1
+      - SECRET_KEY=${SECRET_KEY}
+      - REFRESH_SECRET_KEY=${REFRESH_SECRET_KEY}
+      - BASE_URL=${BASE_URL:-}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost}
+      - SEARCH_INDEX_DIR=/app/search_index
+      - DOCSITE_ASSETS_DIR=/app/docsite_assets
+      - DOCSITE_INDEX_DIR=/app/search_index_docsites
+      - BOOKMARK_ASSETS_DIR=/app/bookmark_assets
+      - BOOKMARK_INDEX_DIR=/app/search_index_bookmarks
+      # Sidecar role — no API, all writers.
+      - ENABLE_API=0
+      - ENABLE_INDEXERS=1
+      - ENABLE_CLIP_QUEUE=1
+      - WEB_CONCURRENCY=1
+    volumes:
+      - search_index:/app/search_index
+      - docsite_assets:/app/docsite_assets
+      - docsite_index:/app/search_index_docsites
+      - bookmark_assets:/app/bookmark_assets
+      - bookmark_index:/app/search_index_bookmarks
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
     restart: unless-stopped
     networks:
       - todo-net

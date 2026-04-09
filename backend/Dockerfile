@@ -62,29 +62,36 @@ RUN mkdir -p /app/search_index /app/docsite_assets /app/search_index_docsites /a
     chown app:app /app/search_index /app/docsite_assets /app/search_index_docsites /app/bookmark_assets /app/search_index_bookmarks /app/agent_releases
 USER app
 EXPOSE 8000
-# Worker count is controlled by ``WEB_CONCURRENCY``.
+# ── Deployment topologies ───────────────────────────────────
 #
-# The agent transport layer is multi-worker safe: cross-worker
-# routing for remote-agent RPCs goes through the Redis-backed
-# RedisAgentBus (see ``app/services/agent_bus.py``), so any worker
-# can serve any MCP request regardless of which worker holds the
-# agent WebSocket. Setting ``WEB_CONCURRENCY=2`` (or higher) is
-# the supported way to enable multi-worker mode.
+# This single image supports two runtime roles, selected by env
+# vars (see ``app/core/config.py`` and the multi-worker sidecar
+# design in ``docs/architecture/multi-worker-sidecar.md``):
 #
-# However, the surrounding subsystems still assume **one writer
-# per process pool**:
-#   - Tantivy search indexes (``search_index*`` volumes) — only
-#     one ``flush_loop`` may write to a given on-disk index at a
-#     time. Two workers racing on the same volume corrupt it.
-#   - Bookmark clip queue (``clip_queue.py``) — each worker runs
-#     its own in-process queue, so ``recover_pending`` at startup
-#     would double-claim pending bookmarks.
+#   backend-api (default)
+#     ENABLE_API=1  ENABLE_INDEXERS=1  ENABLE_CLIP_QUEUE=1
+#     WEB_CONCURRENCY=1
+#     Single-process deployment — every subsystem runs in the
+#     same process. This is the fallback when no sidecar is
+#     deployed, and is what docker-compose.yml ships with today.
 #
-# Until those subsystems are made multi-worker safe, the safe
-# default is ``WEB_CONCURRENCY=1``. To opt in to multi-worker
-# remote-agent routing while accepting the index/queue caveats,
-# set ``WEB_CONCURRENCY=2`` and either disable the search
-# indexer / clip queue on all but one worker, or run the
-# clip_queue + indexers as separate sidecar processes.
+#   backend-api (multi-worker mode, requires the indexer sidecar)
+#     ENABLE_API=1  ENABLE_INDEXERS=0  ENABLE_CLIP_QUEUE=0
+#     WEB_CONCURRENCY=2  (or more)
+#     API / MCP / chat / agent transport only. Index writes are
+#     delegated to the indexer container via the Redis Stream
+#     ``index:tasks`` and the clip queue runs in the indexer.
+#
+#   backend-indexer (sidecar)
+#     ENABLE_API=0  ENABLE_INDEXERS=1  ENABLE_CLIP_QUEUE=1
+#     WEB_CONCURRENCY=1   (MUST be 1 — Tantivy writers are
+#                          single-writer)
+#     Owns the five Tantivy IndexWriter instances and the
+#     bookmark clip queue. Consumes ``index:tasks`` via
+#     XREADGROUP and re-reads documents from MongoDB.
+#
+# The CMD below passes through ``WEB_CONCURRENCY`` so a single
+# image can switch between roles purely with env vars — the
+# docker-compose entry decides which role this container plays.
 ENV WEB_CONCURRENCY=1
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY:-1}"]
