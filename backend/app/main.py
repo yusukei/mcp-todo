@@ -226,6 +226,15 @@ async def lifespan(app: FastAPI):
                 _flush_indexers.append(indexer)
                 _flush_tasks.append(_asyncio.create_task(indexer.flush_loop()))
 
+        # Start the Redis Stream consumer so this indexer picks up
+        # notifications published by API workers (multi-worker
+        # sidecar topology). In single-process deployments this is
+        # still safe because ENABLE_INDEXERS=True makes the
+        # notification publisher a no-op — the consumer starts but
+        # the stream stays empty.
+        from .services.indexer_consumer import indexer_consumer
+        await indexer_consumer.start()
+
     # ── Clip queue worker ─────────────────────────────────────
     #
     # The clip queue is an in-process ``asyncio.Queue`` backed by a
@@ -324,6 +333,13 @@ async def lifespan(app: FastAPI):
     # gracefully exit on its next get_message tick.
     from .services.chat_manager import chat_manager as _chat_mgr
     await _chat_mgr.stop()
+    # Stop the index notification consumer on the indexer sidecar.
+    # In single-process mode this is a no-op (start() was never
+    # called when ENABLE_INDEXERS=True and the ``indexer_consumer``
+    # singleton still has ``_task is None``).
+    if not _is_testing and settings.ENABLE_INDEXERS:
+        from .services.indexer_consumer import indexer_consumer
+        await indexer_consumer.stop()
     if not _is_testing:
         from .services.clip_queue import clip_queue
         await clip_queue.stop()
