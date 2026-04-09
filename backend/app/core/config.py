@@ -81,9 +81,13 @@ class Settings(BaseSettings):
 
     # ── MCP auth cache ────────────────────────────────────────
     # X-API-Key authentication result is cached in-process to avoid
-    # hashing + DB lookup on every MCP call. Short TTL keeps the
-    # window of stale "is_admin" flips small.
-    MCP_AUTH_CACHE_TTL_SECONDS: int = 300
+    # hashing + DB lookup on every MCP call. The cache is
+    # per-process, so in the multi-worker topology each API worker
+    # has its own copy; an API key revocation takes up to this many
+    # seconds to propagate to every worker. Keep the TTL short
+    # enough that the propagation delay is operationally invisible
+    # for the revoke-a-leaked-key flow.
+    MCP_AUTH_CACHE_TTL_SECONDS: int = 30
 
     # ── Remote agent: WebSocket keepalive ─────────────────────
     # Server-side ping cadence used to detect dead agent connections.
