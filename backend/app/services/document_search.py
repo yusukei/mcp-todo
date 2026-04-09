@@ -205,13 +205,25 @@ class DocumentSearchResult:
 
 
 async def index_document(d: object) -> None:
-    """ドキュメントを検索インデックスに追加・更新（利用可能な場合のみ）"""
+    """ドキュメントを検索インデックスに追加・更新（利用可能な場合のみ）
+
+    In the multi-worker sidecar topology (``ENABLE_INDEXERS=False``)
+    this publishes an ``index:tasks`` notification instead so the
+    dedicated indexer container picks it up.
+    """
     indexer = DocumentSearchIndexer.get_instance()
     if indexer:
         try:
             await indexer.upsert_document(d)
         except Exception as e:
             logger.warning("Failed to index document %s: %s", getattr(d, "id", "?"), e)
+        return
+    from ..core.config import settings as _settings
+    if not _settings.ENABLE_INDEXERS:
+        from .index_notifications import notify_document_upserted
+        did = str(getattr(d, "id", "") or "")
+        if did:
+            await notify_document_upserted(did)
 
 
 async def deindex_document(document_id: str) -> None:
@@ -222,6 +234,12 @@ async def deindex_document(document_id: str) -> None:
             await indexer.delete_document(document_id)
         except Exception as e:
             logger.warning("Failed to deindex document %s: %s", document_id, e)
+        return
+    from ..core.config import settings as _settings
+    if not _settings.ENABLE_INDEXERS:
+        from .index_notifications import notify_document_deleted
+        if document_id:
+            await notify_document_deleted(document_id)
 
 
 class DocumentSearchService:

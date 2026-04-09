@@ -231,13 +231,30 @@ class SearchResult:
 
 
 async def index_task(task: object) -> None:
-    """タスクを検索インデックスに追加・更新（利用可能な場合のみ）"""
+    """タスクを検索インデックスに追加・更新（利用可能な場合のみ）
+
+    In the single-process deployment this calls the in-process
+    Tantivy writer directly. In the multi-worker sidecar topology
+    (``ENABLE_INDEXERS=False``) the writer lives in a separate
+    container, so we publish an ``index:tasks`` notification
+    instead — see ``services.index_notifications``.
+    """
     indexer = SearchIndexer.get_instance()
     if indexer:
         try:
             await indexer.upsert_task(task)
         except Exception as e:
             logger.warning("Failed to index task %s: %s", getattr(task, "id", "?"), e)
+        return
+    # No in-process indexer. If the deployment has an out-of-
+    # process indexer (the sidecar container), publish a hint so
+    # the sidecar picks it up and re-reads from Mongo.
+    from ..core.config import settings as _settings
+    if not _settings.ENABLE_INDEXERS:
+        from .index_notifications import notify_task_upserted
+        task_id = str(getattr(task, "id", "") or "")
+        if task_id:
+            await notify_task_upserted(task_id)
 
 
 async def deindex_task(task_id: str) -> None:
@@ -248,6 +265,12 @@ async def deindex_task(task_id: str) -> None:
             await indexer.delete_task(task_id)
         except Exception as e:
             logger.warning("Failed to deindex task %s: %s", task_id, e)
+        return
+    from ..core.config import settings as _settings
+    if not _settings.ENABLE_INDEXERS:
+        from .index_notifications import notify_task_deleted
+        if task_id:
+            await notify_task_deleted(task_id)
 
 
 class SearchService:

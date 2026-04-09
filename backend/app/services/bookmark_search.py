@@ -209,13 +209,25 @@ class BookmarkSearchResult:
 
 
 async def index_bookmark(b: object) -> None:
-    """ブックマークを検索インデックスに追加・更新"""
+    """ブックマークを検索インデックスに追加・更新
+
+    In the multi-worker sidecar topology (``ENABLE_INDEXERS=False``)
+    this publishes an ``index:tasks`` notification instead so the
+    dedicated indexer container picks it up.
+    """
     indexer = BookmarkSearchIndexer.get_instance()
     if indexer:
         try:
             await indexer.upsert_bookmark(b)
         except Exception as e:
             logger.warning("Failed to index bookmark %s: %s", getattr(b, "id", "?"), e)
+        return
+    from ..core.config import settings as _settings
+    if not _settings.ENABLE_INDEXERS:
+        from .index_notifications import notify_bookmark_upserted
+        bid = str(getattr(b, "id", "") or "")
+        if bid:
+            await notify_bookmark_upserted(bid)
 
 
 async def deindex_bookmark(bookmark_id: str) -> None:
@@ -226,6 +238,12 @@ async def deindex_bookmark(bookmark_id: str) -> None:
             await indexer.delete_bookmark(bookmark_id)
         except Exception as e:
             logger.warning("Failed to deindex bookmark %s: %s", bookmark_id, e)
+        return
+    from ..core.config import settings as _settings
+    if not _settings.ENABLE_INDEXERS:
+        from .index_notifications import notify_bookmark_deleted
+        if bookmark_id:
+            await notify_bookmark_deleted(bookmark_id)
 
 
 class BookmarkSearchService:

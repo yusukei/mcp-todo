@@ -203,13 +203,25 @@ class KnowledgeSearchResult:
 
 
 async def index_knowledge(k: object) -> None:
-    """ナレッジを検索インデックスに追加・更新（利用可能な場合のみ）"""
+    """ナレッジを検索インデックスに追加・更新（利用可能な場合のみ）
+
+    In the multi-worker sidecar topology (``ENABLE_INDEXERS=False``)
+    this publishes an ``index:tasks`` notification instead so the
+    dedicated indexer container picks it up.
+    """
     indexer = KnowledgeSearchIndexer.get_instance()
     if indexer:
         try:
             await indexer.upsert_knowledge(k)
         except Exception as e:
             logger.warning("Failed to index knowledge %s: %s", getattr(k, "id", "?"), e)
+        return
+    from ..core.config import settings as _settings
+    if not _settings.ENABLE_INDEXERS:
+        from .index_notifications import notify_knowledge_upserted
+        kid = str(getattr(k, "id", "") or "")
+        if kid:
+            await notify_knowledge_upserted(kid)
 
 
 async def deindex_knowledge(knowledge_id: str) -> None:
@@ -220,6 +232,12 @@ async def deindex_knowledge(knowledge_id: str) -> None:
             await indexer.delete_knowledge(knowledge_id)
         except Exception as e:
             logger.warning("Failed to deindex knowledge %s: %s", knowledge_id, e)
+        return
+    from ..core.config import settings as _settings
+    if not _settings.ENABLE_INDEXERS:
+        from .index_notifications import notify_knowledge_deleted
+        if knowledge_id:
+            await notify_knowledge_deleted(knowledge_id)
 
 
 class KnowledgeSearchService:
