@@ -1,63 +1,38 @@
-import axios from 'axios'
-import { useAuthStore } from '../store/auth'
+﻿import { useAuthStore } from '../store/auth'
 
-/**
- * Axios instance for the REST API.
- *
- * Authentication is handled via HttpOnly cookies set by the backend
- * (`access_token` + `refresh_token`). The frontend never reads or stores
- * tokens directly — `withCredentials: true` lets the browser ship the
- * cookies on every request, and the response interceptor reissues them
- * via `/auth/refresh` when the access token expires.
- */
-export const api = axios.create({
-  baseURL: '/api/v1',
-  timeout: 30000,
-  headers: { 'Content-Type': 'application/json' },
-  withCredentials: true,
-})
+const BASE_URL = '/api/v1'
+const DEFAULT_TIMEOUT = 30000
 
-let refreshPromise: Promise<void> | null = null
+// ── Types ──────────────────────────────────────────
 
-// Endpoints that must NOT be intercepted by the auto-refresh handler.
-// Matched as PATH PREFIXES (not substrings) so a future endpoint like
-// /auth/logout-all is not picked up by accident.
-//
-// - /auth/refresh — refreshing in response to a refresh failure is the
-//   textbook infinite loop.
-// - /auth/logout — even if 401 comes back, the client must propagate it
-//   instead of trying to refresh; otherwise /refresh ↔ /logout ricochets.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+interface ApiResponse<T = any> {
+  data: T
+  status: number
+  headers: Headers
+}
+
+interface RequestConfig {
+  timeout?: number
+  responseType?: 'json' | 'blob'
+  headers?: Record<string, string>
+  signal?: AbortSignal
+  params?: Record<string, string | number | boolean | undefined | null> | object
+}
+
+// ── Auth loop detection ────────────────────────────
+
 const AUTH_LOOP_PATH_PREFIXES = ['/auth/refresh', '/auth/logout']
 
-function isAuthLoopUrl(url: string | undefined): boolean {
-  if (!url) return false
-  // Strip the api baseURL if present so prefixes work for either
-  // "/auth/refresh" or "/api/v1/auth/refresh" forms.
-  const path = url.replace(/^https?:\/\/[^/]+/, '').replace(/^\/api\/v1/, '')
+function isAuthLoopUrl(url: string): boolean {
+  const path = url.replace(/^\/api\/v1/, '')
   return AUTH_LOOP_PATH_PREFIXES.some(
     (p) => path === p || path.startsWith(p + '/') || path.startsWith(p + '?'),
   )
 }
 
-// ── Cross-tab refresh coordination ───────────────────────────────
-//
-// Two browser tabs share the same HttpOnly refresh_token cookie. When
-// both tabs simultaneously detect a 401 they each fire /auth/refresh,
-// but the JTI is single-use on the server side: the first request wins
-// and rotates the cookie, the second request comes back 401 "already
-// used" — and the loser tab dumps the user to /login even though the
-// session is in fact alive.
-//
-// We coordinate via BroadcastChannel: a tab that is about to refresh
-// announces "refreshing" and other tabs that observe a 401 in the
-// meantime wait on a "refreshed" signal instead of hitting the server
-// themselves. The waiter then retries its original request with the
-// freshly rotated cookie.
-//
-// BroadcastChannel is unavailable in some test runners and old
-// browsers — fall back to the per-tab refreshPromise coalesce in that
-// case (the cross-tab race remains, but single-tab behaviour is
-// preserved).
+// ── Cross-tab refresh coordination ─────────────────
+
 type RefreshSignal =
   | { kind: 'started' }
   | { kind: 'succeeded' }
@@ -95,7 +70,6 @@ if (refreshChannel) {
 function waitForCrossTabRefresh(timeoutMs = 5000): Promise<boolean> {
   return new Promise((resolve) => {
     const id = setTimeout(() => {
-      // Timed out waiting — fall through to refreshing ourselves.
       crossTabWaiters = crossTabWaiters.filter((w) => w !== handler)
       resolve(false)
     }, timeoutMs)
@@ -107,65 +81,167 @@ function waitForCrossTabRefresh(timeoutMs = 5000): Promise<boolean> {
   })
 }
 
+// ── Token refresh ──────────────────────────────────
+
+let refreshPromise: Promise<void> | null = null
+
 async function performRefresh(): Promise<void> {
   refreshChannel?.postMessage({ kind: 'started' } satisfies RefreshSignal)
   try {
-    await axios.post(
-      '/api/v1/auth/refresh',
-      {},
-      { withCredentials: true },
-    )
+    const resp = await fetch(`${BASE_URL}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+    if (!resp.ok) throw new Error(`Refresh failed: ${resp.status}`)
     refreshChannel?.postMessage({ kind: 'succeeded' } satisfies RefreshSignal)
   } catch (err) {
     refreshChannel?.postMessage({ kind: 'failed' } satisfies RefreshSignal)
-    // Refresh failed → drop local user state but do NOT call
-    // /auth/logout. The server cookies are already invalid (or we
-    // wouldn't be here), and hitting /auth/logout would itself 401
-    // and re-enter this very interceptor.
     useAuthStore.getState().setUser(null)
     throw err
   }
 }
 
-api.interceptors.response.use(
-  (res) => res,
-  async (error) => {
-    const cfg = error.config
-    if (
-      error.response?.status === 401 &&
-      cfg &&
-      !cfg._retried &&
-      !isAuthLoopUrl(cfg.url)
-    ) {
-      cfg._retried = true
+// ── Core request function ──────────────────────────
 
-      if (!refreshPromise) {
-        refreshPromise = (async () => {
-          // If another tab has already announced a refresh, wait for
-          // its result instead of racing it. Single-use JTI on the
-          // server would otherwise reject our concurrent request.
-          if (crossTabRefreshInFlight) {
-            const ok = await waitForCrossTabRefresh()
-            if (ok) return
-            // Either timeout or the other tab failed → fall through
-            // and try ourselves. If the other tab really failed the
-            // server will tell us 401 again and we'll surface it.
-          }
-          await performRefresh()
-        })().finally(() => {
-          refreshPromise = null
-        })
-      }
-
-      try {
-        await refreshPromise
-      } catch {
-        return Promise.reject(error)
-      }
-
-      // Cookie has been refreshed; retry the original request.
-      return api.request(cfg)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function request<T = any>(
+  method: string,
+  url: string,
+  body?: unknown,
+  config?: RequestConfig,
+  _retried?: boolean,
+): Promise<ApiResponse<T>> {
+  // Build URL with query params
+  let fullUrl = `${BASE_URL}${url}`
+  if (config?.params) {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(config.params)) {
+      if (v !== undefined && v !== null) qs.set(k, String(v))
     }
-    return Promise.reject(error)
-  },
-)
+    const qsStr = qs.toString()
+    if (qsStr) fullUrl += (fullUrl.includes('?') ? '&' : '?') + qsStr
+  }
+
+  const timeout = config?.timeout ?? DEFAULT_TIMEOUT
+  const headers: Record<string, string> = { ...config?.headers }
+
+  // Let the browser set Content-Type automatically for FormData (with boundary).
+  // For everything else, set application/json.
+  if (body !== undefined && body !== null && !(body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json'
+  }
+
+  // Combine caller-supplied signal with timeout signal
+  const timeoutController = new AbortController()
+  const timeoutId = setTimeout(() => timeoutController.abort(), timeout)
+
+  const signal = config?.signal
+    ? AbortSignal.any([config.signal, timeoutController.signal])
+    : timeoutController.signal
+
+  let resp: Response
+  try {
+    resp = await fetch(fullUrl, {
+      method,
+      credentials: 'include',
+      headers,
+      body:
+        body === undefined || body === null
+          ? undefined
+          : body instanceof FormData
+            ? body
+            : JSON.stringify(body),
+      signal,
+    })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error(`Request timeout after ${timeout}ms: ${method} ${url}`)
+    }
+    throw err
+  } finally {
+    clearTimeout(timeoutId)
+  }
+
+  // ── 401 auto-refresh ──
+  if (resp.status === 401 && !_retried && !isAuthLoopUrl(url)) {
+    if (!refreshPromise) {
+      refreshPromise = (async () => {
+        if (crossTabRefreshInFlight) {
+          const ok = await waitForCrossTabRefresh()
+          if (ok) return
+        }
+        await performRefresh()
+      })().finally(() => {
+        refreshPromise = null
+      })
+    }
+
+    try {
+      await refreshPromise
+    } catch {
+      throw new ApiError(resp.status, { detail: 'Not authenticated' })
+    }
+
+    return request<T>(method, url, body, config, true)
+  }
+
+  // ── Parse response ──
+  let data: T
+  if (config?.responseType === 'blob') {
+    data = (await resp.blob()) as T
+  } else {
+    const text = await resp.text()
+    data = text ? JSON.parse(text) : (null as T)
+  }
+
+  if (!resp.ok) {
+    throw new ApiError(resp.status, data)
+  }
+
+  return { data, status: resp.status, headers: resp.headers }
+}
+
+// ── Error class ────────────────────────────────────
+
+export class ApiError extends Error {
+  status: number
+  data: unknown
+  response: { status: number; data: unknown }
+  isApiError = true
+
+  constructor(status: number, data: unknown) {
+    const detail = (data as { detail?: string })?.detail ?? `HTTP ${status}`
+    super(detail)
+    this.name = 'ApiError'
+    this.status = status
+    this.data = data
+    // Compatibility: some existing code checks error.response.status
+    this.response = { status, data }
+  }
+}
+
+// ── Public API (same interface as before) ──────────
+
+export const api = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  get: <T = any>(url: string, config?: RequestConfig) =>
+    request<T>('GET', url, undefined, config),
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  post: <T = any>(url: string, body?: unknown, config?: RequestConfig) =>
+    request<T>('POST', url, body, config),
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  patch: <T = any>(url: string, body?: unknown, config?: RequestConfig) =>
+    request<T>('PATCH', url, body, config),
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  put: <T = any>(url: string, body?: unknown, config?: RequestConfig) =>
+    request<T>('PUT', url, body, config),
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  delete: <T = any>(url: string, config?: RequestConfig) =>
+    request<T>('DELETE', url, undefined, config),
+}

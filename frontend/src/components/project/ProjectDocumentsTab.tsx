@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+﻿import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -186,7 +186,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
       const resp = await api.post(
         `/projects/${projectId}/documents/import`,
         formData,
-        { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 },
+        { timeout: 120000 },
       )
       return resp.data
     },

@@ -160,7 +160,7 @@ export default function UsersTab() {
                     </button>
                   )}
                   <button
-                    onClick={async () => { if (await showConfirm(`"${u.name}" を無効化しますか？`)) del.mutate(u.id) }}
+                    onClick={async () => { if (await showConfirm(`「${u.name}」を削除しますか？\nこの操作は取り消せません。`)) del.mutate(u.id) }}
                     className="text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400"
                     aria-label="削除"
                   >

@@ -246,6 +246,7 @@ export default function Layout() {
           <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{user?.name}</p>
           <ThemeToggle />
         </div>
+        <p className="text-[9px] text-gray-300 dark:text-gray-600 px-2" title={__BUILD_TIMESTAMP__}>build: {__BUILD_TIMESTAMP__}</p>
       </div>
     </>
   )

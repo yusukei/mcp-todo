@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+﻿import { useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { BookOpen, Plus, Search, Tag, Pencil, Trash2, ExternalLink, Copy, Check, FileQuestion, Upload } from 'lucide-react'
@@ -109,10 +109,7 @@ export default function KnowledgePage() {
       for (const file of Array.from(files)) {
         formData.append('files', file)
       }
-      const resp = await api.post('/knowledge/import', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 120000,
-      })
+      const resp = await api.post('/knowledge/import', formData, { timeout: 120000 })
       return resp.data
     },
     onSuccess: (data) => {

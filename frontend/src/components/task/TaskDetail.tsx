@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+﻿import { useEffect, useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { X, Pencil, Check, XCircle, ChevronUp, ImagePlus, Trash2, Copy, ShieldCheck, ShieldOff } from 'lucide-react'
 import { api } from '../../api/client'
@@ -292,9 +292,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask 
     mutationFn: (file: File) => {
       const formData = new FormData()
       formData.append('file', file)
-      return api.post(`/projects/${projectId}/tasks/${taskId}/attachments`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      return api.post(`/projects/${projectId}/tasks/${taskId}/attachments`, formData)
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['task', taskId] })

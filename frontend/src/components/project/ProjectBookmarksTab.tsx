@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+﻿import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Bookmark as BookmarkIcon, Plus, Search, Star, Grid3X3, List, RefreshCw,
@@ -239,9 +239,7 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
     mutationFn: (file: File) => {
       const formData = new FormData()
       formData.append('file', file)
-      return api.post(`/projects/${projectId}/bookmarks/import`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      return api.post(`/projects/${projectId}/bookmarks/import`, formData)
     },
     onSuccess: (res) => {
       const data = res.data

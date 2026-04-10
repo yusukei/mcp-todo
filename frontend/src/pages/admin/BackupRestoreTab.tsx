@@ -16,7 +16,7 @@ export default function BackupRestoreTab() {
       const url = window.URL.createObjectURL(res.data)
       const a = document.createElement('a')
       a.href = url
-      const disposition = res.headers['content-disposition']
+      const disposition = res.headers.get('content-disposition')
       const filename = disposition
         ? disposition.split('filename=')[1]?.replace(/"/g, '')
         : `backup_${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '')}.zip`
@@ -45,9 +45,7 @@ export default function BackupRestoreTab() {
     try {
       const formData = new FormData()
       formData.append('file', confirmRestore)
-      await api.post('/backup/import', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      await api.post('/backup/import', formData)
       showSuccessToast('リストアが完了しました。ページを再読み込みします。')
       window.location.reload()
     } catch {
