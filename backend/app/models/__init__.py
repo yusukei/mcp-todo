@@ -7,6 +7,7 @@ from .knowledge import Knowledge
 from .mcp_api_key import McpApiKey
 from .mcp_tool_usage import McpToolCallEvent, McpToolUsageBucket
 from .project import Project, ProjectMember, ProjectRemoteBinding
+from .secret import ProjectSecret, SecretAccessLog
 from .task import Attachment, Comment, Task
 from .remote import AgentRelease, RemoteAgent, RemoteExecLog
 from .user import AuthType, User
@@ -44,4 +45,6 @@ __all__ = [
     "MessageStatus",
     "SessionStatus",
     "ToolCallData",
+    "ProjectSecret",
+    "SecretAccessLog",
 ]

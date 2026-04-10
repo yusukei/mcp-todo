@@ -100,6 +100,16 @@ mcp = FastMCP(
         "Bookmarks can be organized into collections (create_bookmark_collection) and tagged. "
         "Full-text search covers title, description, tags, URL, and clipped content "
         "(Japanese supported via Lindera).\n\n"
+        "## Project secrets\n"
+        "Project-scoped encrypted secrets (API keys, tokens, credentials). "
+        "Secrets are encrypted at rest and access is audited.\n"
+        "- list_secrets: List secret key names and descriptions (values never included)\n"
+        "- set_secret: Create or update a secret (owner only)\n"
+        "- get_secret: Decrypt and return a secret value (WARNING: value enters LLM context)\n"
+        "- delete_secret: Remove a secret (owner only)\n"
+        "For safer usage, prefer ``inject_secrets=True`` on ``remote_exec`` — "
+        "this injects all project secrets as environment variables without "
+        "exposing values in the conversation.\n\n"
         "## Remote execution\n"
         "Execute commands and access files on remote machines via connected agents. "
         "Each project can be linked to one remote workspace (agent + directory). "
@@ -160,7 +170,7 @@ mcp = FastMCP(
 
 def register_tools() -> None:
     from .middleware import UsageTrackingMiddleware
-    from .tools import bookmarks, documents, docsites, knowledge, projects, remote, setup, tasks  # noqa: F401
+    from .tools import bookmarks, documents, docsites, knowledge, projects, remote, secrets, setup, tasks  # noqa: F401
 
     # Install usage-tracking middleware once. Hot path is fire-and-forget,
     # so even if Mongo briefly stalls the tool call itself is unaffected.

@@ -1,5 +1,5 @@
 """
-テス��共通フィクスチャ
+テスト共通フィクスチャ
 
 TEST_MODE 環境変数で mock/real を切り替える:
   mock (デフォルト): mongomock-motor + fakeredis で外部依存ゼロ
@@ -30,7 +30,7 @@ import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.models import AgentRelease, AllowedEmail, Bookmark, BookmarkCollection, ChatMessage, ChatSession, DocPage, DocSite, DocumentVersion, Knowledge, McpApiKey, McpToolCallEvent, McpToolUsageBucket, Project, ProjectDocument, RemoteAgent, RemoteExecLog, Task, User
+from app.models import AgentRelease, AllowedEmail, Bookmark, BookmarkCollection, ChatMessage, ChatSession, DocPage, DocSite, DocumentVersion, Knowledge, McpApiKey, McpToolCallEvent, McpToolUsageBucket, Project, ProjectDocument, ProjectSecret, RemoteAgent, RemoteExecLog, SecretAccessLog, Task, User
 from app.models.project import ProjectMember
 from app.models.user import AuthType
 from app.core.redis import get_redis
@@ -41,7 +41,7 @@ from app.core.security import create_access_token, hash_password
 # Session スコープ: DB / Redis の初期化
 # ---------------------------------------------------------------------------
 
-_ALL_MODELS = [User, AllowedEmail, Project, Task, McpApiKey, McpToolUsageBucket, McpToolCallEvent, Knowledge, ProjectDocument, DocumentVersion, DocSite, DocPage, Bookmark, BookmarkCollection, RemoteAgent, RemoteExecLog, AgentRelease, ChatSession, ChatMessage]
+_ALL_MODELS = [User, AllowedEmail, Project, Task, McpApiKey, McpToolUsageBucket, McpToolCallEvent, Knowledge, ProjectDocument, DocumentVersion, DocSite, DocPage, Bookmark, BookmarkCollection, RemoteAgent, RemoteExecLog, AgentRelease, ChatSession, ChatMessage, ProjectSecret, SecretAccessLog]
 
 
 @pytest_asyncio.fixture(scope="session", autouse=True)

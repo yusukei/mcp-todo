@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from ..models.docsite import DocPage, DocSite, DocSiteSection
     from ..models.document import DocumentVersion, ProjectDocument
     from ..models.knowledge import Knowledge
+    from ..models.secret import ProjectSecret
 
 
 def task_to_dict(t: Task) -> dict:
@@ -167,6 +168,30 @@ def knowledge_to_dict(k: Knowledge) -> dict:
         "created_at": k.created_at.isoformat(),
         "updated_at": k.updated_at.isoformat(),
     }
+
+
+def secret_to_dict(s: ProjectSecret, *, include_value: bool = False) -> dict:
+    """Convert a ProjectSecret to a plain dict for API/MCP responses.
+
+    By default the encrypted value is **not** included — only the key
+    name and metadata are returned.  Pass ``include_value=True`` to
+    decrypt and include the plaintext (used by ``get_secret``).
+    """
+    d: dict = {
+        "id": str(s.id),
+        "project_id": s.project_id,
+        "key": s.key,
+        "description": s.description,
+        "created_by": s.created_by,
+        "updated_by": s.updated_by,
+        "created_at": s.created_at.isoformat(),
+        "updated_at": s.updated_at.isoformat(),
+    }
+    if include_value:
+        from ..core.crypto import decrypt
+
+        d["value"] = decrypt(s.encrypted_value)
+    return d
 
 
 def _section_to_dict(s: DocSiteSection) -> dict:
