@@ -471,6 +471,7 @@ async def remote_exec(
     timeout: int = 60,
     cwd: str | None = None,
     env: dict[str, str] | None = None,
+    inject_secrets: bool = False,
 ) -> dict:
     """Execute a shell command on the remote machine linked to this project.
 
@@ -487,6 +488,11 @@ async def remote_exec(
         env: Optional dict of extra environment variables. Merged with the
             agent's existing environment (so PATH and friends survive).
             Cross-platform alternative to ``set X=Y && cmd`` chains.
+        inject_secrets: If True, decrypt all project secrets and merge them
+            into the environment variables. Explicit ``env`` entries take
+            precedence over secrets with the same key name. This is the
+            recommended way to pass credentials — values never appear in the
+            LLM context or in the response.
 
     Returns:
         dict with ``exit_code``, ``stdout``, ``stderr``, ``duration_ms``,
@@ -509,6 +515,31 @@ async def remote_exec(
             _validate_remote_env(env)
     key_info = audit.key_info
     binding = audit.binding
+
+    # ── inject_secrets: merge project secrets into env ────────────
+    if inject_secrets:
+        from ...core.crypto import decrypt as _decrypt
+        from ...models.secret import ProjectSecret, SecretAccessLog
+
+        secrets = await ProjectSecret.find(
+            ProjectSecret.project_id == binding.project_id,
+        ).to_list()
+        if secrets:
+            secret_env = {s.key: _decrypt(s.encrypted_value) for s in secrets}
+            if env is not None:
+                # Explicit env takes precedence over secrets
+                secret_env.update(env)
+            env = secret_env
+            _validate_remote_env(env)
+            # Audit log
+            for s in secrets:
+                await SecretAccessLog(
+                    project_id=binding.project_id,
+                    secret_key=s.key,
+                    operation="inject",
+                    user_id=key_info.get("user_id", ""),
+                    auth_kind=key_info.get("auth_kind", ""),
+                ).insert()
 
     timeout = max(1, min(timeout, settings.REMOTE_MAX_TIMEOUT_SECONDS))
     payload: dict = {
