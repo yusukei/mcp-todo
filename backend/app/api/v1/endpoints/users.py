@@ -1,5 +1,6 @@
 import secrets
 
+from bson import DBRef
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr, Field
 from pymongo.errors import DuplicateKeyError
@@ -7,7 +8,8 @@ from pymongo.errors import DuplicateKeyError
 from ....core.deps import get_admin_user, get_current_user
 from ....core.validators import valid_object_id
 from ....core.security import hash_password
-from ....models import AllowedEmail, User
+from ....models import AllowedEmail, Project, User
+from ....models.mcp_api_key import McpApiKey
 from ....models.user import AuthType
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -124,14 +126,39 @@ async def reset_password(
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(user_id: str, admin: User = Depends(get_admin_user)) -> None:
+    """Permanently delete a user and clean up references.
+
+    Cleanup order: references first, then the user document.
+    If a cleanup step fails the user still exists, avoiding orphaned data.
+    """
     valid_object_id(user_id)
     if user_id == str(admin.id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete yourself")
     user = await User.get(user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    user.is_active = False
-    await user.save_updated()
+
+    user_ref = DBRef("users", user.id)
+
+    # 1. Deactivate MCP API keys owned by this user (bulk update)
+    await McpApiKey.find(
+        {"created_by": user_ref, "is_active": True},
+    ).update({"$set": {"is_active": False}})
+
+    # 2. Remove user from project members
+    projects = await Project.find({"members.user_id": user_id}).to_list()
+    for project in projects:
+        project.members = [m for m in project.members if m.user_id != user_id]
+        await project.save()
+
+    # 3. Nullify AllowedEmail.created_by references
+    await AllowedEmail.find(
+        {"created_by": user_ref},
+    ).update({"$set": {"created_by": None}})
+
+    # 4. Delete the user document last — if any step above fails,
+    #    the user still exists and can be retried.
+    await user.delete()
 
 
 @router.get("/search/active")

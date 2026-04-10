@@ -12,8 +12,19 @@ support is broken: ``pubsub.get_message`` returns ``None`` after a
 subscribe + publish round-trip in the same process. The bus's
 *cross-worker request/response correlation* and *connect-broadcast
 wake* paths therefore cannot be exercised end-to-end here — they
-need real Redis (testcontainers) and live in a separate
-integration suite.
+need real Redis (testcontainers) and live in the Tier 2 suite at
+``tests/integration/test_agent_bus_realredis.py``. The split is:
+
+- **Tier 1 (this file, fakeredis)**: registry SET/GET/WATCH-DEL,
+  owner discovery, routing decision table, lifecycle idempotency,
+  and direct regression coverage of ``_dispatch_remote_command``
+  via a ``_CapturingRedis`` double that bypasses pub/sub entirely.
+
+- **Tier 2 (real-redis integration)**: full cross-worker round
+  trip through real pub/sub, repeated round-trips under load (the
+  subscribe-before-publish ordering guarantee), connect-broadcast
+  wake, disconnect-broadcast registry prune, and heartbeat TTL
+  expiry observed by a peer worker.
 
 What this file DOES verify:
 

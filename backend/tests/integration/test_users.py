@@ -3,9 +3,11 @@
 import pytest
 import pytest_asyncio
 
-from app.models import AllowedEmail, User
+from app.models import AllowedEmail, Project, User
+from app.models.mcp_api_key import McpApiKey
+from app.models.project import MemberRole, ProjectMember
 from app.models.user import AuthType
-from app.core.security import create_access_token
+from app.core.security import create_access_token, hash_password
 
 
 class TestListUsers:
@@ -162,7 +164,7 @@ class TestUpdateUser:
 
 
 class TestDeleteUser:
-    async def test_soft_deletes_user(
+    async def test_permanently_deletes_user(
         self, client, admin_user, regular_user, admin_headers
     ):
         resp = await client.delete(
@@ -170,10 +172,73 @@ class TestDeleteUser:
         )
         assert resp.status_code == 204
 
-        # ユーザーは is_active=False になっている
+        # ユーザーが DB から完全に削除されている
         db_user = await User.get(regular_user.id)
-        assert db_user is not None
-        assert db_user.is_active is False
+        assert db_user is None
+
+    async def test_delete_removes_from_project_members(
+        self, client, admin_user, admin_headers
+    ):
+        # 削除対象ユーザーを作成
+        target = User(
+            email="target-del@test.com",
+            name="Target",
+            auth_type=AuthType.admin,
+            password_hash=hash_password("pass"),
+        )
+        await target.insert()
+
+        # プロジェクトにメンバーとして追加
+        project = Project(
+            name="Del Test Project",
+            created_by=admin_user,
+            members=[
+                ProjectMember(user_id=str(admin_user.id), role=MemberRole.owner),
+                ProjectMember(user_id=str(target.id), role=MemberRole.member),
+            ],
+        )
+        await project.insert()
+
+        resp = await client.delete(
+            f"/api/v1/users/{target.id}", headers=admin_headers
+        )
+        assert resp.status_code == 204
+
+        # プロジェクトのメンバーから除外されている
+        db_project = await Project.get(project.id)
+        member_ids = [m.user_id for m in db_project.members]
+        assert str(target.id) not in member_ids
+        assert str(admin_user.id) in member_ids
+
+    async def test_delete_deactivates_api_keys(
+        self, client, admin_user, admin_headers
+    ):
+        # 削除対象ユーザーを作成
+        target = User(
+            email="target-key@test.com",
+            name="Key Owner",
+            auth_type=AuthType.admin,
+            password_hash=hash_password("pass"),
+        )
+        await target.insert()
+
+        # APIキーを作成
+        api_key = McpApiKey(
+            key_hash="fake_hash_for_test",
+            name="Test Key",
+            created_by=target,
+            is_active=True,
+        )
+        await api_key.insert()
+
+        resp = await client.delete(
+            f"/api/v1/users/{target.id}", headers=admin_headers
+        )
+        assert resp.status_code == 204
+
+        # APIキーが無効化されている
+        db_key = await McpApiKey.get(api_key.id)
+        assert db_key.is_active is False
 
     async def test_cannot_delete_yourself(
         self, client, admin_user, admin_headers
