@@ -3,7 +3,7 @@
 const BASE_URL = '/api/v1'
 const DEFAULT_TIMEOUT = 30000
 
-// ── Types ──────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface ApiResponse<T = any> {
@@ -20,7 +20,7 @@ interface RequestConfig {
   params?: Record<string, string | number | boolean | undefined | null> | object
 }
 
-// ── Auth loop detection ────────────────────────────
+// ── Auth loop detection ────────────────────────────────────
 
 const AUTH_LOOP_PATH_PREFIXES = ['/auth/refresh', '/auth/logout']
 
@@ -31,7 +31,7 @@ function isAuthLoopUrl(url: string): boolean {
   )
 }
 
-// ── Cross-tab refresh coordination ─────────────────
+// ── Cross-tab refresh coordination ─────────────────────────────
 
 type RefreshSignal =
   | { kind: 'started' }
@@ -81,7 +81,7 @@ function waitForCrossTabRefresh(timeoutMs = 5000): Promise<boolean> {
   })
 }
 
-// ── Token refresh ──────────────────────────────────
+// ── Token refresh ──────────────────────────────────────────────────
 
 let refreshPromise: Promise<void> | null = null
 
@@ -103,7 +103,7 @@ async function performRefresh(): Promise<void> {
   }
 }
 
-// ── Core request function ──────────────────────────
+// ── Core request function ──────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function request<T = any>(
@@ -165,7 +165,10 @@ async function request<T = any>(
   }
 
   // ── 401 auto-refresh ──
-  if (resp.status === 401 && !_retried && !isAuthLoopUrl(url)) {
+  // FormData is a streaming body consumed by the first fetch — retrying
+  // with the same instance sends an empty body (422). Let the caller
+  // handle re-submission instead.
+  if (resp.status === 401 && !_retried && !isAuthLoopUrl(url) && !(body instanceof FormData)) {
     if (!refreshPromise) {
       refreshPromise = (async () => {
         if (crossTabRefreshInFlight) {
@@ -203,7 +206,7 @@ async function request<T = any>(
   return { data, status: resp.status, headers: resp.headers }
 }
 
-// ── Error class ────────────────────────────────────
+// ── Error class ────────────────────────────────────────────────────────
 
 export class ApiError extends Error {
   status: number
@@ -222,7 +225,7 @@ export class ApiError extends Error {
   }
 }
 
-// ── Public API (same interface as before) ──────────
+// ── Public API (same interface as before) ──────────────────────────
 
 export const api = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
