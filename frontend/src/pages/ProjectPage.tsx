@@ -7,19 +7,18 @@ import TaskList from '../components/task/TaskList'
 import TaskDetail from '../components/task/TaskDetail'
 import TaskCreateModal from '../components/task/TaskCreateModal'
 import ProjectDocumentsTab from '../components/project/ProjectDocumentsTab'
-import ProjectBookmarksTab from '../components/project/ProjectBookmarksTab'
-import { LayoutGrid, List, Plus, Archive, Filter, Columns3, FileText, Lock, CheckSquare, Bookmark } from 'lucide-react'
+import { LayoutGrid, List, Plus, Archive, Filter, Columns3, FileText, Lock, CheckSquare } from 'lucide-react'
 import { STATUS_OPTIONS, BOARD_COLUMNS } from '../constants/task'
 import { showErrorToast } from '../components/common/Toast'
 import type { Task, TaskStatus } from '../types'
 
-type ViewMode = 'board' | 'list' | 'docs' | 'bookmarks'
+type ViewMode = 'board' | 'list' | 'docs'
 
 export default function ProjectPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const initialView = (searchParams.get('view') as ViewMode) || 'board'
-  const [view, _setView] = useState<ViewMode>(['board', 'list', 'docs', 'bookmarks'].includes(initialView) ? initialView as ViewMode : 'board')
+  const [view, _setView] = useState<ViewMode>(['board', 'list', 'docs'].includes(initialView) ? initialView as ViewMode : 'board')
   const setView = useCallback((v: ViewMode) => {
     _setView(v)
     setSearchParams((prev) => {
@@ -32,13 +31,11 @@ export default function ProjectPage() {
       // Clear item selections from other tabs
       next.delete('task')
       next.delete('doc')
-      next.delete('bookmark')
       return next
     }, { replace: true })
   }, [setSearchParams])
   const selectedTaskId = searchParams.get('task')
   const selectedDocId = searchParams.get('doc')
-  const selectedBookmarkId = searchParams.get('bookmark')
   const setSelectedItemId = useCallback((key: string, id: string | null) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
@@ -238,10 +235,21 @@ export default function ProjectPage() {
     enabled: !!projectId,
   })
 
+  // Only fetch statuses the UI actually displays
+  const apiStatusFilter = (() => {
+    if (showArchived) return undefined
+    if (statusFilter !== 'all') return statusFilter
+    return view === 'board' ? visibleColumns.join(',') : 'todo,in_progress,on_hold'
+  })()
+
   const { data: tasks = [] } = useQuery({
-    queryKey: ['tasks', projectId, showArchived],
+    queryKey: ['tasks', projectId, showArchived, apiStatusFilter],
     queryFn: () => api.get(`/projects/${projectId}/tasks`, {
-      params: { ...(showArchived ? {} : { archived: false }), limit: 200 },
+      params: {
+        ...(showArchived ? {} : { archived: false }),
+        ...(apiStatusFilter ? { status: apiStatusFilter } : {}),
+        limit: 200,
+      },
     }).then((r) => r.data.items),
     enabled: !!projectId,
   })
@@ -282,13 +290,6 @@ export default function ProjectPage() {
               title="ドキュメント"
             >
               <FileText className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setView('bookmarks')}
-              className={`p-1.5 rounded-md transition-colors ${view === 'bookmarks' ? 'bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
-              title="ブックマーク"
-            >
-              <Bookmark className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -369,15 +370,7 @@ export default function ProjectPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
-        {view === 'bookmarks' ? (
-          <div className="h-full overflow-hidden">
-            <ProjectBookmarksTab
-              projectId={projectId!}
-              selectedId={selectedBookmarkId}
-              onSelectId={(id) => setSelectedItemId('bookmark', id)}
-            />
-          </div>
-        ) : view === 'docs' ? (
+        {view === 'docs' ? (
           <div className="h-full overflow-y-auto">
             <ProjectDocumentsTab
               projectId={projectId!}

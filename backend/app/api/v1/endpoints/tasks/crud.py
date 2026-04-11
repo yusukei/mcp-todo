@@ -34,7 +34,7 @@ router = APIRouter()
 
 async def list_tasks(
     project_id: str,
-    task_status: TaskStatus | None = Query(None, alias="status"),
+    task_status: str | None = Query(None, alias="status"),
     priority: TaskPriority | None = None,
     assignee_id: str | None = None,
     tag: str | None = None,
@@ -51,7 +51,11 @@ async def list_tasks(
 
     query = Task.find(Task.project_id == project_id, Task.is_deleted == False)
     if task_status:
-        query = query.find(Task.status == task_status)
+        _statuses = [s.strip() for s in task_status.split(",")]
+        if len(_statuses) == 1:
+            query = query.find(Task.status == _statuses[0])
+        else:
+            query = query.find({"status": {"$in": _statuses}})
     if priority:
         query = query.find(Task.priority == priority)
     if assignee_id:
