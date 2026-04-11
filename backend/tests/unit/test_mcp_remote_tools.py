@@ -306,8 +306,20 @@ class TestRemoteReadFile:
 
     async def test_read_rejects_negative_offset(self, patch_auth):
         with patch("app.mcp.tools.remote.agent_manager.send_request", new=AsyncMock()):
-            with pytest.raises(ToolError, match=">= 1"):
-                await remote.remote_read_file(project_id="p", path="x.txt", offset=0)
+            with pytest.raises(ToolError, match=">= 0"):
+                await remote.remote_read_file(project_id="p", path="x.txt", offset=-1)
+
+    async def test_read_normalises_zero_offset_to_one(self, patch_auth):
+        """offset=0 should be silently normalised to 1 (callers may use 0-based)."""
+        mock_send = AsyncMock(return_value={
+            "content": "line1\n", "size": 6, "path": "x.txt",
+            "encoding": "utf-8", "is_binary": False, "total_lines": 1,
+            "truncated": False,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", mock_send):
+            await remote.remote_read_file(project_id="p", path="x.txt", offset=0)
+            payload = mock_send.call_args[1].get("payload") or mock_send.call_args[0][2]
+            assert payload["offset"] == 1
 
     async def test_read_rejects_negative_limit(self, patch_auth):
         with patch("app.mcp.tools.remote.agent_manager.send_request", new=AsyncMock()):

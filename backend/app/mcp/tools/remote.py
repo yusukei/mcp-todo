@@ -595,7 +595,7 @@ async def remote_read_file(
     Args:
         project_id: Project ID or project name
         path: File path
-        offset: 1-based starting line number (text mode only)
+        offset: Starting line number (0 or 1 both mean first line; text mode only)
         limit: Number of lines to read (text mode only)
         encoding: 'utf-8' (default), 'utf-16', 'shift_jis', 'latin-1', etc.
             Use 'binary' or 'base64' for binary files — content is then
@@ -609,8 +609,11 @@ async def remote_read_file(
         audit.key_info = await authenticate()
         audit.binding = await _resolve_binding(project_id, audit.key_info)
         _validate_remote_path(path)
+        if offset is not None and offset < 0:
+            raise ToolError("offset must be >= 0")
+        # Callers may send 0-based offset; normalise to 1-based for the agent
         if offset is not None and offset < 1:
-            raise ToolError("offset must be >= 1")
+            offset = 1
         if limit is not None and limit < 0:
             raise ToolError("limit must be >= 0")
     key_info = audit.key_info
