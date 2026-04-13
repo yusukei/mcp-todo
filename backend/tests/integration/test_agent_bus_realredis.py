@@ -381,22 +381,17 @@ class TestDisconnectBroadcast:
 
 
 class TestHeartbeatExpiry:
-    async def test_registry_entry_expires_when_owner_stops_heartbeating(
+    async def test_registry_entry_expires_when_no_pings_received(
         self, real_redis, monkeypatch,
     ):
         """A crashed owner's registry entry must expire under TTL.
 
-        We simulate the crash by (a) shortening REGISTRY_TTL_SECONDS
-        so the wait is tolerable in a unit run, and (b) raising
-        HEARTBEAT_INTERVAL_SECONDS well above the shortened TTL so
-        the live heartbeat never gets a chance to refresh the key.
-        From the peer worker's perspective this is indistinguishable
-        from the owner crashing mid-session.
+        In the new design, TTL is refreshed only when the agent sends a
+        ping (via refresh_agent_registration). We simulate a crash by
+        shortening REGISTRY_TTL_SECONDS and never calling
+        refresh_agent_registration — the key will expire naturally.
         """
         monkeypatch.setattr(_agent_bus_module, "REGISTRY_TTL_SECONDS", 2)
-        monkeypatch.setattr(
-            _agent_bus_module, "HEARTBEAT_INTERVAL_SECONDS", 60,
-        )
 
         owner = AgentConnectionManager(worker_id="worker-owner")
         peer = AgentConnectionManager(worker_id="worker-peer")
@@ -406,8 +401,8 @@ class TestHeartbeatExpiry:
             await owner.register("agent-ephemeral", FakeWebSocket())
             assert await peer.is_connected_anywhere("agent-ephemeral") is True
 
-            # Wait out the TTL. No heartbeat fires (interval=60s)
-            # so the key cannot be refreshed.
+            # Wait out the TTL. refresh_agent_registration is never
+            # called (no pings received), so the key expires naturally.
             await asyncio.sleep(2.5)
 
             # We must NOT call owner.stop() before this check — that

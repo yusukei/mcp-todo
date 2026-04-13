@@ -123,7 +123,7 @@ class TestRegistry:
         await a.register("agent-ttl", FakeWebSocket())
         redis = get_redis()
         ttl = await redis.ttl(KEY_REGISTRY.format(agent_id="agent-ttl"))
-        assert 0 < ttl <= 30  # REGISTRY_TTL_SECONDS
+        assert 0 < ttl <= 90  # REGISTRY_TTL_SECONDS
 
     async def test_unregister_clears_registry(self, two_workers):
         a, _b = two_workers

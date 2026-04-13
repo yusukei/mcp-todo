@@ -128,15 +128,9 @@ class AgentConnectionManager:
 
     # ── Connection lifecycle ────────────────────────────────────
 
-    async def register(
-        self,
-        agent_id: str,
-        ws: WebSocket,
-        *,
-        ping_task: asyncio.Task | None = None,
-    ) -> None:
+    async def register(self, agent_id: str, ws: WebSocket) -> None:
         """Register a local WebSocket and broadcast the connect to the cluster."""
-        await self._local.register(agent_id, ws, ping_task=ping_task)
+        await self._local.register(agent_id, ws)
         await self._bus.on_local_register(agent_id)
 
     async def unregister(
@@ -277,6 +271,14 @@ class AgentConnectionManager:
         return await self._bus.send_request_remote(
             agent_id, msg_type, payload, timeout=timeout,
         )
+
+    async def refresh_agent_registration(self, agent_id: str) -> None:
+        """Reset the Redis TTL for ``agent_id`` on receiving a ping frame.
+
+        Delegates to the bus so only the owning worker refreshes the key.
+        No-op when Redis is unavailable or the agent is not locally owned.
+        """
+        await self._bus.refresh_agent_registration(agent_id)
 
     def resolve_request(self, msg: dict) -> bool:
         """Local-only future correlation hook for the WS receive loop."""

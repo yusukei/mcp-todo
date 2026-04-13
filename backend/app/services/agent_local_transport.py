@@ -64,11 +64,10 @@ sensitive workload and bind only the relevant projects to it.
 
 1. Installs the new ws in ``_connections``.
 2. Closes the old ws with code 1012.
-3. Cancels the old per-agent ``ping_task`` (if the caller passed one).
-4. Flushes any pending Futures keyed to this agent with
+3. Flushes any pending Futures keyed to this agent with
    :class:`AgentOfflineError`. Those futures belonged to the *old*
    connection and can no longer be answered.
-5. Wakes ``wait_for_connection`` waiters.
+4. Wakes ``wait_for_connection`` waiters.
 
 This order is deliberate: by publishing the new ws first we guarantee
 that callers observing a reconnect through ``is_connected`` see the
@@ -79,7 +78,6 @@ gets a deterministic :class:`AgentOfflineError` instead of timing out.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import logging
 import uuid
@@ -163,9 +161,6 @@ class LocalAgentTransport:
         # Per-agent in-flight semaphore: caps concurrent send_request
         # calls to MAX_INFLIGHT_PER_AGENT.
         self._inflight_semaphores: dict[str, asyncio.Semaphore] = {}
-        # Ping task registered by the WS handler via register(...).
-        # The manager owns its lifetime during atomic replace.
-        self._ping_tasks: dict[str, asyncio.Task] = {}
         # Single lock serialising state transitions in register() so
         # close/cancel/flush happen atomically from the callers'
         # observer viewpoint.
@@ -229,40 +224,23 @@ class LocalAgentTransport:
 
     # ── Connection lifecycle ────────────────────────────────────
 
-    async def register(
-        self,
-        agent_id: str,
-        ws: WebSocket,
-        *,
-        ping_task: asyncio.Task | None = None,
-    ) -> None:
+    async def register(self, agent_id: str, ws: WebSocket) -> None:
         """Register a new connection, atomically tearing down the old one.
-
-        Caller passes the per-connection ``ping_task`` so the manager
-        owns its lifetime during replace — this prevents the race where
-        a stale ping task writes to a dead socket after the reconnect.
 
         On replace, the manager:
           1. publishes the new ``ws`` in ``_connections``,
           2. closes the old ``ws`` (best-effort),
-          3. cancels the old ``ping_task`` and awaits it so the task
-             has actually exited before we continue,
-          4. flushes all pending Futures keyed to ``agent_id`` with
+          3. flushes all pending Futures keyed to ``agent_id`` with
              :class:`AgentOfflineError` (they belonged to the old
              connection),
-          5. wakes any ``wait_for_connection`` waiters.
+          4. wakes any ``wait_for_connection`` waiters.
         """
         async with self._register_lock:
             old_ws = self._connections.get(agent_id)
-            old_ping_task = self._ping_tasks.get(agent_id)
 
             # (1) Publish new connection immediately so observers see
             # the reconnect before we start the cleanup of the old one.
             self._connections[agent_id] = ws
-            if ping_task is not None:
-                self._ping_tasks[agent_id] = ping_task
-            else:
-                self._ping_tasks.pop(agent_id, None)
 
             # (2) Close the old socket.
             if old_ws is not None and old_ws is not ws:
@@ -280,13 +258,7 @@ class LocalAgentTransport:
                         exc_info=True,
                     )
 
-            # (3) Cancel & await the old ping task.
-            if old_ping_task is not None and old_ping_task is not ping_task:
-                old_ping_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError, Exception):
-                    await old_ping_task
-
-            # (4) Flush pending futures from the old connection.
+            # (3) Flush pending futures from the old connection.
             if old_ws is not None and old_ws is not ws:
                 to_flush = [
                     rid for rid, (aid, _) in self._pending.items()
@@ -300,7 +272,7 @@ class LocalAgentTransport:
                 # finally block; set_exception wakes it so the cleanup
                 # runs. No manual decrement here.
 
-            # (5) Wake anybody waiting on wait_for_connection(agent_id).
+            # (4) Wake anybody waiting on wait_for_connection(agent_id).
             waiters = self._connect_waiters.pop(agent_id, None)
             if waiters:
                 for event in waiters:
@@ -324,10 +296,6 @@ class LocalAgentTransport:
                     logger.debug("Agent %s: skipping stale unregister", agent_id)
                     return
             self._connections.pop(agent_id, None)
-            # The handler that owned this ws will cancel its own
-            # ping_task in its finally clause; we just drop our
-            # reference so we don't touch it after replace.
-            self._ping_tasks.pop(agent_id, None)
             # Cancel all pending futures for this agent
             to_cancel = [
                 rid for rid, (aid, _) in self._pending.items() if aid == agent_id

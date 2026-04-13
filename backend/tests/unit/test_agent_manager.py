@@ -393,38 +393,17 @@ class TestBackPressure:
 
 
 class TestAtomicRegister:
-    """Replace semantics: old ws is closed, old ping_task cancelled,
-    pending futures flushed."""
+    """Replace semantics: old ws is closed, pending futures flushed."""
 
-    async def test_replace_closes_old_ws_and_cancels_ping_task(self, manager):
+    async def test_replace_closes_old_ws(self, manager):
         old_ws = FakeWebSocket()
         new_ws = FakeWebSocket()
 
-        # Dummy ping task on the old connection.
-        started = asyncio.Event()
-        stopped = asyncio.Event()
-
-        async def fake_ping():
-            started.set()
-            try:
-                await asyncio.sleep(10)
-            except asyncio.CancelledError:
-                stopped.set()
-                raise
-
-        ping_task = asyncio.create_task(fake_ping())
-        await manager.register("agent-1", old_ws, ping_task=ping_task)
-        # Ensure the ping task has actually started running before
-        # we trigger the replace, otherwise cancel() would abort it
-        # before the ``except CancelledError`` block gets a chance.
-        await started.wait()
-
-        # Reconnect: register a new ws.
+        await manager.register("agent-1", old_ws)
+        # Reconnect: register a new ws — the old one must be closed.
         await manager.register("agent-1", new_ws)
 
         assert old_ws.closed == (1012, "Replaced by new connection")
-        assert ping_task.cancelled() or ping_task.done()
-        assert stopped.is_set()
         assert manager.is_connected("agent-1")
 
     async def test_replace_flushes_pending_futures_with_offline(self, manager):

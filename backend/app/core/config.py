@@ -90,13 +90,6 @@ class Settings(BaseSettings):
     MCP_AUTH_CACHE_TTL_SECONDS: int = 30
 
     # ── Remote agent: WebSocket keepalive ─────────────────────
-    # Server-side ping cadence used to detect dead agent connections.
-    # Defaults are intentionally conservative — most agents are on
-    # stable LANs, but laptop agents over flaky Wi-Fi need this to
-    # surface broken sockets within ~PING_INTERVAL+PING_TIMEOUT.
-    AGENT_WS_PING_INTERVAL_SECONDS: int = 30
-    AGENT_WS_PING_TIMEOUT_SECONDS: int = 10
-
     # ── Remote agent: MCP tool guards ─────────────────────────
     # Upper bounds applied by the backend MCP layer before forwarding
     # a request to the agent. The agent enforces its own equivalent

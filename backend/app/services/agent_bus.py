@@ -80,12 +80,16 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Heartbeat / TTL constants. Kept module-level (not Settings) so
-# tests can monkeypatch them without env gymnastics; the values
-# are tuned together so the heartbeat refreshes the TTL with at
-# least 2× safety margin before expiry.
-REGISTRY_TTL_SECONDS = 30
-HEARTBEAT_INTERVAL_SECONDS = 10
+# TTL constants. Kept module-level (not Settings) so tests can
+# monkeypatch them without env gymnastics.
+#
+# REGISTRY_TTL_SECONDS is set to 3× the agent-side heartbeat interval
+# (30 s) so one missed ping does not immediately flip the agent offline.
+# The TTL is refreshed on every received ping in the WebSocket handler
+# (via refresh_agent_registration), not by a background heartbeat loop
+# in this process — that approach was removed because it required a
+# separate task whose clock could drift out of sync with the agent.
+REGISTRY_TTL_SECONDS = 90
 COMMAND_BLPOP_TIMEOUT_SECONDS = 1  # short so stop() unblocks quickly
 
 # Channel and key prefixes — kept as module constants so the
@@ -127,33 +131,6 @@ async def _del_if_owner(
             return False
 
 
-async def _expire_if_owner(
-    redis: aioredis.Redis, key: str, expected_owner: str, ttl: int,
-) -> bool:
-    """Atomically EXPIRE ``key`` if its current value equals ``expected_owner``.
-
-    Same WATCH/MULTI pattern as :func:`_del_if_owner`. Used by
-    :meth:`RedisAgentBus._heartbeat_loop` to refresh the TTL on a
-    locally-owned agent without accidentally extending an entry
-    that another worker has taken over.
-    """
-    async with redis.pipeline(transaction=True) as pipe:
-        try:
-            await pipe.watch(key)
-            current = await pipe.get(key)
-            if isinstance(current, bytes):
-                current = current.decode("utf-8")
-            if current != expected_owner:
-                await pipe.unwatch()
-                return False
-            pipe.multi()
-            pipe.expire(key, ttl)
-            await pipe.execute()
-            return True
-        except Exception:
-            return False
-
-
 class RedisAgentBus:
     """Redis-backed routing layer for cross-worker agent RPCs.
 
@@ -180,7 +157,6 @@ class RedisAgentBus:
         self._redis: aioredis.Redis | None = redis_client
         self._command_task: asyncio.Task | None = None
         self._events_task: asyncio.Task | None = None
-        self._heartbeat_task: asyncio.Task | None = None
         self._stopping = False
         # Locally-owned agents whose registry TTL we must refresh.
         # Mirrors LocalAgentTransport._connections.keys() but the
@@ -220,10 +196,6 @@ class RedisAgentBus:
             self._events_listener(),
             name=f"agent-bus-events-{self.worker_id[:8]}",
         )
-        self._heartbeat_task = asyncio.create_task(
-            self._heartbeat_loop(),
-            name=f"agent-bus-heartbeat-{self.worker_id[:8]}",
-        )
         logger.info(
             "RedisAgentBus started (worker_id=%s)", self.worker_id,
         )
@@ -246,14 +218,10 @@ class RedisAgentBus:
             await asyncio.gather(
                 *self._dispatch_tasks, return_exceptions=True,
             )
-        for task in (
-            self._command_task, self._events_task, self._heartbeat_task,
-        ):
+        for task in (self._command_task, self._events_task):
             if task is not None:
                 task.cancel()
-        for task in (
-            self._command_task, self._events_task, self._heartbeat_task,
-        ):
+        for task in (self._command_task, self._events_task):
             if task is None:
                 continue
             try:
@@ -266,7 +234,6 @@ class RedisAgentBus:
                 )
         self._command_task = None
         self._events_task = None
-        self._heartbeat_task = None
         # Drop the registry entries for agents this worker owned so
         # other workers see the takedown immediately instead of
         # waiting for the TTL.
@@ -714,31 +681,40 @@ class RedisAgentBus:
         """
         self._local.wake_connect_waiters(agent_id)
 
-    # ── Heartbeat: keep our registry entries alive ──────────────
+    # ── Ping-driven TTL refresh ──────────────────────────────────
 
-    async def _heartbeat_loop(self) -> None:
-        """Refresh registry TTLs every ``HEARTBEAT_INTERVAL_SECONDS``."""
-        assert self._redis is not None
+    async def refresh_agent_registration(self, agent_id: str) -> None:
+        """Reset the registry TTL for ``agent_id`` on receiving a ping.
+
+        Called by the WebSocket handler each time the agent sends a
+        ``{"type": "ping"}`` frame. This keeps the registry key alive
+        without a background heartbeat loop: TTL = 90 s (3× the 30 s
+        agent ping interval) so one missed ping does not immediately
+        flip the agent offline.
+
+        Only refreshes if this worker is the current owner (the key
+        value must match our worker_id). If another worker won a race
+        reconnect, we silently skip — the new owner will refresh on
+        its own pings.
+        """
+        if self._redis is None or agent_id not in self._owned_agents:
+            return
+        key = KEY_REGISTRY.format(agent_id=agent_id)
         try:
-            while not self._stopping:
-                await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
-                if not self._owned_agents:
-                    continue
-                for agent_id in list(self._owned_agents):
-                    try:
-                        # WATCH/MULTI compare-and-expire so we never
-                        # accidentally extend the TTL on a registry
-                        # entry that another worker has taken over
-                        # mid-reconnect.
-                        await _expire_if_owner(
-                            self._redis,
-                            KEY_REGISTRY.format(agent_id=agent_id),
-                            self.worker_id,
-                            REGISTRY_TTL_SECONDS,
-                        )
-                    except Exception:
-                        logger.exception(
-                            "Heartbeat failed for agent %s", agent_id,
-                        )
-        except asyncio.CancelledError:
-            raise
+            # SET NX would race; use a plain EXPIRE guarded by a GET
+            # comparison. If the key was taken over by another worker
+            # between the GET and EXPIRE, the worst outcome is that we
+            # slightly extend the TTL on the new owner's entry — a
+            # harmless false-positive. The old WATCH/MULTI approach is
+            # unnecessary here because a false-positive EXPIRE never
+            # causes split-brain (only _del_if_owner needs the atomic
+            # delete guarantee).
+            owner = await self._redis.get(key)
+            if isinstance(owner, bytes):
+                owner = owner.decode("utf-8")
+            if owner == self.worker_id:
+                await self._redis.expire(key, REGISTRY_TTL_SECONDS)
+        except Exception:
+            logger.exception(
+                "refresh_agent_registration failed for agent %s", agent_id,
+            )

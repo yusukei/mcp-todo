@@ -17,7 +17,6 @@ by ``request_id`` because it is the actual correlation key, not the
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import logging
 from datetime import UTC, datetime
@@ -48,29 +47,6 @@ def _spawn_chat_event(coro) -> None:
     task = asyncio.create_task(coro)
     _chat_event_tasks.add(task)
     task.add_done_callback(_chat_event_tasks.discard)
-
-
-async def _server_ping_loop(ws: WebSocket, agent_id: str) -> None:
-    """Send periodic pings to detect dead connections from the server side.
-
-    A failed send means the connection is dead — this is an expected
-    termination signal, not an error. We still include ``exc_info`` so
-    operators can see *why* the send failed (timeout vs. broken pipe
-    vs. WS state drift) when debugging agents that keep disconnecting.
-    """
-    while True:
-        await asyncio.sleep(settings.AGENT_WS_PING_INTERVAL_SECONDS)
-        try:
-            await asyncio.wait_for(
-                ws.send_text(json.dumps({"type": "ping"})),
-                timeout=settings.AGENT_WS_PING_TIMEOUT_SECONDS,
-            )
-        except (asyncio.TimeoutError, WebSocketDisconnect, RuntimeError, OSError) as e:
-            logger.info(
-                "Agent %s: ping failed, connection appears dead: %s",
-                agent_id, e, exc_info=e,
-            )
-            break
 
 
 async def _safe_close(ws: WebSocket, *, code: int, reason: str) -> None:
@@ -158,14 +134,7 @@ async def agent_websocket(ws: WebSocket):
     agent_id = str(agent.id)
     await ws.send_text(json.dumps({"type": "auth_ok", "agent_id": agent_id}))
 
-    # ── Server-side ping task for dead connection detection ──
-    #
-    # Create the ping task BEFORE register() so the manager can take
-    # ownership of its lifetime during the atomic replace. If a prior
-    # connection existed, register() will cancel+await the old
-    # ping_task and close the old ws before returning.
-    ping_task = asyncio.create_task(_server_ping_loop(ws, agent_id))
-    await agent_manager.register(agent_id, ws, ping_task=ping_task)
+    await agent_manager.register(agent_id, ws)
 
     agent.last_seen_at = datetime.now(UTC)
     await agent.save()
@@ -214,8 +183,14 @@ async def agent_websocket(ws: WebSocket):
                 # reported version so the comparison uses fresh data.
                 await maybe_push_update(ws, agent)
 
-            elif msg_type == "pong":
-                pass
+            elif msg_type == "ping":
+                # Agent-initiated heartbeat. Respond immediately so the
+                # agent's send confirms the connection is alive, then
+                # refresh the Redis TTL and update last_seen_at.
+                await ws.send_text(json.dumps({"type": "pong"}))
+                await agent_manager.refresh_agent_registration(agent_id)
+                agent.last_seen_at = datetime.now(UTC)
+                await agent.save()
 
             elif msg_type in ("chat_event", "chat_complete", "chat_error"):
                 from .....services.chat_events import handle_chat_event
@@ -241,14 +216,6 @@ async def agent_websocket(ws: WebSocket):
         # forbids ``logger.error(..., e)`` without ``exc_info``.
         logger.exception("Agent WebSocket error (%s)", agent_id)
     finally:
-        ping_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError, Exception):
-            # Await the cancelled ping task so the cancellation
-            # actually propagates before we tear down the WS. Without
-            # this, the task can outlive the handler and touch a
-            # half-closed connection — prior source of intermittent
-            # "operation on closed transport" warnings.
-            await ping_task
         await agent_manager.unregister(agent_id, ws)  # Only remove if this is still the current connection
         agent.last_seen_at = datetime.now(UTC)
         try:

@@ -429,6 +429,72 @@ async def handle_write_file(msg: dict) -> dict:
         return {"success": False, "error": str(e)}
 
 
+async def handle_edit_file(msg: dict) -> dict:
+    """Apply a string-replacement edit to a file.
+
+    Finds ``old_string`` in the file and replaces it with ``new_string``.
+    When ``replace_all`` is true every occurrence is replaced; otherwise
+    exactly one unique match is required (ambiguous matches are rejected).
+    """
+    path = msg.get("path", "")
+    cwd = msg.get("cwd")
+    old_string: str = msg.get("old_string", "")
+    new_string: str = msg.get("new_string", "")
+    replace_all: bool = msg.get("replace_all", False)
+
+    if not old_string:
+        return {"success": False, "error": "old_string is required"}
+    if old_string == new_string:
+        return {"success": False, "error": "old_string and new_string must differ"}
+
+    try:
+        path = _resolve_safe_path(path, cwd)
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
+
+    def _edit():
+        if not os.path.isfile(path):
+            return {"success": False, "error": f"File not found: {path}"}
+        size = os.path.getsize(path)
+        if size > MAX_FILE_BYTES:
+            return {
+                "success": False,
+                "error": f"File too large: {size} bytes (max {MAX_FILE_BYTES // 1024 // 1024} MB)",
+            }
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        count = content.count(old_string)
+        if count == 0:
+            return {"success": False, "error": "old_string not found in file"}
+        if not replace_all and count > 1:
+            return {
+                "success": False,
+                "error": f"old_string is not unique — found {count} occurrences. "
+                "Provide more surrounding context to make it unique, or set replace_all=true.",
+            }
+
+        new_content = content.replace(old_string, new_string) if replace_all else content.replace(old_string, new_string, 1)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(new_content)
+
+        replacements = count if replace_all else 1
+        return {
+            "success": True,
+            "path": path,
+            "replacements": replacements,
+        }
+
+    try:
+        return await asyncio.to_thread(_edit)
+    except PermissionError:
+        return {"success": False, "error": f"Permission denied: {path}"}
+    except UnicodeDecodeError:
+        return {"success": False, "error": f"File is not valid UTF-8: {path}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 async def handle_list_dir(msg: dict) -> dict:
     """List directory contents."""
     path = msg.get("path", ".")
@@ -757,6 +823,7 @@ async def _grep_with_rg(
     case_insensitive: bool,
     max_results: int,
     respect_gitignore: bool,
+    context_lines: int = 0,
 ) -> dict:
     """Run ripgrep and translate its --json output to our schema.
 
@@ -782,6 +849,8 @@ async def _grep_with_rg(
         cmd.append("--no-ignore")
         for skip_dir in GREP_SKIP_DIRS:
             cmd += ["-g", f"!{skip_dir}", "-g", f"!**/{skip_dir}/**"]
+    if context_lines > 0:
+        cmd += ["-C", str(context_lines)]
     if case_insensitive:
         cmd.append("-i")
     if glob_filter:
@@ -838,6 +907,12 @@ async def _grep_with_rg(
         )
 
     matches: list[dict] = []
+    # When context_lines > 0, ripgrep emits "context" events interleaved
+    # with "match" events.  We buffer context lines that precede a match
+    # and, once a match is seen, attach trailing context lines to it.
+    # A "begin" event (new file) or another "match" event flushes the
+    # trailing-context buffer.
+    pending_before: list[dict] = []  # context lines waiting for the next match
     files_scanned = 0
     truncated = False
     summary_matches: int | None = None
@@ -850,18 +925,44 @@ async def _grep_with_rg(
         evt = json.loads(raw_line)
         etype = evt.get("type")
         data = evt.get("data") or {}
-        if etype == "match":
+        if etype == "context":
+            ctx_entry = {
+                "line": data.get("line_number"),
+                "text": _decode_rg_text_field(data.get("lines")).rstrip("\n")[:500],
+            }
+            if matches and _decode_rg_text_field(data.get("path")) == matches[-1]["file"]:
+                # Trailing context for the previous match — but only
+                # if it belongs to the same file.
+                matches[-1].setdefault("context_after", []).append(ctx_entry)
+            else:
+                pending_before.append(ctx_entry)
+        elif etype == "match":
+            # Flush pending_before into this match's context_before,
+            # and reset trailing context tracking.
             if len(matches) >= max_results:
                 truncated = True
+                pending_before.clear()
                 continue
             file_path = _decode_rg_text_field(data.get("path"))
             line_no = data.get("line_number")
             text = _decode_rg_text_field(data.get("lines")).rstrip("\n")[:500]
-            matches.append({
+            entry: dict = {
                 "file": file_path,
                 "line": line_no,
                 "text": text,
-            })
+            }
+            if pending_before:
+                entry["context_before"] = pending_before
+                pending_before = []
+            # When consecutive matches appear, the trailing context of
+            # the previous match may actually be the leading context of
+            # the next. Ripgrep handles this by NOT emitting separate
+            # context events between adjacent matches — so we don't
+            # need to move entries between matches.
+            matches.append(entry)
+        elif etype == "begin":
+            # New file — reset leading-context buffer.
+            pending_before.clear()
         elif etype == "end":
             files_scanned += 1
         elif etype == "summary":
@@ -924,9 +1025,14 @@ async def handle_grep(msg: dict) -> dict:
     glob_filter = msg.get("glob")
     case_insensitive = bool(msg.get("case_insensitive", False))
     respect_gitignore = bool(msg.get("respect_gitignore", False))
+    try:
+        context_lines = max(0, min(int(msg.get("context_lines", 0)), 20))
+    except (TypeError, ValueError):
+        context_lines = 0
     logger.info(
-        "[grep] msg: pattern=%r path=%r cwd=%r glob=%r ci=%s gitignore=%s",
+        "[grep] msg: pattern=%r path=%r cwd=%r glob=%r ci=%s gitignore=%s ctx=%d",
         pattern, path, cwd, glob_filter, case_insensitive, respect_gitignore,
+        context_lines,
     )
     try:
         max_results_raw = int(msg.get("max_results", MAX_GREP_RESULTS_DEFAULT))
@@ -960,6 +1066,7 @@ async def handle_grep(msg: dict) -> dict:
             case_insensitive=case_insensitive,
             max_results=max_results,
             respect_gitignore=respect_gitignore,
+            context_lines=context_lines,
         )
     except RipgrepError as e:
         # Known failure modes (launch failure / timeout / non-zero exit)
@@ -982,6 +1089,7 @@ _HANDLERS = {
     "exec": handle_exec,
     "read_file": handle_read_file,
     "write_file": handle_write_file,
+    "edit_file": handle_edit_file,
     "list_dir": handle_list_dir,
     "stat": handle_stat,
     "mkdir": handle_mkdir,
@@ -1000,6 +1108,7 @@ _RESPONSE_TYPE_FOR = {
     "exec": "exec_result",
     "read_file": "file_content",
     "write_file": "write_result",
+    "edit_file": "edit_result",
     "list_dir": "dir_listing",
     "stat": "stat_result",
     "mkdir": "mkdir_result",
@@ -1276,6 +1385,28 @@ class WorkspaceAgent:
                     self._agent_id,
                 )
 
+    async def _heartbeat_loop(self, ws) -> None:
+        """Send a ping every 30 s to keep the connection alive.
+
+        The server responds with a pong and refreshes its Redis TTL +
+        last_seen_at. If the send raises, the connection is dead — the
+        outer _connect loop will detect the broken ws and reconnect.
+        We intentionally do not raise here: the message-loop's ``async
+        for raw in ws`` will surface the disconnect on the next
+        iteration and trigger cleanup + reconnect.
+        """
+        while True:
+            await asyncio.sleep(30)
+            try:
+                await ws.send(json.dumps({"type": "ping"}))
+            except Exception:
+                logger.exception(
+                    "Heartbeat ping failed (agent_id=%s); "
+                    "connection will be retried",
+                    self._agent_id,
+                )
+                return
+
     def _spawn_task(self, coro) -> None:
         """Spawn a background task and track it for cleanup."""
         task = asyncio.create_task(coro)
@@ -1311,7 +1442,9 @@ class WorkspaceAgent:
         logger.info("Connecting to %s", self.server_url)
 
         async with websockets.connect(
-            self.server_url, ping_interval=20, ping_timeout=10,
+            self.server_url,
+            ping_interval=None,  # Disable library-level ping; we send
+                                 # application-level pings in _heartbeat_loop.
             max_size=10 * 1024 * 1024,  # 10 MB max message
         ) as ws:
             self._ws = ws
@@ -1339,6 +1472,15 @@ class WorkspaceAgent:
                 "shells": _detect_shells(),
                 "agent_version": __version__,
             }))
+
+            # ── Heartbeat task ──
+            # Send a ping every 30 s so the server can refresh its Redis
+            # TTL and update last_seen_at. The server echoes back a pong.
+            # Using an application-level ping instead of the websockets
+            # library's built-in ping_interval avoids the race where
+            # uvicorn doesn't respond to WS-frame-level ping frames fast
+            # enough under load, causing spurious ping_timeout disconnects.
+            self._spawn_task(self._heartbeat_loop(ws))
 
             # ── Message loop ──
             try:
@@ -1410,8 +1552,9 @@ class WorkspaceAgent:
             self._spawn_task(self._handle_update_available(msg))
             return
 
-        if msg_type == "ping":
-            await self._safe_send(json.dumps({"type": "pong"}))
+        if msg_type == "pong":
+            # Server echoed our heartbeat ping — nothing to do.
+            pass
 
     async def _run_handler(self, handler, msg: dict, msg_type: str) -> None:
         """Run a request/response handler as a background task.
@@ -1475,7 +1618,31 @@ class WorkspaceAgent:
         keeps draining other messages while the update is in flight.
         On success the agent shuts itself down — the spawned child
         will reconnect with the new version.
+
+        Race condition note: the spawned child connects to the server
+        almost immediately, which causes the server to call
+        old_ws.close(1012) on *this* process's WebSocket. That triggers
+        ``_connect()``'s finally block, which cancels all
+        ``_background_tasks``.  If this coroutine is still awaiting
+        ``asyncio.to_thread(apply_update, ...)`` at that moment, it
+        gets a CancelledError — and ``shutdown()`` is never called, so
+        ``_running`` stays True and the old process enters an infinite
+        reconnect loop.
+
+        Fix:
+          1. Remove this task from ``_background_tasks`` up-front so the
+             finally block cannot cancel it mid-update.
+          2. Set ``_running = False`` synchronously (no await) the
+             instant ``apply_update`` returns, before any subsequent
+             await point — guaranteeing the run() loop exits even if
+             a CancelledError fires at the next await.
         """
+        # (Fix 1) Detach from background_tasks so _connect()'s finally
+        # block won't cancel this task when the WebSocket disconnects
+        # after the new process takes the connection slot.
+        if current_task := asyncio.current_task():
+            self._background_tasks.discard(current_task)
+
         version = msg.get("version", "")
         download_url = msg.get("download_url", "")
         sha256 = msg.get("sha256", "")
@@ -1506,6 +1673,11 @@ class WorkspaceAgent:
         except Exception:
             logger.exception("Unexpected error during update")
             return
+
+        # (Fix 2) Set _running = False synchronously — no await between
+        # apply_update returning and this line — so that the run() loop
+        # exits even if a CancelledError fires at the next await point.
+        self._running = False
 
         logger.info(
             "Update applied (old binary preserved at %s); shutting down for handoff",
