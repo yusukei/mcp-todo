@@ -1363,6 +1363,14 @@ class WorkspaceAgent:
         self._chat_manager = ChatManager()
         self._send_lock = asyncio.Lock()
         self._background_tasks: set[asyncio.Task] = set()
+        # ── Diagnostic state (per-connection; reset in _connect) ──
+        # Used to classify disconnects as network-idle vs server-initiated
+        # vs app error when ConnectionClosedError surfaces without detail.
+        self._connected_at: float | None = None
+        self._last_recv_at: float | None = None
+        self._last_ping_sent_at: float | None = None
+        self._last_pong_at: float | None = None
+        self._recv_count: int = 0
 
     async def _safe_send(self, data: str) -> None:
         """Send data on WebSocket with lock to prevent frame interleaving.
@@ -1399,6 +1407,10 @@ class WorkspaceAgent:
             await asyncio.sleep(30)
             try:
                 await ws.send(json.dumps({"type": "ping"}))
+                self._last_ping_sent_at = time.monotonic()
+                logger.debug(
+                    "Heartbeat ping sent (agent_id=%s)", self._agent_id,
+                )
             except Exception:
                 logger.exception(
                     "Heartbeat ping failed (agent_id=%s); "
@@ -1417,17 +1429,32 @@ class WorkspaceAgent:
         backoff = 1
         max_backoff = 60
 
+        # Imported here (not at module top) to match the lazy import
+        # pattern used by _connect and avoid a hard import-time dep.
+        from websockets.exceptions import ConnectionClosed
+
         while self._running:
             try:
                 await self._connect()
                 backoff = 1
+            except ConnectionClosed:
+                # Expected: peer disconnected. _log_disconnect already
+                # emitted structured diagnostics (close_code, idle times,
+                # network_drop_hint). Keep this at WARNING — the full
+                # traceback isn't useful here since the interesting state
+                # is already logged, and ``logger.exception`` on every
+                # NAT-idle disconnect produces noisy duplicates.
+                logger.warning(
+                    "Connection closed — will reconnect (agent_id=%s)",
+                    self._agent_id,
+                )
             except Exception:
-                # Reconnect loop: full traceback is essential for
-                # diagnosing *why* the agent cannot stay connected
-                # (auth token invalid, TLS mismatch, DNS, etc.).
+                # Unexpected failures: auth token invalid, TLS mismatch,
+                # DNS, websockets handshake errors, etc. Full traceback
+                # is essential here because _log_disconnect did not run.
                 # CLAUDE.md forbids ``logger.error(..., e)`` without
-                # exc_info — use ``logger.exception`` here.
-                logger.exception("Connection failed")
+                # exc_info — use ``logger.exception``.
+                logger.exception("Connection failed (unexpected)")
 
             if not self._running:
                 break
@@ -1436,10 +1463,82 @@ class WorkspaceAgent:
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, max_backoff)
 
+    def _log_disconnect(self, exc, ws) -> None:
+        """Log structured diagnostics for a WebSocket disconnect.
+
+        Classifies disconnects by combining ``ConnectionClosed.rcvd`` /
+        ``sent`` (were close frames exchanged?) with ``ws.close_code`` /
+        ``close_reason`` and idle timings from the heartbeat loop.
+        """
+        now = time.monotonic()
+        uptime = now - self._connected_at if self._connected_at else None
+        idle_recv = (
+            now - self._last_recv_at if self._last_recv_at else None
+        )
+        since_ping = (
+            now - self._last_ping_sent_at
+            if self._last_ping_sent_at else None
+        )
+        since_pong = (
+            now - self._last_pong_at if self._last_pong_at else None
+        )
+        rcvd = getattr(exc, "rcvd", None)
+        sent = getattr(exc, "sent", None)
+        rcvd_summary = (
+            f"code={rcvd.code} reason={rcvd.reason!r}" if rcvd else "None"
+        )
+        sent_summary = (
+            f"code={sent.code} reason={sent.reason!r}" if sent else "None"
+        )
+        # When both rcvd and sent are None, no close handshake happened
+        # — strong hint this is a network drop (NAT/LB idle timeout,
+        # Wi-Fi disconnect, proxy reset) rather than a graceful close.
+        network_drop_hint = (rcvd is None and sent is None)
+        logger.warning(
+            "WebSocket disconnected: type=%s close_code=%s close_reason=%r "
+            "rcvd=[%s] sent=[%s] uptime=%.1fs recv_count=%d "
+            "idle_since_recv=%s idle_since_ping_sent=%s "
+            "idle_since_pong=%s network_drop_hint=%s",
+            type(exc).__name__,
+            getattr(ws, "close_code", None),
+            getattr(ws, "close_reason", None),
+            rcvd_summary,
+            sent_summary,
+            uptime if uptime is not None else -1.0,
+            self._recv_count,
+            f"{idle_recv:.1f}s" if idle_recv is not None else "n/a",
+            f"{since_ping:.1f}s" if since_ping is not None else "n/a",
+            f"{since_pong:.1f}s" if since_pong is not None else "n/a",
+            network_drop_hint,
+        )
+
+    def _log_connection_summary(self, ws) -> None:
+        """Emit a one-line summary of the just-ended connection."""
+        if self._connected_at is None:
+            return
+        uptime = time.monotonic() - self._connected_at
+        logger.info(
+            "Connection ended: agent_id=%s uptime=%.1fs recv_count=%d "
+            "close_code=%s close_reason=%r",
+            self._agent_id,
+            uptime,
+            self._recv_count,
+            getattr(ws, "close_code", None),
+            getattr(ws, "close_reason", None),
+        )
+
     async def _connect(self) -> None:
         import websockets
+        from websockets.exceptions import ConnectionClosed
 
         logger.info("Connecting to %s", self.server_url)
+
+        # Reset per-connection diagnostic state.
+        self._connected_at = time.monotonic()
+        self._last_recv_at = None
+        self._last_ping_sent_at = None
+        self._last_pong_at = None
+        self._recv_count = 0
 
         async with websockets.connect(
             self.server_url,
@@ -1485,6 +1584,8 @@ class WorkspaceAgent:
             # ── Message loop ──
             try:
                 async for raw in ws:
+                    self._last_recv_at = time.monotonic()
+                    self._recv_count += 1
                     if not self._running:
                         break
                     try:
@@ -1503,8 +1604,32 @@ class WorkspaceAgent:
                             preview,
                         )
                         continue
+                    if msg.get("type") == "pong":
+                        self._last_pong_at = time.monotonic()
+                        logger.debug(
+                            "Heartbeat pong received (agent_id=%s)",
+                            self._agent_id,
+                        )
                     await self._handle_message(msg)
+            except ConnectionClosed as exc:
+                # websockets raises this with structured close metadata
+                # — log it so we can classify the disconnect type:
+                #   code=1006, rcvd/sent=None  → abrupt TCP drop (network/NAT idle)
+                #   code=1011                  → server-side unhandled error
+                #   code=1012                  → server restart / service restart
+                #   code=1000 / 1001           → graceful close
+                # Both the exception object and ws.close_code/reason are
+                # inspected because ``rcvd``/``sent`` show which side sent
+                # the close frame — when both are None we never completed
+                # the close handshake (true network drop).
+                self._log_disconnect(exc, ws)
+                # Re-raise so run()'s outer loop triggers reconnect/backoff.
+                raise
             finally:
+                # Emit a connection summary regardless of how we exited
+                # (clean close, ConnectionClosed, or other exception) so
+                # operators have a per-session record for triage.
+                self._log_connection_summary(ws)
                 # Cleanup on disconnect: kill all chat processes
                 self._ws = None
                 self._chat_manager.cancel_all()
