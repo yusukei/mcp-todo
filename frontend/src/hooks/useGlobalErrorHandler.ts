@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { showErrorToast } from '../components/common/Toast'
+import { captureException } from '../lib/sentry'
 
 /**
  * Listens for unhandled promise rejections and uncaught errors,
@@ -26,11 +27,13 @@ export function useGlobalErrorHandler() {
       }
 
       console.error('Unhandled promise rejection:', reason)
+      captureException(reason)
       showErrorToast(message)
     }
 
     function handleError(event: ErrorEvent) {
       console.error('Uncaught error:', event.error)
+      captureException(event.error ?? new Error(event.message))
       showErrorToast(event.message || '予期しないエラーが発生しました')
     }
 

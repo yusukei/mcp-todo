@@ -4,6 +4,7 @@ import { Plus, Eye, EyeOff, Copy, Pencil, Trash2, KeyRound } from 'lucide-react'
 import { secretsApi } from '../../api/secrets'
 import { showErrorToast, showSuccessToast } from '../common/Toast'
 import { showConfirm } from '../common/ConfirmDialog'
+import { captureException } from '../../lib/sentry'
 
 interface Secret {
   id: string
@@ -52,7 +53,8 @@ export default function ProjectSecretsTab({ projectId, isOwner }: Props) {
         if (prev[key]) clearTimeout(prev[key])
         return { ...prev, [key]: timer }
       })
-    } catch {
+    } catch (err) {
+      console.error('Failed to retrieve secret value:', err)
       showErrorToast('Failed to retrieve secret value')
     }
   }, [projectId])
@@ -85,9 +87,14 @@ export default function ProjectSecretsTab({ projectId, isOwner }: Props) {
         const res = await secretsApi.getValue(projectId, key)
         val = res.value
       }
+      if (!navigator.clipboard) {
+        throw new Error('Clipboard API unavailable (requires HTTPS)')
+      }
       await navigator.clipboard.writeText(val)
       showSuccessToast('Copied')
-    } catch {
+    } catch (err) {
+      console.error('Copy failed:', err)
+      captureException(err, { component: 'ProjectSecretsTab', action: 'copyValue' })
       showErrorToast('Copy failed')
     }
   }, [projectId, revealed])
