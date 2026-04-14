@@ -39,14 +39,14 @@ class UpdateCollectionRequest(BaseModel):
 
 
 class BatchBookmarkAction(BaseModel):
-    bookmark_ids: list[str] = Field(..., min_length=1, max_length=200)
+    bookmark_ids: list[str] = Field(..., min_length=1)
     action: str  # "delete" | "star" | "unstar" | "set_collection" | "add_tags" | "remove_tags"
     collection_id: str | None = None
     tags: list[str] | None = None
 
 
 class ReorderRequest(BaseModel):
-    ids: list[str] = Field(..., min_length=1, max_length=200)
+    ids: list[str] = Field(..., min_length=1)
 
 
 async def check_project_access(project_id: str, user: User) -> Project:

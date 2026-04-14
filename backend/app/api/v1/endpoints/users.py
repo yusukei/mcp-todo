@@ -47,7 +47,7 @@ def _user_dict(user: User) -> dict:
 
 @router.get("")
 async def list_users(
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1),
     skip: int = Query(0, ge=0),
     _: User = Depends(get_admin_user),
 ) -> dict:

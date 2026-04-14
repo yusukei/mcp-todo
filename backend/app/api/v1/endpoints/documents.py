@@ -40,11 +40,11 @@ class UpdateDocumentRequest(BaseModel):
 
 
 class ReorderDocumentsRequest(BaseModel):
-    document_ids: list[str] = Field(..., min_length=1, max_length=200)
+    document_ids: list[str] = Field(..., min_length=1)
 
 
 class ExportDocumentsRequest(BaseModel):
-    document_ids: list[str] = Field(..., min_length=1, max_length=50)
+    document_ids: list[str] = Field(..., min_length=1)
     format: str = Field("markdown", pattern=r"^(markdown|pdf)$")
 
 
@@ -226,7 +226,7 @@ async def list_documents(
     category: str | None = Query(None),
     tag: str | None = Query(None),
     search: str | None = Query(None),
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(50, ge=1),
     skip: int = Query(0, ge=0),
     user: User = Depends(get_current_user),
 ):
@@ -344,7 +344,7 @@ async def update_document(
 async def list_document_versions(
     project_id: str,
     document_id: str,
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1),
     skip: int = Query(0, ge=0),
     user: User = Depends(get_current_user),
 ):

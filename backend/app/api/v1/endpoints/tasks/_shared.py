@@ -15,8 +15,6 @@ from .....models.task import TaskPriority, TaskStatus, TaskType
 UPLOADS_DIR = Path(settings.UPLOADS_DIR)
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
-MAX_BATCH_SIZE = 100
-
 
 # ── Request / response schemas ───────────────────────────────
 
@@ -85,7 +83,7 @@ class BatchUpdateItem(BaseModel):
 
 
 class BatchUpdateRequest(BaseModel):
-    updates: list[BatchUpdateItem] = Field(..., max_length=MAX_BATCH_SIZE)
+    updates: list[BatchUpdateItem] = Field(..., min_length=1)
 
 
 # ── Access helpers ───────────────────────────────────────────

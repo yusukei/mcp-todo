@@ -89,7 +89,7 @@ async def _log_access(
 @router.get("/")
 async def list_secrets(
     project_id: str,
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1),
     skip: int = Query(0, ge=0),
     user: User = Depends(get_current_user),
 ):

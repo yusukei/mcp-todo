@@ -43,7 +43,7 @@ async def list_tasks(
     approved: bool | None = None,
     archived: bool | None = None,
     parent_task_id: str | None = None,
-    limit: int = Query(50, ge=1, le=200),
+    limit: int | None = Query(None, ge=1),
     skip: int = Query(0, ge=0),
     user: User = Depends(get_current_user),
 ) -> dict:
@@ -73,10 +73,10 @@ async def list_tasks(
     if parent_task_id is not None:
         query = query.find(Task.parent_task_id == parent_task_id)
 
-    total, tasks = await asyncio.gather(
-        query.count(),
-        query.clone().sort(+Task.sort_order, +Task.created_at).skip(skip).limit(limit).to_list(),
-    )
+    sorted_query = query.clone().sort(+Task.sort_order, +Task.created_at).skip(skip)
+    if limit is not None:
+        sorted_query = sorted_query.limit(limit)
+    total, tasks = await asyncio.gather(query.count(), sorted_query.to_list())
     return {"items": [_task_dict(t) for t in tasks], "total": total, "limit": limit, "skip": skip}
 
 

@@ -133,7 +133,7 @@ async def get_common_project(user: User = Depends(get_current_user)) -> dict:
 
 
 class ReorderProjectsRequest(BaseModel):
-    ids: list[str] = Field(..., min_length=1, max_length=100)
+    ids: list[str] = Field(..., min_length=1)
 
 
 @router.post("/reorder")
