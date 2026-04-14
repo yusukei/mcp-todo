@@ -335,7 +335,76 @@ Key properties:
   When we eventually need to scale the indexer, the consumer group
   semantics already give us safe sharding.
 
-### 5.3 Agent transport flow (unchanged from current `RedisAgentBus`)
+### 5.3 MCP session continuity (multi-worker)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as MCP client (Claude Code)
+    participant W1 as backend-api worker 1
+    participant W2 as backend-api worker 2
+    participant Redis as Redis DB 1<br/>(MCP sessions)
+
+    Note over Client,W1: Normal path — Traefik sticky cookie routes all requests to W1
+    Client->>W1: GET /mcp  (new session)
+    W1->>Redis: SETEX todo:mcp:registry:{sid} 3600 "1"
+    W1-->>Client: 200 SSE stream  mcp-session-id: {sid}
+    Client->>W1: POST /mcp  tools/call
+    W1->>Redis: EXPIRE todo:mcp:registry:{sid} 3600  (touch)
+    W1-->>Client: 200  tool result
+
+    Note over Client,W2: Failover path — W1 crashes, sticky target gone
+    Client->>W2: GET /mcp  mcp-session-id: {sid}  Last-Event-ID: {eid}
+    W2->>Redis: EXISTS todo:mcp:registry:{sid}  →  1 (known!)
+    W2->>Redis: replay_events_after({eid})  (RedisEventStore)
+    Redis-->>W2: buffered events
+    W2-->>Client: replayed events via new SSE stream
+    Note over W2: Recovery transport created (stateless=True)<br/>Client resumes without re-initialising
+```
+
+Key components:
+
+| Component | Location | Purpose |
+|---|---|---|
+| `RedisSessionRegistry` | `app/mcp/session_registry.py` | Cross-worker session existence map. Key: `todo:mcp:registry:{sid}` |
+| `RedisEventStore` | `app/mcp/session_store.py` | Buffers SSE events for `Last-Event-ID` replay across workers |
+| `ResilientSessionManager` | `app/mcp/session_manager.py` | Extends upstream manager with registry-aware recovery |
+
+**Decision logic for unknown sessions:**
+
+```
+Request for session {sid} arrives at worker B
+├── {sid} in local _server_instances?  →  handle directly (normal path)
+├── registry.exists({sid})?
+│   ├── Yes  →  cross-worker recovery: create local transport (stateless=True)
+│   │           RedisEventStore replays missed events on GET reconnect
+│   └── No   →  404 Session not found  (expired / forged session)
+```
+
+**Why not proxy to the owning worker?**
+
+MCP POST responses are sent inline in the POST response body (not via the
+SSE stream), so any worker can process a POST independently in stateless
+recovery mode.  The GET SSE stream is for server-initiated *notifications*
+only, not for request–response.  Traefik sticky routing (`_sticky_mcp`
+cookie) prevents cross-worker POSTs in normal operation; the registry only
+activates for crash/restart/scale-in scenarios.
+
+**Registry TTL and expiry:**
+
+The registry entry TTL is 1 hour (matching `RedisEventStore`).  It is
+refreshed on every request handled by the owning worker via `touch()`.
+An idle session expires automatically; no explicit cleanup is required
+during graceful shutdown (though the manager does call `unregister()` when
+the transport terminates cleanly).
+
+**Legacy mode (no registry):**
+
+Pass `session_registry=None` to `ResilientSessionManager` to restore the
+pre-registry "recover every unknown session" behaviour.  Useful for unit
+tests that do not wire up Redis.
+
+### 5.4 Agent transport flow (unchanged from current `RedisAgentBus`)
 
 ```mermaid
 sequenceDiagram
@@ -367,7 +436,7 @@ This is the **already-implemented** path from the previous session
 (`6b3d515`). Documented here so the full multi-worker picture is
 in one place.
 
-### 5.4 Chat WebSocket fan-out (unchanged from `6b3d515`)
+### 5.5 Chat WebSocket fan-out (unchanged from `6b3d515`)
 
 ```mermaid
 sequenceDiagram

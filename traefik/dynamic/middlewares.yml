@@ -1,0 +1,38 @@
+http:
+  middlewares:
+    security-headers:
+      headers:
+        customResponseHeaders:
+          X-Content-Type-Options: "nosniff"
+          X-Frame-Options: "DENY"
+          Referrer-Policy: "strict-origin-when-cross-origin"
+          Permissions-Policy: "geolocation=(), microphone=(), camera=()"
+          Strict-Transport-Security: "max-age=31536000; includeSubDomains"
+        # nginx の CSP typo (`abs.twimg.com:` の末尾コロン) を修正済み
+        contentSecurityPolicy: >-
+          default-src 'self';
+          script-src 'self';
+          style-src 'self' 'unsafe-inline';
+          img-src 'self' data: blob: https://pbs.twimg.com https://abs.twimg.com;
+          font-src 'self';
+          connect-src 'self' https://accounts.google.com https://react-tweet.vercel.app blob:;
+          frame-src https://www.youtube.com https://youtube.com https://player.vimeo.com;
+          object-src 'none';
+          base-uri 'self';
+          form-action 'self' https://accounts.google.com https://claude.ai https://claude.com
+
+    compress:
+      compress:
+        # nginx の gzip_min_length 256 に合わせた値 (Traefik デフォルト 1024 より小さい)
+        minResponseBodyBytes: 256
+        excludedContentTypes:
+          - "text/event-stream"
+
+    # /api/v1/internal/ への外部アクセスをブロック
+    # Note: Docker ネットワーク内での sourceRange の見え方に依存するため、
+    # 移行テスト時に外部から curl /api/v1/internal/ で 403 が返ることを確認すること。
+    # 将来的には backend 側ミドルウェアガードに移行する (別タスク)。
+    internal-block:
+      ipAllowList:
+        sourceRange:
+          - "127.0.0.1/32"

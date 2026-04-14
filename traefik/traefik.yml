@@ -1,0 +1,28 @@
+entryPoints:
+  web:
+    address: ":80"
+    transport:
+      respondingTimeouts:
+        readTimeout: "86400s"
+        writeTimeout: "86400s"
+        idleTimeout: "86400s"
+
+providers:
+  docker:
+    exposedByDefault: false
+    network: todo-network
+    # docker-socket-proxy 経由で接続 (直接 socket マウントは Windows Docker Desktop で動作しない)
+    endpoint: "tcp://docker-socket-proxy:2375"
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+log:
+  level: WARN
+
+# 4xx/5xx のみ記録。nginx の `access_log off` (health/SSE) 相当。
+# 正常リクエストのログが必要な場合はフィルタを緩めるか samplingRate を追加。
+accessLog:
+  filters:
+    statusCodes:
+      - "400-599"
