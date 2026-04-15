@@ -48,9 +48,15 @@ class DualAuthBackend(BearerAuthBackend):
         if result is not None:
             return result
 
-        # 2. X-API-Key フォールバック — ミドルウェアを通過させる
+        # 2. X-API-Key — DB で検証してから通過させる
         api_key = conn.headers.get("x-api-key")
         if api_key and api_key.strip():
+            from ..auth import McpAuthError, _resolve_api_key_user
+
+            try:
+                await _resolve_api_key_user(api_key)
+            except McpAuthError:
+                return None
             return AuthCredentials([]), AuthenticatedUser(_API_KEY_PLACEHOLDER_TOKEN)
 
         return None
