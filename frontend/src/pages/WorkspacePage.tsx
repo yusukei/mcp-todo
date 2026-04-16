@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+﻿import { useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { Plus, Server, RefreshCw, FolderOpen, ExternalLink } from 'lucide-react'
@@ -77,10 +77,10 @@ export default function WorkspacePage() {
   return (
     <div className="flex h-full overflow-hidden">
       {/* Sidebar — Agent list */}
-      <div className="w-64 flex-shrink-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+      <div className="w-64 flex-shrink-0 bg-gray-100 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
           <div className="flex items-center gap-2">
-            <Server className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <Server className="w-4 h-4 text-terracotta-600 dark:text-terracotta-400" />
             <h2 className="font-semibold text-sm text-gray-800 dark:text-gray-100">Agents</h2>
           </div>
           <div className="flex items-center gap-1">
@@ -93,7 +93,7 @@ export default function WorkspacePage() {
             </button>
             <button
               onClick={() => setShowRegister(true)}
-              className="p-1.5 rounded-lg text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30"
+              className="p-1.5 rounded-lg text-terracotta-600 dark:text-terracotta-400 hover:bg-terracotta-50 dark:hover:bg-terracotta-900/30"
               title="Agent 登録"
             >
               <Plus className="w-4 h-4" />
@@ -109,7 +109,7 @@ export default function WorkspacePage() {
               <div
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors mb-1 ${
                   !selectedAgent
-                    ? 'bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800'
+                    ? 'bg-terracotta-50 dark:bg-terracotta-900/30 border border-terracotta-200 dark:border-terracotta-800'
                     : 'hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent'
                 }`}
                 onClick={() => setSelectedAgent(null)}
@@ -129,7 +129,7 @@ export default function WorkspacePage() {
 
       {/* Main — Bound projects (read-only) */}
       <div className="flex-1 flex flex-col min-w-0 bg-gray-50 dark:bg-gray-900">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800">
           <div>
             <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
               バインド済みプロジェクト
@@ -161,7 +161,7 @@ export default function WorkspacePage() {
                 return (
                   <div
                     key={p.id}
-                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4"
+                    className="bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-5 py-4"
                   >
                     <div className="flex items-start justify-between">
                       <div className="min-w-0">
@@ -200,7 +200,7 @@ export default function WorkspacePage() {
                       </div>
                       <Link
                         to={`/projects/${p.id}/settings`}
-                        className="flex items-center gap-1 px-2 py-1 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg ml-4 flex-shrink-0"
+                        className="flex items-center gap-1 px-2 py-1 text-xs text-terracotta-600 dark:text-terracotta-400 hover:bg-terracotta-50 dark:hover:bg-terracotta-900/30 rounded-lg ml-4 flex-shrink-0"
                         title="プロジェクト設定で編集"
                       >
                         設定を開く

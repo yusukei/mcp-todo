@@ -1,4 +1,4 @@
-import { useAuthStore } from '../store/auth'
+﻿import { useAuthStore } from '../store/auth'
 import PasskeysTab from './admin/PasskeysTab'
 import ApiKeysSection from '../components/settings/ApiKeysSection'
 
@@ -8,20 +8,20 @@ export default function SettingsPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-8 py-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-        <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">アカウント設定</h1>
+      <div className="px-8 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800">
+        <h1 className="text-xl font-serif font-medium text-gray-800 dark:text-gray-100">アカウント設定</h1>
       </div>
       <div className="flex-1 overflow-auto p-8">
         <div className="max-w-4xl mx-auto space-y-8">
           {/* Profile info */}
           <div>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3">プロフィール</h2>
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-2">
+            <div className="bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-2">
               <div className="flex items-center gap-3">
                 {user?.picture_url ? (
                   <img src={user.picture_url} alt="" className="w-10 h-10 rounded-full" />
                 ) : (
-                  <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-indigo-600 dark:text-indigo-300 font-bold text-lg">
+                  <div className="w-10 h-10 rounded-full bg-terracotta-100 dark:bg-terracotta-900 flex items-center justify-center text-terracotta-600 dark:text-terracotta-300 font-bold text-lg">
                     {user?.name?.[0]?.toUpperCase() ?? '?'}
                   </div>
                 )}
@@ -34,13 +34,13 @@ export default function SettingsPage() {
           </div>
 
           {/* API Keys */}
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+          <div className="bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
             <ApiKeysSection />
           </div>
 
           {/* Passkeys (local users only) */}
           {isLocalUser && (
-            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+            <div className="bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
               <PasskeysTab />
             </div>
           )}

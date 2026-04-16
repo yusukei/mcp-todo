@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect, type DOMAttributes } from 'react'
+﻿import React, { useState, useMemo, useCallback, useEffect, type DOMAttributes } from 'react'
 import clsx from 'clsx'
 import { Archive, ArchiveRestore, Calendar, CornerDownRight, HelpCircle, Copy, FileDown, GripVertical, ShieldCheck, ShieldOff } from 'lucide-react'
 import {
@@ -75,7 +75,7 @@ function TaskRowInner({
       className={clsx(
         'flex items-center gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer',
         task.archived && 'opacity-60',
-        isSelected && 'bg-indigo-50/50 dark:bg-indigo-900/20',
+        isSelected && 'bg-terracotta-50/50 dark:bg-terracotta-900/20',
         isSubtask && 'pl-10',
       )}
     >
@@ -96,7 +96,7 @@ function TaskRowInner({
             type="checkbox"
             checked={isSelected}
             onChange={() => onToggleSelect(task.id)}
-            className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+            className="rounded border-gray-300 dark:border-gray-600 text-terracotta-600 focus:ring-focus w-3.5 h-3.5"
           />
         </label>
       )}
@@ -140,7 +140,7 @@ function TaskRowInner({
       {task.tags && task.tags.length > 0 && (
         <div className="flex items-center gap-1 flex-shrink-0">
           {task.tags.slice(0, 2).map((tag: string) => (
-            <span key={tag} className="text-xs bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full">
+            <span key={tag} className="text-xs bg-terracotta-50 dark:bg-terracotta-900/40 text-terracotta-600 dark:text-terracotta-400 px-2 py-0.5 rounded-full">
               {tag}
             </span>
           ))}
@@ -165,7 +165,7 @@ function TaskRowInner({
             className={clsx(
               'p-1 rounded transition-colors',
               task.archived
-                ? 'text-indigo-500 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30'
+                ? 'text-terracotta-500 dark:text-terracotta-400 hover:bg-terracotta-50 dark:hover:bg-terracotta-900/30'
                 : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700',
             )}
             title={task.archived ? 'アーカイブ解除' : 'アーカイブ'}
@@ -297,7 +297,7 @@ export default function TaskList({ tasks, projectId, selectMode, onTaskClick, on
 
   return (
     <div className="p-6 overflow-y-auto h-full">
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700">
+      <div className="bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700">
         {/* Header with select-all and bulk actions */}
         {selectMode && tasks.length > 0 && (
           <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 dark:bg-gray-800/80">
@@ -308,7 +308,7 @@ export default function TaskList({ tasks, projectId, selectMode, onTaskClick, on
                 checked={allSelected}
                 ref={(el) => { if (el) el.indeterminate = someSelected }}
                 onChange={toggleSelectAll}
-                className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+                className="rounded border-gray-300 dark:border-gray-600 text-terracotta-600 focus:ring-focus w-3.5 h-3.5"
               />
             </label>
             <div className="flex items-center gap-2 flex-1">
@@ -337,7 +337,7 @@ export default function TaskList({ tasks, projectId, selectMode, onTaskClick, on
                       setSelectedIds(new Set())
                     }}
                     disabled={selectedIds.size === 0}
-                    className="text-xs px-2 py-1 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-900/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="text-xs px-2 py-1 rounded bg-terracotta-100 dark:bg-terracotta-900/40 text-terracotta-700 dark:text-terracotta-400 hover:bg-terracotta-200 dark:hover:bg-terracotta-900/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     アーカイブ
                   </button>
@@ -349,7 +349,7 @@ export default function TaskList({ tasks, projectId, selectMode, onTaskClick, on
                       setSelectedIds(new Set())
                     }}
                     disabled={selectedIds.size === 0}
-                    className="text-xs px-2 py-1 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-900/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="text-xs px-2 py-1 rounded bg-terracotta-100 dark:bg-terracotta-900/40 text-terracotta-700 dark:text-terracotta-400 hover:bg-terracotta-200 dark:hover:bg-terracotta-900/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     アーカイブ解除
                   </button>
@@ -402,7 +402,7 @@ export default function TaskList({ tasks, projectId, selectMode, onTaskClick, on
           </SortableContext>
           <DragOverlay dropAnimation={null}>
             {activeTask ? (
-              <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg border border-indigo-300 dark:border-indigo-600 px-4 py-3 opacity-90">
+              <div className="bg-gray-100 dark:bg-gray-800 shadow-lg rounded-lg border border-terracotta-300 dark:border-terracotta-600 px-4 py-3 opacity-90">
                 <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{activeTask.title}</span>
               </div>
             ) : null}

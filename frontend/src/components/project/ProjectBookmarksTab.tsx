@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react'
+﻿import { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react'
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Bookmark as BookmarkIcon, Plus, Search, Star, Grid3X3, List, RefreshCw,
@@ -411,17 +411,17 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
       {/* Main list */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <BookmarkIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <BookmarkIcon className="w-5 h-5 text-terracotta-600 dark:text-terracotta-400" />
               <h2 className="text-base font-bold text-gray-800 dark:text-gray-100">ブックマーク</h2>
               <span className="text-xs text-gray-400">{totalBookmarks}</span>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
-                className={`p-1.5 rounded-lg ${selectionMode ? 'text-indigo-600 bg-indigo-100 dark:bg-indigo-900 dark:text-indigo-400' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                className={`p-1.5 rounded-lg ${selectionMode ? 'text-terracotta-600 bg-terracotta-100 dark:bg-terracotta-900 dark:text-terracotta-400' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
                 title={selectionMode ? '選択モード解除' : '選択モード'}
               >
                 <CheckSquare className="w-4 h-4" />
@@ -445,7 +445,7 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
               <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFileSelect} className="hidden" />
               <button
                 onClick={() => setShowCreate(true)}
-                className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"
+                className="flex items-center gap-1 px-3 py-1.5 bg-terracotta-500 text-gray-100 text-sm rounded-lg hover:bg-terracotta-600"
               >
                 <Plus className="w-4 h-4" />
                 追加
@@ -458,13 +458,13 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="ブックマークを検索..."
-              className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-1 focus:ring-indigo-500"
+              className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-1 focus:ring-focus"
             />
           </div>
           {filterTag && (
             <div className="flex items-center gap-1 mt-2">
               <span className="text-xs text-gray-500">タグ:</span>
-              <span className="px-2 py-0.5 text-xs rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
+              <span className="px-2 py-0.5 text-xs rounded-full bg-terracotta-100 dark:bg-terracotta-900 text-terracotta-700 dark:text-terracotta-300 flex items-center gap-1">
                 {filterTag}
                 <button onClick={() => setFilterTag('')}><X className="w-3 h-3" /></button>
               </span>
@@ -475,7 +475,7 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
             <div className="flex items-center gap-2 mt-2 py-1.5">
               <button
                 onClick={toggleSelectAll}
-                className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400 hover:text-terracotta-600 dark:hover:text-terracotta-400"
               >
                 {selectedIds.size === bookmarks.length && bookmarks.length > 0 ? (
                   <CheckSquare className="w-3.5 h-3.5" />
@@ -531,7 +531,7 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
                     <Trash2 className="w-3.5 h-3.5" />
                     削除
                   </button>
-                  {batchMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />}
+                  {batchMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin text-terracotta-500" />}
                 </>
               )}
             </div>
@@ -548,7 +548,7 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
               <p className="text-sm">ブックマークがありません</p>
               <button
                 onClick={() => setShowCreate(true)}
-                className="mt-2 text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
+                className="mt-2 text-sm text-terracotta-600 dark:text-terracotta-400 hover:underline"
               >
                 最初のブックマークを追加
               </button>
@@ -561,11 +561,11 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
                   draggable
                   onDragStart={(e) => handleDragStart(e, bm.id)}
                   onClick={() => selectionMode ? toggleSelect(bm.id) : setSelectedId(bm.id)}
-                  className={`cursor-pointer rounded-lg border bg-white dark:bg-gray-800 overflow-hidden hover:shadow-md transition-shadow ${
+                  className={`cursor-pointer rounded-lg border bg-gray-100 dark:bg-gray-800 overflow-hidden hover:shadow-md transition-shadow ${
                     selectionMode && selectedIds.has(bm.id)
-                      ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50 dark:bg-indigo-950'
+                      ? 'border-terracotta-500 ring-1 ring-terracotta-500 bg-terracotta-50 dark:bg-terracotta-950'
                       : selectedId === bm.id && !selectionMode
-                      ? 'border-indigo-500 ring-1 ring-indigo-500'
+                      ? 'border-terracotta-500 ring-1 ring-terracotta-500'
                       : 'border-gray-200 dark:border-gray-700'
                   }`}
                 >
@@ -574,7 +574,7 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
                     {selectionMode && (
                       <div className="absolute top-1.5 left-1.5">
                         {selectedIds.has(bm.id) ? (
-                          <CheckSquare className="w-5 h-5 text-indigo-600 dark:text-indigo-400 drop-shadow" />
+                          <CheckSquare className="w-5 h-5 text-terracotta-600 dark:text-terracotta-400 drop-shadow" />
                         ) : (
                           <Square className="w-5 h-5 text-gray-400 drop-shadow" />
                         )}
@@ -596,7 +596,7 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
                           <span
                             key={tag}
                             onClick={(e) => { e.stopPropagation(); setFilterTag(filterTag === tag ? '' : tag) }}
-                            className="px-1.5 py-0.5 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-900"
+                            className="px-1.5 py-0.5 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 cursor-pointer hover:bg-terracotta-100 dark:hover:bg-terracotta-900"
                           >
                             {tag}
                           </span>
@@ -618,13 +618,13 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
                   onDrop={(e) => handleReorderDrop(e, idx)}
                   onDragEnd={handleReorderDragEnd}
                   onClick={() => selectionMode ? toggleSelect(bm.id) : setSelectedId(bm.id)}
-                  className={`cursor-pointer flex items-center gap-3 px-3 py-2 rounded-lg border bg-white dark:bg-gray-800 hover:shadow-sm transition-all ${
+                  className={`cursor-pointer flex items-center gap-3 px-3 py-2 rounded-lg border bg-gray-100 dark:bg-gray-800 hover:shadow-sm transition-all ${
                     dragOverIndex === idx
-                      ? 'border-indigo-400 ring-2 ring-indigo-300 dark:ring-indigo-600'
+                      ? 'border-terracotta-400 ring-2 ring-terracotta-300 dark:ring-terracotta-600'
                       : selectionMode && selectedIds.has(bm.id)
-                      ? 'border-indigo-500 ring-1 ring-indigo-500 bg-indigo-50 dark:bg-indigo-950'
+                      ? 'border-terracotta-500 ring-1 ring-terracotta-500 bg-terracotta-50 dark:bg-terracotta-950'
                       : selectedId === bm.id && !selectionMode
-                      ? 'border-indigo-500 ring-1 ring-indigo-500'
+                      ? 'border-terracotta-500 ring-1 ring-terracotta-500'
                       : 'border-gray-200 dark:border-gray-700'
                   }`}
                 >
@@ -634,7 +634,7 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
                   {selectionMode && (
                     <div className="flex-shrink-0">
                       {selectedIds.has(bm.id) ? (
-                        <CheckSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                        <CheckSquare className="w-4 h-4 text-terracotta-600 dark:text-terracotta-400" />
                       ) : (
                         <Square className="w-4 h-4 text-gray-400" />
                       )}
@@ -670,15 +670,15 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
           {/* Resize handle */}
           <div
             onMouseDown={onMouseDown}
-            className="hidden md:flex w-1.5 cursor-col-resize items-center justify-center bg-gray-100 dark:bg-gray-700 hover:bg-indigo-200 dark:hover:bg-indigo-800 transition-colors flex-shrink-0 group"
+            className="hidden md:flex w-1.5 cursor-col-resize items-center justify-center bg-gray-100 dark:bg-gray-700 hover:bg-terracotta-200 dark:hover:bg-terracotta-800 transition-colors flex-shrink-0 group"
             title="ドラッグしてリサイズ"
           >
-            <GripVertical className="w-3 h-3 text-gray-400 group-hover:text-indigo-500" />
+            <GripVertical className="w-3 h-3 text-gray-400 group-hover:text-terracotta-500" />
           </div>
 
           {/* Detail content */}
           <div
-            className="hidden md:flex flex-col flex-shrink-0 overflow-y-auto bg-white dark:bg-gray-800"
+            className="hidden md:flex flex-col flex-shrink-0 overflow-y-auto bg-gray-100 dark:bg-gray-800"
             style={{ width: detailWidth }}
           >
             {!selected ? (
@@ -696,7 +696,7 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
                     href={selected.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 mt-1"
+                    className="text-xs text-terracotta-600 dark:text-terracotta-400 hover:underline flex items-center gap-1 mt-1"
                   >
                     <ExternalLink className="w-3 h-3" />
                     {domainFromUrl(selected.url)}
@@ -727,7 +727,7 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
                   {selected.tags.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
                       {selected.tags.map((tag) => (
-                        <span key={tag} className="px-2 py-0.5 text-xs rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300">
+                        <span key={tag} className="px-2 py-0.5 text-xs rounded-full bg-terracotta-100 dark:bg-terracotta-900 text-terracotta-700 dark:text-terracotta-300">
                           {tag}
                         </span>
                       ))}

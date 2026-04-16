@@ -285,7 +285,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
           <div className="flex items-center gap-1">
             <button
               onClick={() => selectMode ? exitSelectMode() : setSelectMode(true)}
-              className={`p-1.5 rounded-md transition-colors ${selectMode ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300'}`}
+              className={`p-1.5 rounded-md transition-colors ${selectMode ? 'bg-terracotta-100 dark:bg-terracotta-900/50 text-terracotta-600 dark:text-terracotta-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300'}`}
               title={selectMode ? '選択モード終了' : 'エクスポート用に選択'}
             >
               <CheckSquare className="w-3.5 h-3.5" />
@@ -308,7 +308,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
             />
             <button
               onClick={() => { setCreating(true); setMobileShowDetail(true) }}
-              className="flex items-center gap-1 px-2 py-1 text-xs bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-terracotta-500 text-gray-100 rounded-md hover:bg-terracotta-600"
             >
               <Plus className="w-3.5 h-3.5" /> 追加
             </button>
@@ -317,22 +317,22 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
 
         {/* Export bar */}
         {selectMode && (
-          <div className="flex items-center gap-2 mb-2 p-2 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-md text-xs">
-            <span className="font-medium text-indigo-700 dark:text-indigo-300">
+          <div className="flex items-center gap-2 mb-2 p-2 bg-terracotta-50 dark:bg-terracotta-950/40 border border-terracotta-200 dark:border-terracotta-800 rounded-md text-xs">
+            <span className="font-medium text-terracotta-700 dark:text-terracotta-300">
               {checkedIds.size > 0 ? `${checkedIds.size}件選択` : 'エクスポート'}
             </span>
             <div className="flex items-center gap-1 ml-auto">
               <button
                 onClick={() => handleExport('markdown')}
                 disabled={exporting || checkedIds.size === 0}
-                className="flex items-center gap-1 px-2 py-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <FileText className="w-3.5 h-3.5" /> MD
               </button>
               <button
                 onClick={() => handleExport('pdf')}
                 disabled={exporting || checkedIds.size === 0}
-                className="flex items-center gap-1 px-2 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex items-center gap-1 px-2 py-1 bg-terracotta-500 text-gray-100 rounded hover:bg-terracotta-600 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <FileDown className="w-3.5 h-3.5" /> {exporting ? '...' : 'PDF'}
               </button>
@@ -349,13 +349,13 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
               placeholder="検索..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-6 pr-2 py-1 text-xs border border-gray-200 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full pl-6 pr-2 py-1 text-xs border border-gray-200 dark:border-gray-600 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
             />
           </div>
           <select
             value={filterCategory}
             onChange={(e) => setFilterCategory(e.target.value)}
-            className="w-20 px-1 py-1 text-xs border border-gray-200 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-20 px-1 py-1 text-xs border border-gray-200 dark:border-gray-600 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
           >
             <option value="">全カテゴリ</option>
             {CATEGORIES.map((c) => (
@@ -366,7 +366,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
             <select
               value={filterTag}
               onChange={(e) => setFilterTag(e.target.value)}
-              className="w-16 px-1 py-1 text-xs border border-gray-200 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-16 px-1 py-1 text-xs border border-gray-200 dark:border-gray-600 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
             >
               <option value="">全タグ</option>
               {allTags.map((t) => (
@@ -391,7 +391,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
                   type="checkbox"
                   checked={checkedIds.size === items.length}
                   onChange={toggleAll}
-                  className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+                  className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-terracotta-600 focus:ring-focus"
                 />
                 すべて選択
               </label>
@@ -418,7 +418,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
               </SortableContext>
               <DragOverlay dropAnimation={null}>
                 {activeDragDoc ? (
-                  <div className="bg-white dark:bg-gray-800 shadow-lg rounded-md border border-indigo-300 dark:border-indigo-600 px-3 py-2 opacity-90 text-sm">
+                  <div className="bg-gray-100 dark:bg-gray-800 shadow-lg rounded-md border border-terracotta-300 dark:border-terracotta-600 px-3 py-2 opacity-90 text-sm">
                     {activeDragDoc.title}
                   </div>
                 ) : null}
@@ -441,7 +441,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
           >
             &larr; 一覧に戻る
           </button>
-          <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-6">ドキュメントを追加</h2>
+          <h2 className="text-xl font-serif font-medium text-gray-800 dark:text-gray-100 mb-6">ドキュメントを追加</h2>
           <DocumentForm
             form={form}
             setForm={setForm}
@@ -462,7 +462,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
               >
                 &larr; 一覧
               </button>
-              <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100 truncate">{selected.title}</h2>
+              <h2 className="text-lg font-serif font-medium text-gray-800 dark:text-gray-100 truncate">{selected.title}</h2>
             </div>
             {!editing && (
               <div className="flex gap-2 flex-shrink-0">
@@ -503,7 +503,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
                 ))}
               </div>
 
-              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+              <div className="bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
                 <MarkdownRenderer>{selected.content}</MarkdownRenderer>
               </div>
 
@@ -577,9 +577,9 @@ function SortableDocumentItem({
         isDragging ? 'opacity-30' : ''
       } ${
         isSelected
-          ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300'
+          ? 'bg-terracotta-100 dark:bg-terracotta-900/40 text-terracotta-700 dark:text-terracotta-300'
           : isChecked
-            ? 'bg-indigo-50 dark:bg-indigo-950/30'
+            ? 'bg-terracotta-50 dark:bg-terracotta-950/30'
             : 'hover:bg-gray-100 dark:hover:bg-gray-800'
       }`}
     >
@@ -598,7 +598,7 @@ function SortableDocumentItem({
           checked={isChecked}
           onChange={() => onToggleCheck(doc.id)}
           onClick={(e) => e.stopPropagation()}
-          className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 flex-shrink-0 cursor-pointer"
+          className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-terracotta-600 focus:ring-focus flex-shrink-0 cursor-pointer"
         />
       )}
       <button
@@ -676,7 +676,7 @@ function DocumentHistory({ projectId, documentId }: { projectId: string; documen
                     </span>
                     <span className="text-xs text-gray-400 dark:text-gray-500">by {v.changed_by}</span>
                     {v.task_id && (
-                      <span className="text-xs text-indigo-500 dark:text-indigo-400">
+                      <span className="text-xs text-terracotta-500 dark:text-terracotta-400">
                         task: {v.task_id.slice(-6)}
                       </span>
                     )}
@@ -711,7 +711,7 @@ function DocumentForm({
           value={form.title}
           onChange={(e) => setForm({ ...form, title: e.target.value })}
           maxLength={255}
-          className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
         />
       </div>
       <div>
@@ -720,7 +720,7 @@ function DocumentForm({
           value={form.content}
           onChange={(e) => setForm({ ...form, content: e.target.value })}
           rows={16}
-          className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+          className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus font-mono"
         />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -729,7 +729,7 @@ function DocumentForm({
           <select
             value={form.category}
             onChange={(e) => setForm({ ...form, category: e.target.value as DocumentCategory })}
-            className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
           >
             {CATEGORIES.map((c) => (
               <option key={c.value} value={c.value}>{c.label}</option>
@@ -743,7 +743,7 @@ function DocumentForm({
             value={form.tags}
             onChange={(e) => setForm({ ...form, tags: e.target.value })}
             placeholder="auth, oauth, security"
-            className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
           />
         </div>
       </div>
@@ -751,7 +751,7 @@ function DocumentForm({
         <button
           onClick={onSubmit}
           disabled={!form.title.trim() || loading}
-          className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+          className="px-4 py-2 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50"
         >
           {loading ? '処理中...' : submitLabel}
         </button>

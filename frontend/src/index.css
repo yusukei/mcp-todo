@@ -5,11 +5,52 @@
 @layer base {
   html {
     @apply bg-gray-50 dark:bg-gray-900;
+    font-feature-settings: "kern" 1, "liga" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Serif headings for editorial feel */
+  h1, h2, h3 {
+    font-family: Georgia, Cambria, 'Times New Roman', Times, serif;
+    font-weight: 500;
+  }
+
+  /* Warm-toned selection */
+  ::selection {
+    background-color: rgba(201, 100, 66, 0.15);
+  }
+
+  /* Warm focus ring override (Focus Blue) */
+  *:focus-visible {
+    outline-color: #3898ec;
   }
 
   /* Remove Tailwind Typography backtick decoration on inline code */
   .prose :where(code):not(:where([class~="not-prose"], [class~="not-prose"] *))::before,
   .prose :where(code):not(:where([class~="not-prose"], [class~="not-prose"] *))::after {
     content: "" !important;
+  }
+
+  /* Scrollbar warm toning */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #d1cfc5;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #b0aea5;
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: #4d4c48;
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: #5e5d59;
   }
 }

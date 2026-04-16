@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useEffect } from 'react'
+﻿import { useMemo, useState, useCallback, useEffect } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -66,7 +66,7 @@ function DroppableColumn({
       ref={setNodeRef}
       className={`flex-1 min-w-[240px] max-w-[600px] flex flex-col rounded-xl transition-all duration-200 ${
         isOver
-          ? 'ring-2 ring-indigo-400 dark:ring-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20'
+          ? 'ring-2 ring-terracotta-400 dark:ring-terracotta-500 bg-terracotta-50/50 dark:bg-terracotta-900/20'
           : ''
       }`}
     >
@@ -289,7 +289,7 @@ export default function TaskBoard({
 
       {/* Floating export bar */}
       {selectMode && selectedIds.size > 0 && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg rounded-xl px-4 py-2.5 z-20">
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg rounded-xl px-4 py-2.5 z-20">
           <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
             {selectedIds.size}件選択
           </span>

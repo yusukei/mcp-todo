@@ -1,4 +1,4 @@
-import { Sun, Moon, Monitor } from 'lucide-react'
+﻿import { Sun, Moon, Monitor } from 'lucide-react'
 import { useThemeStore, type ThemeMode } from '../../store/theme'
 
 const OPTIONS: { mode: ThemeMode; icon: React.ReactNode; label: string }[] = [
@@ -18,7 +18,7 @@ export default function ThemeToggle() {
           onClick={() => setMode(opt.mode)}
           className={`p-1.5 rounded-md transition-colors ${
             mode === opt.mode
-              ? 'bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm'
+              ? 'bg-white dark:bg-gray-600 text-terracotta-500 dark:text-terracotta-400 shadow-sm'
               : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
           }`}
           title={opt.label}

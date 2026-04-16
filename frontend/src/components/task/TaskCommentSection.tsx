@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Send } from 'lucide-react'
 import { api } from '../../api/client'
@@ -53,7 +53,7 @@ export function TaskCommentInput({ task, projectId }: Props) {
           value={comment}
           onChange={(e) => setComment(e.target.value)}
           placeholder="コメントを入力（Markdown対応）..."
-          className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 resize-none focus:outline-none focus:ring-2 focus:ring-focus"
           rows={2}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && comment.trim()) {
@@ -64,7 +64,7 @@ export function TaskCommentInput({ task, projectId }: Props) {
         <button
           onClick={() => comment.trim() && addComment.mutate(comment.trim())}
           disabled={!comment.trim() || addComment.isPending}
-          className="self-end px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-40"
+          className="self-end px-3 py-2 bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-40"
         >
           <Send className="w-4 h-4" />
         </button>

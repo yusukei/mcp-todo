@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Fingerprint } from 'lucide-react'
 import { startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser'
@@ -87,8 +87,8 @@ export default function LoginPage() {
       <div className="absolute top-4 right-4">
         <ThemeToggle />
       </div>
-      <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow dark:shadow-gray-900/50 w-full max-w-md space-y-6">
-        <h1 className="text-2xl font-bold text-center text-gray-800 dark:text-gray-100">MCP Todo</h1>
+      <div className="bg-gray-100 dark:bg-gray-800 p-8 rounded-generous shadow-whisper w-full max-w-md space-y-6">
+        <h1 className="text-2xl font-serif font-medium text-center text-gray-900 dark:text-gray-100">MCP Todo</h1>
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
@@ -99,7 +99,7 @@ export default function LoginPage() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoComplete="email webauthn"
-              className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full border border-gray-300 dark:border-gray-600 rounded-generous px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
               required
             />
           </div>
@@ -111,7 +111,7 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
-              className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full border border-gray-300 dark:border-gray-600 rounded-generous px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
               required
             />
           </div>
@@ -119,7 +119,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 font-medium"
+            className="w-full bg-terracotta-500 text-gray-100 py-2.5 rounded-generous hover:bg-terracotta-600 disabled:opacity-50 font-medium shadow-ring-warm transition-colors"
           >
             {loading ? 'ログイン中...' : 'ログイン'}
           </button>
@@ -130,7 +130,7 @@ export default function LoginPage() {
             <div className="w-full border-t border-gray-200 dark:border-gray-600" />
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="bg-white dark:bg-gray-800 px-2 text-gray-500 dark:text-gray-400">または</span>
+            <span className="bg-gray-100 dark:bg-gray-800 px-2 text-gray-500 dark:text-gray-400">または</span>
           </div>
         </div>
 
@@ -139,7 +139,7 @@ export default function LoginPage() {
             <button
               onClick={handlePasskeyLogin}
               disabled={passkeyLoading}
-              className="w-full flex items-center justify-center gap-3 border border-gray-300 dark:border-gray-600 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-medium text-gray-700 dark:text-gray-200 disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-3 border border-gray-300 dark:border-gray-600 py-2 rounded-generous hover:bg-gray-50 dark:hover:bg-gray-700 font-medium text-gray-700 dark:text-gray-200 disabled:opacity-50"
             >
               <Fingerprint className="w-5 h-5" />
               {passkeyLoading ? '認証中...' : 'パスキーでログイン'}
@@ -148,7 +148,7 @@ export default function LoginPage() {
 
           <button
             onClick={handleGoogle}
-            className="w-full flex items-center justify-center gap-3 border border-gray-300 dark:border-gray-600 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-medium text-gray-700 dark:text-gray-200"
+            className="w-full flex items-center justify-center gap-3 border border-gray-300 dark:border-gray-600 py-2 rounded-generous hover:bg-gray-50 dark:hover:bg-gray-700 font-medium text-gray-700 dark:text-gray-200"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+﻿import { useState, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CornerDownRight, Plus, X } from 'lucide-react'
 import clsx from 'clsx'
@@ -50,7 +50,7 @@ export default function TaskSubtaskSection({ task, projectId, onTaskClick }: Pro
     createSubtask.mutate(subtaskTitle.trim())
   }
 
-  const inputClasses = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500'
+  const inputClasses = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus'
 
   return (
     <div>
@@ -64,7 +64,7 @@ export default function TaskSubtaskSection({ task, projectId, onTaskClick }: Pro
               setShowSubtaskForm(true)
               setTimeout(() => subtaskInputRef.current?.focus(), 0)
             }}
-            className="flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
+            className="flex items-center gap-1 text-xs text-terracotta-600 dark:text-terracotta-400 hover:text-terracotta-800 dark:hover:text-terracotta-300 transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             サブタスク追加
@@ -91,7 +91,7 @@ export default function TaskSubtaskSection({ task, projectId, onTaskClick }: Pro
           <button
             onClick={handleCreateSubtask}
             disabled={!subtaskTitle.trim() || createSubtask.isPending}
-            className="px-3 py-2 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-40 flex-shrink-0"
+            className="px-3 py-2 text-sm text-white bg-terracotta-600 rounded-lg hover:bg-terracotta-600 disabled:opacity-40 flex-shrink-0"
           >
             追加
           </button>

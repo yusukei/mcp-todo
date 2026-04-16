@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react'
+﻿import { useEffect, useSyncExternalStore } from 'react'
 import { AlertTriangle } from 'lucide-react'
 
 interface ConfirmState {
@@ -55,7 +55,7 @@ export default function ConfirmDialog() {
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={() => close(false)} />
-      <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-sm w-full mx-4 p-6 animate-in fade-in zoom-in-95 duration-150">
+      <div className="relative bg-gray-100 dark:bg-gray-800 rounded-generous shadow-whisper max-w-sm w-full mx-4 p-6 animate-in fade-in zoom-in-95 duration-150">
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
             <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
@@ -74,7 +74,7 @@ export default function ConfirmDialog() {
           <button
             onClick={() => close(true)}
             autoFocus
-            className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+            className="px-4 py-2 text-sm font-medium text-white bg-crimson hover:bg-red-800 text-gray-100 rounded-lg transition-colors"
           >
             実行
           </button>

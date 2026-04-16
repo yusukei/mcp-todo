@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, Calendar, User, CornerDownRight, HelpCircle, Copy, ShieldCheck, ShieldOff } from 'lucide-react'
+﻿import { Archive, ArchiveRestore, Calendar, User, CornerDownRight, HelpCircle, Copy, ShieldCheck, ShieldOff } from 'lucide-react'
 import { showSuccessToast } from '../common/Toast'
 import clsx from 'clsx'
 import type { Task } from '../../types'
@@ -25,10 +25,10 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive, sele
       aria-label={task.title}
       tabIndex={0}
       className={clsx(
-        'relative bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 cursor-pointer hover:shadow-sm hover:border-indigo-300 dark:hover:border-indigo-600 transition-all group/card',
+        'relative bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 cursor-pointer hover:shadow-sm hover:border-terracotta-300 dark:hover:border-terracotta-600 transition-all group/card',
         task.archived && 'opacity-60',
         isOverdue && 'border-l-4 border-l-red-500 dark:border-l-red-400',
-        selectMode && isSelected && 'ring-2 ring-indigo-400 dark:ring-indigo-500',
+        selectMode && isSelected && 'ring-2 ring-terracotta-400 dark:ring-terracotta-500',
       )}
     >
       <button
@@ -58,7 +58,7 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive, sele
               type="checkbox"
               checked={isSelected ?? false}
               onChange={() => onToggleSelect?.()}
-              className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+              className="rounded border-gray-300 dark:border-gray-600 text-terracotta-600 focus:ring-focus w-4 h-4"
             />
           </label>
         )}
@@ -89,7 +89,7 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive, sele
           </span>
         )}
         {task.tags?.map((tag: string) => (
-          <span key={tag} className="text-xs bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-full">
+          <span key={tag} className="text-xs bg-terracotta-50 dark:bg-terracotta-900/40 text-terracotta-600 dark:text-terracotta-400 px-2 py-0.5 rounded-full">
             {tag}
           </span>
         ))}
@@ -113,7 +113,7 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive, sele
             className={clsx(
               'ml-auto p-0.5 rounded transition-colors',
               task.archived
-                ? 'text-indigo-500 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30'
+                ? 'text-terracotta-500 dark:text-terracotta-400 hover:bg-terracotta-50 dark:hover:bg-terracotta-900/30'
                 : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700',
             )}
             title={task.archived ? 'アーカイブ解除' : 'アーカイブ'}

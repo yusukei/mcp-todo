@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+﻿import { useState, useRef, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Check, X, Pencil, Lock, Unlock, Server, Trash2 } from 'lucide-react'
@@ -174,7 +174,7 @@ export default function ProjectSettingsPage() {
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div>
-            <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">プロジェクト設定</h1>
+            <h1 className="text-xl font-serif font-medium text-gray-800 dark:text-gray-100">プロジェクト設定</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">{project.name}</p>
           </div>
         </div>
@@ -182,7 +182,7 @@ export default function ProjectSettingsPage() {
         {/* General settings */}
         <section className="space-y-4">
           <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">基本設定</h2>
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700">
+          <div className="bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700">
             {/* Project name */}
             <div className="px-6 py-4 flex items-center justify-between">
               <div>
@@ -198,7 +198,7 @@ export default function ProjectSettingsPage() {
                         if (e.key === 'Escape') setIsRenaming(false)
                       }}
                       maxLength={255}
-                      className="bg-white dark:bg-gray-700 border border-indigo-400 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-gray-100"
+                      className="bg-white dark:bg-gray-700 border border-terracotta-400 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-focus text-gray-900 dark:text-gray-100"
                     />
                     <button onClick={confirmRename} disabled={renameMutation.isPending} className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded">
                       <Check className="w-4 h-4" />
@@ -214,7 +214,7 @@ export default function ProjectSettingsPage() {
               {!isRenaming && isOwnerOrAdmin && (
                 <button
                   onClick={startRename}
-                  className="p-2 text-gray-400 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                  className="p-2 text-gray-400 hover:text-terracotta-500 dark:hover:text-terracotta-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                 >
                   <Pencil className="w-4 h-4" />
                 </button>
@@ -270,7 +270,7 @@ export default function ProjectSettingsPage() {
         {/* Remote agent binding */}
         <section className="space-y-4">
           <div className="flex items-center gap-2">
-            <Server className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <Server className="w-4 h-4 text-terracotta-600 dark:text-terracotta-400" />
             <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">リモートエージェント</h2>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -278,7 +278,7 @@ export default function ProjectSettingsPage() {
             Chat やリモート MCP ツール（<code className="text-xs">remote_exec</code> など）
             がそのパスを作業ディレクトリとして動作します。
           </p>
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-6 py-4">
+          <div className="bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-6 py-4">
             {editingRemote ? (
               <div className="space-y-3">
                 <div>
@@ -306,7 +306,7 @@ export default function ProjectSettingsPage() {
                     value={remotePath}
                     onChange={(e) => setRemotePath(e.target.value)}
                     placeholder="/home/user/projects/my-project"
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 font-mono focus:ring-2 focus:ring-focus"
                   />
                 </div>
                 <div>
@@ -317,7 +317,7 @@ export default function ProjectSettingsPage() {
                     value={remoteLabel}
                     onChange={(e) => setRemoteLabel(e.target.value)}
                     placeholder="例: production server"
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-focus"
                   />
                 </div>
                 {remoteError && (
@@ -333,7 +333,7 @@ export default function ProjectSettingsPage() {
                   <button
                     onClick={handleSaveRemote}
                     disabled={setRemoteMutation.isPending}
-                    className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                    className="px-3 py-1.5 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50"
                   >
                     {setRemoteMutation.isPending ? '保存中...' : '保存'}
                   </button>
@@ -371,7 +371,7 @@ export default function ProjectSettingsPage() {
                   <div className="flex items-center gap-1 flex-shrink-0 ml-4">
                     <button
                       onClick={startEditRemote}
-                      className="p-2 rounded-lg text-gray-400 hover:text-indigo-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      className="p-2 rounded-lg text-gray-400 hover:text-terracotta-500 hover:bg-gray-100 dark:hover:bg-gray-700"
                       title="編集"
                     >
                       <Pencil className="w-4 h-4" />
@@ -395,7 +395,7 @@ export default function ProjectSettingsPage() {
                   <button
                     onClick={startEditRemote}
                     disabled={agents.length === 0}
-                    className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-3 py-1.5 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     title={agents.length === 0 ? 'エージェントが登録されていません' : ''}
                   >
                     設定

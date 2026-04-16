@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Error tracker UI (T10).
  *
  * Layout: left sidebar lists Issues for the current project, right
@@ -57,7 +57,7 @@ function Sparkline({ issueId }: { issueId: string }) {
             y={h - barH}
             width={Math.max(barW - 0.5, 0.5)}
             height={barH}
-            className="fill-indigo-400 dark:fill-indigo-500"
+            className="fill-terracotta-400 dark:fill-terracotta-500"
             rx={0.5}
           />
         )
@@ -92,7 +92,7 @@ function Histogram({ issueId }: { issueId: string }) {
               y={h - barH}
               width={Math.max(barW - 0.3, 0.3)}
               height={barH}
-              className="fill-indigo-400 dark:fill-indigo-500"
+              className="fill-terracotta-400 dark:fill-terracotta-500"
               rx={0.5}
             />
           )
@@ -173,7 +173,7 @@ function IssueRow({
     <button
       onClick={onSelect}
       className={`w-full border-b border-gray-200 dark:border-gray-800 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors ${
-        active ? 'bg-indigo-50 dark:bg-indigo-900/30 border-l-2 border-l-indigo-500' : ''
+        active ? 'bg-terracotta-50 dark:bg-terracotta-900/30 border-l-2 border-l-terracotta-500' : ''
       }`}
     >
       <div className="flex items-start justify-between gap-2">
@@ -223,7 +223,7 @@ function EventFrameRow({ frame, defaultOpen }: { frame: EventFrame; defaultOpen:
         {!expandable && <span className="w-3 shrink-0" />}
         <div className="min-w-0 flex-1 font-mono text-xs">
           <div className="text-gray-900 dark:text-gray-200 truncate">
-            <span className="text-indigo-600 dark:text-indigo-400">{String(frame.function || '<anonymous>')}</span>
+            <span className="text-terracotta-600 dark:text-terracotta-400">{String(frame.function || '<anonymous>')}</span>
             {frame.module && (
               <span className="ml-2 text-gray-500 dark:text-gray-400">[{frame.module}]</span>
             )}
@@ -232,7 +232,7 @@ function EventFrameRow({ frame, defaultOpen }: { frame: EventFrame; defaultOpen:
             {String(frame.filename || '?')}
             <span className="text-gray-400 dark:text-gray-500">:{String(frame.lineno ?? '?')}</span>
             {frame.in_app && (
-              <span className="ml-2 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 px-1 text-[10px]">in_app</span>
+              <span className="ml-2 rounded bg-terracotta-100 dark:bg-terracotta-900/40 text-terracotta-600 dark:text-terracotta-300 px-1 text-[10px]">in_app</span>
             )}
           </div>
         </div>
@@ -292,7 +292,7 @@ function StackTrace({ frames }: { frames: EventFrame[] }) {
         <button
           type="button"
           onClick={() => setShowAll(true)}
-          className="mt-2 text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+          className="mt-2 text-xs text-terracotta-600 dark:text-terracotta-400 hover:underline"
         >
           残り {frames.length - visible.length} フレームを表示
         </button>
@@ -410,7 +410,7 @@ function EventCard({ event }: { event: ErrorEvent }) {
           <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">リクエスト</div>
           <div className="text-xs font-mono text-gray-700 dark:text-gray-300">
             {event.request.method && (
-              <span className="mr-2 text-indigo-600 dark:text-indigo-400 font-semibold">
+              <span className="mr-2 text-terracotta-600 dark:text-terracotta-400 font-semibold">
                 {event.request.method}
               </span>
             )}
@@ -511,14 +511,14 @@ function AssigneePicker({ issueId, currentAssigneeId }: { issueId: string; curre
         {currentAssigneeId ? (assigneeName || '担当者') : '未割当'}
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg">
+        <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 shadow-lg">
           <div className="p-2">
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="ユーザーを検索…"
-              className="w-full rounded border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 px-2 py-1 text-xs text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="w-full rounded border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 px-2 py-1 text-xs text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-focus"
               autoFocus
             />
           </div>
@@ -540,10 +540,10 @@ function AssigneePicker({ issueId, currentAssigneeId }: { issueId: string; curre
                   type="button"
                   onClick={() => assign.mutate(u.id)}
                   className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 ${
-                    u.id === currentAssigneeId ? 'text-indigo-600 dark:text-indigo-400 font-medium' : 'text-gray-700 dark:text-gray-200'
+                    u.id === currentAssigneeId ? 'text-terracotta-600 dark:text-terracotta-400 font-medium' : 'text-gray-700 dark:text-gray-200'
                   }`}
                 >
-                  <span className="inline-block w-4 h-4 rounded-full bg-indigo-400 text-center text-[10px] leading-4 font-bold text-white shrink-0">
+                  <span className="inline-block w-4 h-4 rounded-full bg-terracotta-400 text-center text-[10px] leading-4 font-bold text-white shrink-0">
                     {u.name[0]?.toUpperCase() || '?'}
                   </span>
                   <span className="truncate">{u.name}</span>
@@ -609,7 +609,7 @@ function IssueDetail({ issueId }: { issueId: string }) {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-6 pt-4">
+      <div className="border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 px-6 pt-4">
         <div className="mb-3 flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-1">
@@ -659,7 +659,7 @@ function IssueDetail({ issueId }: { issueId: string }) {
               <button
                 onClick={() => mutate.mutate('reopen')}
                 disabled={mutate.isPending}
-                className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                className="rounded-lg bg-terracotta-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-terracotta-600 disabled:opacity-50 transition-colors"
               >
                 再オープン
               </button>
@@ -675,7 +675,7 @@ function IssueDetail({ issueId }: { issueId: string }) {
               onClick={() => setTab(t.key)}
               className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
                 tab === t.key
-                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                  ? 'border-terracotta-500 text-terracotta-600 dark:text-terracotta-400'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
               }`}
             >
@@ -716,7 +716,7 @@ function IssueDetail({ issueId }: { issueId: string }) {
                   {issue.linked_task_ids.map((tid) => (
                     <li key={tid}>
                       <a
-                        className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
+                        className="text-sm text-terracotta-600 dark:text-terracotta-400 hover:underline"
                         href={`/projects/${issue.project_id}?task=${tid}`}
                       >
                         {tid}
@@ -828,7 +828,7 @@ export default function ErrorTrackerPage() {
             <select
               value={statusFilter}
               onChange={(e) => { setStatusFilter(e.target.value); setSelected(null) }}
-              className="rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="rounded-md border border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-focus"
             >
               <option value="">すべて</option>
               <option value="unresolved">未解決</option>
@@ -842,7 +842,7 @@ export default function ErrorTrackerPage() {
                 <select
                   value={envFilter}
                   onChange={(e) => { setEnvFilter(e.target.value); setSelected(null) }}
-                  className="flex-1 rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-1.5 py-0.5 text-[11px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="flex-1 rounded-md border border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-1.5 py-0.5 text-[11px] focus:outline-none focus:ring-2 focus:ring-focus"
                 >
                   <option value="">全環境</option>
                   {environments.map((env) => (
@@ -854,7 +854,7 @@ export default function ErrorTrackerPage() {
                 <select
                   value={releaseFilter}
                   onChange={(e) => { setReleaseFilter(e.target.value); setSelected(null) }}
-                  className="flex-1 rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-1.5 py-0.5 text-[11px] focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="flex-1 rounded-md border border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-1.5 py-0.5 text-[11px] focus:outline-none focus:ring-2 focus:ring-focus"
                 >
                   <option value="">全リリース</option>
                   {releases.map((rel) => (
@@ -898,7 +898,7 @@ export default function ErrorTrackerPage() {
       </aside>
 
       {/* Main */}
-      <main className="flex min-w-0 flex-1 flex-col bg-white dark:bg-gray-800">
+      <main className="flex min-w-0 flex-1 flex-col bg-gray-100 dark:bg-gray-800">
         {selected ? (
           <IssueDetail issueId={selected} />
         ) : (

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Plus, KeyRound } from 'lucide-react'
 import { api } from '../../api/client'
@@ -68,7 +68,7 @@ export default function UsersTab() {
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-200">ユーザ管理</h2>
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600"
         >
           <Plus className="w-4 h-4" />ユーザ追加
         </button>
@@ -81,20 +81,20 @@ export default function UsersTab() {
               placeholder="メールアドレス"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
             />
             <input
               placeholder="名前"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
             />
             <input
               type="password"
               placeholder="パスワード"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
             />
             <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
               <input type="checkbox" checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} />
@@ -106,7 +106,7 @@ export default function UsersTab() {
             <button
               onClick={() => create.mutate()}
               disabled={!email || !name || create.isPending}
-              className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+              className="px-3 py-1.5 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50"
             >
               {create.isPending ? '作成中...' : '作成'}
             </button>
@@ -135,7 +135,7 @@ export default function UsersTab() {
                 <td className="px-4 py-3 text-center">
                   <button
                     onClick={() => toggleAdmin.mutate(u)}
-                    className={`px-2 py-0.5 text-xs rounded-full font-medium ${u.is_admin ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}
+                    className={`px-2 py-0.5 text-xs rounded-full font-medium ${u.is_admin ? 'bg-terracotta-100 dark:bg-terracotta-900/40 text-terracotta-700 dark:text-terracotta-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}
                   >
                     {u.is_admin ? '管理者' : '一般'}
                   </button>
@@ -152,7 +152,7 @@ export default function UsersTab() {
                   {u.auth_type === 'admin' && (
                     <button
                       onClick={() => { setResetTarget(u); setResetNewPassword('') }}
-                      className="text-gray-400 hover:text-indigo-500 dark:text-gray-500 dark:hover:text-indigo-400"
+                      className="text-gray-400 hover:text-terracotta-500 dark:text-gray-500 dark:hover:text-terracotta-400"
                       aria-label="パスワードリセット"
                       title="パスワードリセット"
                     >
@@ -174,7 +174,7 @@ export default function UsersTab() {
       </div>
       {resetTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 w-full max-w-sm space-y-4">
+          <div className="bg-gray-100 dark:bg-gray-800 rounded-xl shadow-xl p-6 w-full max-w-sm space-y-4">
             <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">パスワードリセット</h3>
             <p className="text-sm text-gray-600 dark:text-gray-300">
               <span className="font-medium">{resetTarget.name}</span> のパスワードをリセットします。
@@ -186,7 +186,7 @@ export default function UsersTab() {
                 value={resetNewPassword}
                 onChange={(e) => setResetNewPassword(e.target.value)}
                 placeholder="8文字以上"
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
                 autoFocus
               />
               {resetNewPassword.length > 0 && resetNewPassword.length < 8 && (
@@ -204,7 +204,7 @@ export default function UsersTab() {
               <button
                 onClick={() => resetPassword.mutate({ user: resetTarget, newPassword: resetNewPassword })}
                 disabled={(resetNewPassword.length > 0 && resetNewPassword.length < 8) || resetPassword.isPending}
-                className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50"
               >
                 {resetPassword.isPending ? 'リセット中...' : 'リセット'}
               </button>
@@ -214,7 +214,7 @@ export default function UsersTab() {
       )}
       {resetResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 w-full max-w-sm space-y-4">
+          <div className="bg-gray-100 dark:bg-gray-800 rounded-xl shadow-xl p-6 w-full max-w-sm space-y-4">
             <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">パスワードリセット完了</h3>
             <p className="text-sm text-gray-600 dark:text-gray-300">
               <span className="font-medium">{resetResult.name}</span> の新しいパスワード:
@@ -225,7 +225,7 @@ export default function UsersTab() {
               </code>
               <button
                 onClick={() => navigator.clipboard.writeText(resetResult.password)}
-                className="px-3 py-2 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shrink-0"
+                className="px-3 py-2 text-xs bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 shrink-0"
               >
                 コピー
               </button>

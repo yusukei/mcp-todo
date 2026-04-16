@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { Users, Mail, FolderOpen, HardDrive, Activity } from 'lucide-react'
 import UsersTab from './admin/UsersTab'
 import AllowedEmailsTab from './admin/AllowedEmailsTab'
@@ -21,8 +21,8 @@ export default function AdminPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-8 py-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-        <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">管理者設定</h1>
+      <div className="px-8 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800">
+        <h1 className="text-xl font-serif font-medium text-gray-800 dark:text-gray-100">管理者設定</h1>
       </div>
       <div className="flex-1 overflow-auto p-8">
         <div className="max-w-4xl mx-auto">
@@ -33,7 +33,7 @@ export default function AdminPage() {
                 onClick={() => setTab(t.id)}
                 className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
                   tab === t.id
-                    ? 'border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400'
+                    ? 'border-terracotta-600 dark:border-terracotta-400 text-terracotta-600 dark:text-terracotta-400'
                     : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                 }`}
               >

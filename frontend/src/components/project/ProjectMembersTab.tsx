@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Crown, UserMinus, UserPlus, Search } from 'lucide-react'
 import { api } from '../../api/client'
@@ -95,7 +95,7 @@ export default function ProjectMembersTab({ project }: { project: Project }) {
         {isOwnerOrAdmin && !showSearch && (
           <button
             onClick={() => setShowSearch(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-terracotta-500 text-gray-100 text-sm font-medium rounded-lg hover:bg-terracotta-600"
           >
             <UserPlus className="w-4 h-4" />
             メンバー追加
@@ -105,7 +105,7 @@ export default function ProjectMembersTab({ project }: { project: Project }) {
 
       {/* Add member search */}
       {showSearch && isOwnerOrAdmin && (
-        <div className="border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl p-4 space-y-3">
+        <div className="border border-terracotta-200 dark:border-terracotta-800 bg-terracotta-50 dark:bg-terracotta-900/20 rounded-xl p-4 space-y-3">
           <div className="flex items-center gap-2">
             <Search className="w-4 h-4 text-gray-400" />
             <input
@@ -114,7 +114,7 @@ export default function ProjectMembersTab({ project }: { project: Project }) {
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="名前またはメールアドレスで検索..."
               autoFocus
-              className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 dark:text-gray-100"
+              className="flex-1 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-focus text-gray-900 dark:text-gray-100"
             />
             <button
               onClick={() => { setShowSearch(false); setSearchQuery('') }}
@@ -124,7 +124,7 @@ export default function ProjectMembersTab({ project }: { project: Project }) {
             </button>
           </div>
           {filteredResults.length > 0 && (
-            <ul className="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+            <ul className="divide-y divide-gray-200 dark:divide-gray-700 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
               {filteredResults.map((u) => (
                 <li key={u.id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                   <div className="flex items-center gap-3">
@@ -144,7 +144,7 @@ export default function ProjectMembersTab({ project }: { project: Project }) {
                     <button
                       onClick={() => addMember.mutate({ userId: u.id, role: 'member' })}
                       disabled={addMember.isPending}
-                      className="px-3 py-1 text-xs bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                      className="px-3 py-1 text-xs bg-terracotta-500 text-gray-100 rounded-md hover:bg-terracotta-600 disabled:opacity-50"
                     >
                       メンバー
                     </button>

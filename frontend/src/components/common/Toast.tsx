@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useSyncExternalStore } from 'react'
+﻿import { useEffect, useState, useCallback, useSyncExternalStore } from 'react'
 import { X, AlertCircle, CheckCircle, Info } from 'lucide-react'
 
 type ToastType = 'error' | 'success' | 'info'
@@ -66,12 +66,12 @@ function ToastItem({ toast }: { toast: ToastMessage }) {
     setTimeout(() => removeToast(toast.id), 200)
   }, [toast.id])
 
-  const bgColor = toast.type === 'success' ? 'bg-emerald-600' : toast.type === 'info' ? 'bg-indigo-600' : 'bg-red-600'
+  const bgColor = toast.type === 'success' ? 'bg-emerald-600' : toast.type === 'info' ? 'bg-terracotta-500' : 'bg-crimson'
   const Icon = toast.type === 'success' ? CheckCircle : toast.type === 'info' ? Info : AlertCircle
 
   return (
     <div
-      className={`flex items-center gap-2 ${bgColor} text-white px-4 py-3 rounded-lg shadow-lg text-sm max-w-sm transition-all duration-200 ${
+      className={`flex items-center gap-2 ${bgColor} text-white px-4 py-3 rounded-lg shadow-whisper text-sm max-w-sm transition-all duration-200 ${
         visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
       }`}
     >

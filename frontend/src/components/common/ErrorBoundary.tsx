@@ -1,4 +1,4 @@
-import React from 'react'
+﻿import React from 'react'
 
 interface Props {
   children: React.ReactNode
@@ -36,7 +36,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
       return (
         <div className="flex items-center justify-center h-screen bg-gray-50 dark:bg-gray-900">
           <div className="text-center px-6">
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">
+            <h1 className="text-2xl font-serif font-medium text-gray-800 dark:text-gray-100 mb-2">
               予期しないエラーが発生しました
             </h1>
             <p className="text-gray-500 dark:text-gray-400 mb-6">
@@ -65,7 +65,7 @@ export function PageErrorFallback() {
   return (
     <div className="flex items-center justify-center flex-1 p-8">
       <div className="text-center max-w-md">
-        <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">
+        <h2 className="text-xl font-serif font-medium text-gray-800 dark:text-gray-100 mb-2">
           このページの読み込み中にエラーが発生しました
         </h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">

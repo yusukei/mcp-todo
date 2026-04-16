@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Key, Copy, Check } from 'lucide-react'
 import { api } from '../../api/client'
@@ -56,7 +56,7 @@ export default function ApiKeysSection() {
         <div className="p-4 border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/30 rounded-xl">
           <p className="text-sm text-green-700 dark:text-green-400 font-medium mb-2">キーが発行されました。この画面を閉じると再表示できません。</p>
           <div className="flex items-center gap-2">
-            <code className="flex-1 text-xs bg-white dark:bg-gray-800 border border-green-200 dark:border-green-800 rounded px-3 py-2 text-gray-800 dark:text-gray-200 font-mono break-all">
+            <code className="flex-1 text-xs bg-gray-100 dark:bg-gray-800 border border-green-200 dark:border-green-800 rounded px-3 py-2 text-gray-800 dark:text-gray-200 font-mono break-all">
               {newKey}
             </code>
             <button onClick={copyKey} className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300" aria-label="コピー">
@@ -75,12 +75,12 @@ export default function ApiKeysSection() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && name && create.mutate()}
-          className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
         />
         <button
           onClick={() => create.mutate()}
           disabled={!name || create.isPending}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 font-medium"
+          className="flex items-center gap-1.5 px-3 py-2 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50 font-medium"
         >
           <Key className="w-4 h-4" />発行
         </button>

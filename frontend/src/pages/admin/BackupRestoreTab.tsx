@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+﻿import { useState, useRef } from 'react'
 import { Download, Upload, AlertTriangle } from 'lucide-react'
 import { api } from '../../api/client'
 import { showErrorToast, showSuccessToast } from '../../components/common/Toast'
@@ -68,7 +68,7 @@ export default function BackupRestoreTab() {
         <button
           onClick={handleExport}
           disabled={exporting}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-2 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50"
         >
           <Download className="w-4 h-4" />
           {exporting ? 'バックアップ中...' : 'バックアップ作成'}
@@ -99,7 +99,7 @@ export default function BackupRestoreTab() {
       {/* Confirmation Modal */}
       {confirmRestore && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-md mx-4 shadow-xl">
+          <div className="bg-gray-100 dark:bg-gray-800 rounded-xl p-6 max-w-md mx-4 shadow-xl">
             <div className="flex items-center gap-3 mb-4">
               <AlertTriangle className="w-6 h-6 text-amber-500" />
               <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">リストアの確認</h3>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+﻿import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Send, Square, MessageSquare, Loader2, Bot, User as UserIcon, AlertTriangle, ChevronDown, ChevronRight, DollarSign, Clock } from 'lucide-react'
@@ -179,7 +179,7 @@ function ToolCallCard({ tool }: { tool: { tool_name?: string; tool?: string; inp
         className="w-full flex items-center gap-2 px-3 py-2 text-xs bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
       >
         {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-        <span className="font-mono font-medium text-indigo-600 dark:text-indigo-400">{name}</span>
+        <span className="font-mono font-medium text-terracotta-600 dark:text-terracotta-400">{name}</span>
         {tool.input.file_path != null ? (
           <span className="text-gray-400 truncate">{`${tool.input.file_path}`}</span>
         ) : null}
@@ -221,20 +221,20 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
   return (
     <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
       <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
-        isUser ? 'bg-indigo-100 dark:bg-indigo-900' :
+        isUser ? 'bg-terracotta-100 dark:bg-terracotta-900' :
         isSystem ? 'bg-amber-100 dark:bg-amber-900' :
         'bg-emerald-100 dark:bg-emerald-900'
       }`}>
-        {isUser ? <UserIcon className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /> :
+        {isUser ? <UserIcon className="w-4 h-4 text-terracotta-600 dark:text-terracotta-400" /> :
          isSystem ? <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" /> :
          <Bot className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />}
       </div>
       <div className={`flex-1 min-w-0 ${isUser ? 'text-right' : ''}`}>
         <div className={`inline-block text-left max-w-full rounded-xl px-4 py-3 text-sm ${
-          isUser ? 'bg-indigo-600 text-white' :
+          isUser ? 'bg-terracotta-500 text-gray-100' :
           isError ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800' :
           isSystem ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' :
-          'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'
+          'bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700'
         }`}>
           {isUser ? (
             <p className="whitespace-pre-wrap">{msg.content}</p>
@@ -289,7 +289,7 @@ function StreamingBubble({ text, tools }: { text: string; tools: { tool: string;
         <Bot className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="inline-block text-left max-w-full rounded-xl px-4 py-3 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+        <div className="inline-block text-left max-w-full rounded-xl px-4 py-3 text-sm bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
           {tools.map((t, i) => (
             <ToolCallCard key={i} tool={t} />
           ))}
@@ -329,7 +329,7 @@ function SessionList({ projectId, activeId, onSelect, onCreate }: {
       <div className="px-3 py-3 border-b border-gray-200 dark:border-gray-700">
         <button
           onClick={onCreate}
-          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 transition-colors"
         >
           <Plus className="w-4 h-4" />
           新規チャット
@@ -340,7 +340,7 @@ function SessionList({ projectId, activeId, onSelect, onCreate }: {
           <div
             key={s.id}
             className={`group flex items-center rounded-lg cursor-pointer ${
-              s.id === activeId ? 'bg-indigo-50 dark:bg-indigo-900/30' : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+              s.id === activeId ? 'bg-terracotta-50 dark:bg-terracotta-900/30' : 'hover:bg-gray-100 dark:hover:bg-gray-700'
             }`}
           >
             <button
@@ -446,7 +446,7 @@ export default function ChatPage() {
   return (
     <div className="flex h-full">
       {/* Session sidebar */}
-      <div className="w-60 flex-shrink-0 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hidden lg:flex flex-col">
+      <div className="w-60 flex-shrink-0 border-r border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 hidden lg:flex flex-col">
         <SessionList
           projectId={projectId}
           activeId={sessionId}
@@ -458,7 +458,7 @@ export default function ChatPage() {
       {/* Chat area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800">
           <div className="flex items-center gap-2">
             <Bot className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
             <h1 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
@@ -499,7 +499,7 @@ export default function ChatPage() {
             </div>
 
             {/* Input */}
-            <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+            <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800">
               <div className="flex items-end gap-2">
                 <textarea
                   value={input}
@@ -508,7 +508,7 @@ export default function ChatPage() {
                   placeholder={sessionStatus === 'busy' ? '応答待ち...' : 'メッセージを入力... (Ctrl+Enter で送信)'}
                   disabled={sessionStatus === 'busy'}
                   rows={Math.min(input.split('\n').length, 6)}
-                  className="flex-1 resize-none rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 px-4 py-2.5 text-sm text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                  className="flex-1 resize-none rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 px-4 py-2.5 text-sm text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-focus disabled:opacity-50"
                 />
                 {sessionStatus === 'busy' ? (
                   <button
@@ -522,7 +522,7 @@ export default function ChatPage() {
                   <button
                     onClick={handleSend}
                     disabled={!input.trim()}
-                    className="flex-shrink-0 p-2.5 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-30 transition-colors"
+                    className="flex-shrink-0 p-2.5 rounded-xl bg-terracotta-500 text-gray-100 hover:bg-terracotta-600 disabled:opacity-30 transition-colors"
                     aria-label="送信"
                   >
                     <Send className="w-5 h-5" />
@@ -537,7 +537,7 @@ export default function ChatPage() {
             <p className="text-sm">チャットセッションを選択または作成してください</p>
             <button
               onClick={() => createMutation.mutate(projectId)}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              className="flex items-center gap-1.5 px-4 py-2 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 transition-colors"
             >
               <Plus className="w-4 h-4" />
               新規チャットを開始

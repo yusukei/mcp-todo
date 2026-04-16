@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+﻿import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Activity, AlertCircle, Eye, MessageSquarePlus, Trash2 } from 'lucide-react'
 import { api } from '../../api/client'
@@ -114,7 +114,7 @@ export default function McpUsageTab() {
           onClick={() => setSubTab('usage')}
           className={`flex items-center gap-1.5 px-1 pb-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
             subTab === 'usage'
-              ? 'border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400'
+              ? 'border-terracotta-600 dark:border-terracotta-400 text-terracotta-600 dark:text-terracotta-400'
               : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
           }`}
         >
@@ -125,7 +125,7 @@ export default function McpUsageTab() {
           onClick={() => setSubTab('feedback')}
           className={`flex items-center gap-1.5 px-1 pb-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
             subTab === 'feedback'
-              ? 'border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400'
+              ? 'border-terracotta-600 dark:border-terracotta-400 text-terracotta-600 dark:text-terracotta-400'
               : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
           }`}
         >
@@ -146,7 +146,7 @@ export default function McpUsageTab() {
               onClick={() => setDays(o.days)}
               className={`px-2.5 py-1 rounded border ${
                 days === o.days
-                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  ? 'bg-terracotta-500 text-gray-100 border-terracotta-600'
                   : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
               }`}
             >

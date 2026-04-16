@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   MessageSquarePlus,
@@ -235,7 +235,7 @@ export default function McpFeedbackSection() {
                 onClick={() => setStatusFilter(s)}
                 className={`px-2.5 py-1 rounded border ${
                   statusFilter === s
-                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    ? 'bg-terracotta-500 text-gray-100 border-terracotta-600'
                     : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
                 }`}
               >

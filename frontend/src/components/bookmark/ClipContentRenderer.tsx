@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from 'react'
+﻿import { useEffect, useRef, useMemo } from 'react'
 import DOMPurify from 'dompurify'
 import { Tweet } from 'react-tweet'
 import { api } from '../../api/client'
@@ -59,7 +59,7 @@ const mdComponentOverrides = {
 
     return (
       <a href={href} target="_blank" rel="noopener noreferrer"
-        className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 underline">
+        className="text-terracotta-600 hover:text-terracotta-800 dark:text-terracotta-400 dark:hover:text-terracotta-300 underline">
         {linkChildren}
       </a>
     )

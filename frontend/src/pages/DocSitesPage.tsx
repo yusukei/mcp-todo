@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+﻿import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Library, ExternalLink } from 'lucide-react'
 import { api } from '../api/client'
@@ -14,8 +14,8 @@ export default function DocSitesPage() {
     <div className="flex-1 overflow-y-auto p-6">
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center gap-3 mb-6">
-          <Library className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
-          <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">ドキュメントサイト</h1>
+          <Library className="w-6 h-6 text-terracotta-600 dark:text-terracotta-400" />
+          <h1 className="text-xl font-serif font-medium text-gray-800 dark:text-gray-100">ドキュメントサイト</h1>
         </div>
 
         {isLoading ? (
@@ -34,10 +34,10 @@ export default function DocSitesPage() {
               <Link
                 key={site.id}
                 to={`/docsites/${site.id}`}
-                className="block p-5 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-600 hover:shadow-md transition-all"
+                className="block p-5 bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-terracotta-300 dark:hover:border-terracotta-600 hover:shadow-md transition-all"
               >
                 <div className="flex items-start gap-3">
-                  <Library className="w-5 h-5 text-indigo-500 dark:text-indigo-400 mt-0.5 flex-shrink-0" />
+                  <Library className="w-5 h-5 text-terracotta-500 dark:text-terracotta-400 mt-0.5 flex-shrink-0" />
                   <div className="min-w-0">
                     <h2 className="font-semibold text-gray-800 dark:text-gray-100 truncate">{site.name}</h2>
                     {site.description && (

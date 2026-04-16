@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+﻿import { useState, useCallback } from 'react'
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -35,7 +35,7 @@ function SortableProjectItem({ project, closeSidebar, isAdmin, isActive }: {
   }
 
   return (
-    <div ref={setNodeRef} style={style} className={`group/project flex items-center rounded-lg ${isActive ? 'bg-indigo-50 dark:bg-indigo-900/30' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+    <div ref={setNodeRef} style={style} className={`group/project flex items-center rounded-lg ${isActive ? 'bg-terracotta-50 dark:bg-terracotta-900/30' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
       {isAdmin && (
         <button
           {...attributes}
@@ -49,7 +49,7 @@ function SortableProjectItem({ project, closeSidebar, isAdmin, isActive }: {
       <Link
         to={`/projects/${project.id}`}
         onClick={closeSidebar}
-        className={`flex-1 flex items-center gap-2 px-2 py-2 text-sm min-w-0 ${isActive ? 'text-indigo-700 dark:text-indigo-300 font-medium' : 'text-gray-600 dark:text-gray-300'}`}
+        className={`flex-1 flex items-center gap-2 px-2 py-2 text-sm min-w-0 ${isActive ? 'text-terracotta-700 dark:text-terracotta-300 font-medium' : 'text-gray-600 dark:text-gray-300'}`}
       >
         <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: project.color ?? undefined }} />
         <span className="truncate">{project.name}</span>
@@ -127,10 +127,10 @@ export default function Layout() {
 
   const sidebarContent = (
     <>
-      <div className="px-4 py-5 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+      <div className="h-14 px-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
-          <CheckSquare className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-          <span className="font-bold text-gray-800 dark:text-gray-100">MCP Todo</span>
+          <CheckSquare className="w-5 h-5 text-terracotta-600 dark:text-terracotta-400" />
+          <span className="font-serif font-medium text-gray-900 dark:text-gray-100">MCP Todo</span>
         </div>
         <button
           onClick={closeSidebar}
@@ -254,7 +254,7 @@ export default function Layout() {
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex w-56 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex-col">
+      <aside className="hidden md:flex w-56 bg-gray-100 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex-col">
         {sidebarContent}
       </aside>
 
@@ -268,7 +268,7 @@ export default function Layout() {
 
       {/* Mobile sidebar drawer */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-56 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col transform transition-transform duration-200 ease-in-out md:hidden ${
+        className={`fixed inset-y-0 left-0 z-50 w-56 bg-gray-100 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col transform transition-transform duration-200 ease-in-out md:hidden ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -278,7 +278,7 @@ export default function Layout() {
       {/* Main */}
       <main className="flex-1 overflow-hidden flex flex-col">
         {/* Mobile header with hamburger */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 md:hidden">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 md:hidden">
           <button
             onClick={() => setSidebarOpen(true)}
             className="p-1 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -287,8 +287,8 @@ export default function Layout() {
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2">
-            <CheckSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            <span className="font-semibold text-sm text-gray-800 dark:text-gray-100">MCP Todo</span>
+            <CheckSquare className="w-4 h-4 text-terracotta-600 dark:text-terracotta-400" />
+            <span className="font-serif font-medium text-sm text-gray-900 dark:text-gray-100">MCP Todo</span>
           </div>
         </div>
         <ErrorBoundary key={location.pathname} fallback={<PageErrorFallback />}>

@@ -414,7 +414,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask 
     updateTask.mutate({ due_date: value ? new Date(value).toISOString() : null } as Record<string, string | null>)
   }
 
-  const inputClasses = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500'
+  const inputClasses = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus'
   const selectClasses = inputClasses
 
   if (!task) return null
@@ -422,7 +422,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={task.title}>
       <div className="fixed inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative w-full max-w-3xl max-h-[90vh] bg-white dark:bg-gray-800 shadow-xl dark:shadow-gray-900/50 flex flex-col overflow-hidden rounded-xl">
+      <div className="relative w-full max-w-3xl max-h-[90vh] bg-gray-100 dark:bg-gray-800 shadow-xl dark:shadow-gray-900/50 flex flex-col overflow-hidden rounded-xl">
         {/* Header */}
         <div className="flex items-start justify-between p-6 border-b border-gray-200 dark:border-gray-700">
           {editingTitle ? (
@@ -475,7 +475,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask 
           <div className="px-6 pt-3 pb-0">
             <button
               onClick={() => onNavigateTask?.(parentTask.id)}
-              className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors"
+              className="flex items-center gap-1.5 text-xs text-terracotta-600 dark:text-terracotta-400 hover:text-terracotta-800 dark:hover:text-terracotta-300 transition-colors"
             >
               <ChevronUp className="w-3.5 h-3.5" />
               <span>親タスク: {parentTask.title}</span>
@@ -496,8 +496,8 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask 
                   className={clsx(
                     'px-3 py-1 text-sm rounded-full border transition-colors',
                     task.status === opt.value
-                      ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-indigo-400 dark:hover:border-indigo-500'
+                      ? 'bg-terracotta-500 text-gray-100 border-terracotta-600'
+                      : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-terracotta-400 dark:hover:border-terracotta-500'
                   )}
                 >
                   {opt.label}
@@ -567,8 +567,8 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask 
                     task.task_type === opt.value
                       ? opt.value === 'decision'
                         ? 'bg-violet-600 text-white border-violet-600'
-                        : 'bg-indigo-600 text-white border-indigo-600'
-                      : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-indigo-400 dark:hover:border-indigo-500'
+                        : 'bg-terracotta-500 text-gray-100 border-terracotta-600'
+                      : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-terracotta-400 dark:hover:border-terracotta-500'
                   )}
                 >
                   {opt.label}
@@ -619,7 +619,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask 
                   </button>
                   <button
                     onClick={saveDescription}
-                    className="px-3 py-1 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+                    className="px-3 py-1 text-sm text-white bg-terracotta-600 rounded-lg hover:bg-terracotta-600"
                   >
                     保存
                   </button>
@@ -676,7 +676,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask 
                   </button>
                   <button
                     onClick={saveTags}
-                    className="px-3 py-1 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+                    className="px-3 py-1 text-sm text-white bg-terracotta-600 rounded-lg hover:bg-terracotta-600"
                   >
                     保存
                   </button>
@@ -685,7 +685,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask 
             ) : task.tags?.length > 0 ? (
               <div className="flex flex-wrap gap-2 cursor-pointer" onClick={startEditTags}>
                 {task.tags.map((tag: string) => (
-                  <span key={tag} className="text-xs bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-2 py-1 rounded-full">
+                  <span key={tag} className="text-xs bg-terracotta-50 dark:bg-terracotta-900/40 text-terracotta-600 dark:text-terracotta-400 px-2 py-1 rounded-full">
                     {tag}
                   </span>
                 ))}
@@ -785,7 +785,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask 
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploadAttachment.isPending}
-                className="flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors disabled:opacity-40"
+                className="flex items-center gap-1 text-xs text-terracotta-600 dark:text-terracotta-400 hover:text-terracotta-800 dark:hover:text-terracotta-300 transition-colors disabled:opacity-40"
               >
                 <ImagePlus className="w-3.5 h-3.5" />
                 {uploadAttachment.isPending ? 'アップロード中...' : '画像を追加'}

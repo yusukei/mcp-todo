@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { X, Copy, Check } from 'lucide-react'
 import { api } from '../../api/client'
 
@@ -58,7 +58,7 @@ export default function AgentRegisterDialog({ open, onClose, onCreated }: AgentR
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={handleClose}>
       <div
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4"
+        className="bg-gray-100 dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
@@ -83,7 +83,7 @@ export default function AgentRegisterDialog({ open, onClose, onCreated }: AgentR
                 </code>
                 <button
                   onClick={() => copyToClipboard(createdToken!, 'token')}
-                  className="flex-shrink-0 p-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50"
+                  className="flex-shrink-0 p-2 rounded-lg bg-terracotta-50 dark:bg-terracotta-900/30 text-terracotta-600 dark:text-terracotta-400 hover:bg-terracotta-100 dark:hover:bg-terracotta-900/50"
                   title="トークンをコピー"
                 >
                   {copiedToken ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
@@ -97,7 +97,7 @@ export default function AgentRegisterDialog({ open, onClose, onCreated }: AgentR
                       `cd agent && uv run python main.py --url wss://${window.location.host}/api/v1/workspaces/agent/ws --token ${createdToken}`,
                       'cmd',
                     )}
-                    className="p-1 rounded text-gray-400 hover:text-indigo-500 dark:hover:text-indigo-400"
+                    className="p-1 rounded text-gray-400 hover:text-terracotta-500 dark:hover:text-terracotta-400"
                     title="コマンドをコピー"
                   >
                     {copiedCmd ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -122,7 +122,7 @@ uv run python main.py \\
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="例: 開発用 Mac"
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 text-sm focus:ring-2 focus:ring-focus focus:border-terracotta-500"
                   autoFocus
                   maxLength={100}
                 />
@@ -141,7 +141,7 @@ uv run python main.py \\
                 <button
                   type="submit"
                   disabled={loading || !name.trim()}
-                  className="px-4 py-2 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                  className="px-4 py-2 text-sm rounded-lg bg-terracotta-500 text-gray-100 hover:bg-terracotta-600 disabled:opacity-50"
                 >
                   {loading ? '登録中...' : '登録'}
                 </button>

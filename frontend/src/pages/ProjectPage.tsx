@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+﻿import { useState, useCallback } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
@@ -267,37 +267,37 @@ export default function ProjectPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-8 py-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between">
+      <div className="h-14 px-8 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: project.color }} />
-          <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">{project.name}</h1>
+          <h1 className="text-xl font-serif font-medium text-gray-800 dark:text-gray-100">{project.name}</h1>
           {project.is_locked && <Lock className="w-4 h-4 text-amber-500" />}
           {/* View switcher — anchored to left so position stays fixed */}
           <div className="flex items-center bg-gray-100 dark:bg-gray-700/60 rounded-lg p-0.5 ml-2">
             <button
               onClick={() => setView('board')}
-              className={`p-1.5 rounded-md transition-colors ${view === 'board' ? 'bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
+              className={`p-1.5 rounded-md transition-colors ${view === 'board' ? 'bg-white dark:bg-gray-600 text-terracotta-600 dark:text-terracotta-400 shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
               title="カンバン"
             >
               <LayoutGrid className="w-4 h-4" />
             </button>
             <button
               onClick={() => setView('list')}
-              className={`p-1.5 rounded-md transition-colors ${view === 'list' ? 'bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
+              className={`p-1.5 rounded-md transition-colors ${view === 'list' ? 'bg-white dark:bg-gray-600 text-terracotta-600 dark:text-terracotta-400 shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
               title="リスト"
             >
               <List className="w-4 h-4" />
             </button>
             <button
               onClick={() => setView('docs')}
-              className={`p-1.5 rounded-md transition-colors ${view === 'docs' ? 'bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
+              className={`p-1.5 rounded-md transition-colors ${view === 'docs' ? 'bg-white dark:bg-gray-600 text-terracotta-600 dark:text-terracotta-400 shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
               title="ドキュメント"
             >
               <FileText className="w-4 h-4" />
             </button>
             <button
               onClick={() => setView('errors')}
-              className={`p-1.5 rounded-md transition-colors ${view === 'errors' ? 'bg-white dark:bg-gray-600 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
+              className={`p-1.5 rounded-md transition-colors ${view === 'errors' ? 'bg-white dark:bg-gray-600 text-terracotta-600 dark:text-terracotta-400 shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}
               title="エラートラッカー"
             >
               <AlertTriangle className="w-4 h-4" />
@@ -313,7 +313,7 @@ export default function ProjectPage() {
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-focus"
                 >
                   <option value="all">すべて</option>
                   {STATUS_OPTIONS.map((opt) => (
@@ -325,7 +325,7 @@ export default function ProjectPage() {
                 <div className="relative">
                   <button
                     onClick={() => setShowColumnPicker(!showColumnPicker)}
-                    className={`p-2 rounded-lg transition-colors ${showColumnPicker ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                    className={`p-2 rounded-lg transition-colors ${showColumnPicker ? 'bg-terracotta-100 dark:bg-terracotta-900/50 text-terracotta-600 dark:text-terracotta-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
                     title="表示カラム"
                   >
                     <Columns3 className="w-5 h-5" />
@@ -333,14 +333,14 @@ export default function ProjectPage() {
                   {showColumnPicker && (
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setShowColumnPicker(false)} />
-                      <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-20 min-w-[140px]">
+                      <div className="absolute right-0 top-full mt-1 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-20 min-w-[140px]">
                         {BOARD_COLUMNS.map((col) => (
                           <label key={col.key} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
                             <input
                               type="checkbox"
                               checked={visibleColumns.includes(col.key)}
                               onChange={() => toggleColumn(col.key)}
-                              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+                              className="rounded border-gray-300 text-terracotta-600 focus:ring-focus w-3.5 h-3.5"
                             />
                             <span className="text-sm text-gray-700 dark:text-gray-200">{col.label}</span>
                           </label>
@@ -352,14 +352,14 @@ export default function ProjectPage() {
               )}
               <button
                 onClick={() => selectMode ? exitSelectMode() : setSelectMode(true)}
-                className={`p-2 rounded-lg transition-colors ${selectMode ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                className={`p-2 rounded-lg transition-colors ${selectMode ? 'bg-terracotta-100 dark:bg-terracotta-900/50 text-terracotta-600 dark:text-terracotta-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
                 title={selectMode ? '選択モード終了' : '選択モード'}
               >
                 <CheckSquare className="w-5 h-5" />
               </button>
               <button
                 onClick={() => setShowArchived(!showArchived)}
-                className={`p-2 rounded-lg transition-colors ${showArchived ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                className={`p-2 rounded-lg transition-colors ${showArchived ? 'bg-terracotta-100 dark:bg-terracotta-900/50 text-terracotta-600 dark:text-terracotta-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
                 title={showArchived ? 'アーカイブ済みを非表示' : 'アーカイブ済みを表示'}
               >
                 <Archive className="w-5 h-5" />
@@ -371,7 +371,7 @@ export default function ProjectPage() {
                   <span className="w-px h-5 bg-gray-200 dark:bg-gray-600" />
                   <button
                     onClick={() => setShowCreateModal(true)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-terracotta-500 text-gray-100 text-sm font-medium rounded-lg hover:bg-terracotta-600 transition-colors"
                   >
                     <Plus className="w-4 h-4" />
                     タスク追加

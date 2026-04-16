@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Bookmark, FolderPlus, Star, Inbox, Layers, X, Loader2 } from 'lucide-react'
 import { api } from '../../api/client'
@@ -84,9 +84,9 @@ export default function BookmarkCollectionSidebar({
   const itemClass = (active: boolean, isDragOver = false) =>
     `flex items-center gap-2 px-3 py-2 text-sm rounded-lg cursor-pointer transition-colors ${
       isDragOver
-        ? 'bg-indigo-100 dark:bg-indigo-800/40 ring-2 ring-indigo-400 text-indigo-700 dark:text-indigo-300'
+        ? 'bg-terracotta-100 dark:bg-terracotta-800/40 ring-2 ring-terracotta-400 text-terracotta-700 dark:text-terracotta-300'
         : active
-        ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium'
+        ? 'bg-terracotta-50 dark:bg-terracotta-900/30 text-terracotta-700 dark:text-terracotta-300 font-medium'
         : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
     }`
 
@@ -174,7 +174,7 @@ export default function BookmarkCollectionSidebar({
             <button
               type="submit"
               disabled={!newName.trim() || createMutation.isPending}
-              className="p-1 text-indigo-600 dark:text-indigo-400 disabled:opacity-50"
+              className="p-1 text-terracotta-600 dark:text-terracotta-400 disabled:opacity-50"
             >
               {createMutation.isPending ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -196,7 +196,7 @@ export default function BookmarkCollectionSidebar({
         ) : (
           <button
             onClick={() => setShowAdd(true)}
-            className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 w-full rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+            className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-terracotta-600 dark:hover:text-terracotta-400 w-full rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
           >
             <FolderPlus className="w-3.5 h-3.5" />
             コレクション追加

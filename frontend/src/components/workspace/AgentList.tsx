@@ -1,4 +1,4 @@
-import { Monitor, Trash2, Wifi, WifiOff } from 'lucide-react'
+﻿import { Monitor, Trash2, Wifi, WifiOff } from 'lucide-react'
 
 interface Agent {
   id: string
@@ -46,7 +46,7 @@ export default function AgentList({ agents, selectedAgentId, onSelect, onDelete 
           key={agent.id}
           className={`group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
             selectedAgentId === agent.id
-              ? 'bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800'
+              ? 'bg-terracotta-50 dark:bg-terracotta-900/30 border border-terracotta-200 dark:border-terracotta-800'
               : 'hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent'
           }`}
           onClick={() => agent.is_online && onSelect(agent)}

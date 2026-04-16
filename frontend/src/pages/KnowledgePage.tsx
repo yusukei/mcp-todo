@@ -198,7 +198,7 @@ export default function KnowledgePage() {
       <div className="p-3 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5">
-            <BookOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            <BookOpen className="w-4 h-4 text-terracotta-600 dark:text-terracotta-400" />
             <h2 className="text-sm font-bold text-gray-700 dark:text-gray-200">ナレッジベース</h2>
           </div>
           <div className="flex items-center gap-1">
@@ -220,7 +220,7 @@ export default function KnowledgePage() {
             />
             <button
               onClick={() => { setCreating(true); setMobileShowDetail(true) }}
-              className="flex items-center gap-1 px-2 py-1 text-xs bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-terracotta-500 text-gray-100 rounded-md hover:bg-terracotta-600"
             >
               <Plus className="w-3.5 h-3.5" /> 追加
             </button>
@@ -236,14 +236,14 @@ export default function KnowledgePage() {
               placeholder="検索..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
             />
           </div>
           <div className="flex gap-2">
             <select
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
-              className="flex-1 px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="flex-1 px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
             >
               <option value="">全カテゴリ</option>
               {CATEGORIES.map((c) => (
@@ -254,7 +254,7 @@ export default function KnowledgePage() {
               <select
                 value={filterTag}
                 onChange={(e) => setFilterTag(e.target.value)}
-                className="flex-1 px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="flex-1 px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
               >
                 <option value="">全タグ</option>
                 {allTags.map((t) => (
@@ -280,7 +280,7 @@ export default function KnowledgePage() {
                 onClick={() => selectKnowledge(k.id)}
                 className={`w-full text-left px-3 py-2 mx-1 my-0.5 rounded-md text-sm transition-colors ${
                   k.id === selectedId
-                    ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300'
+                    ? 'bg-terracotta-100 dark:bg-terracotta-900/40 text-terracotta-700 dark:text-terracotta-300'
                     : 'hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
                 style={{ width: 'calc(100% - 0.5rem)' }}
@@ -323,7 +323,7 @@ export default function KnowledgePage() {
           >
             &larr; 一覧に戻る
           </button>
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-6">ナレッジを追加</h1>
+          <h1 className="text-2xl font-serif font-medium text-gray-800 dark:text-gray-100 mb-6">ナレッジを追加</h1>
           <KnowledgeForm
             form={form}
             setForm={setForm}
@@ -344,7 +344,7 @@ export default function KnowledgePage() {
               >
                 &larr; 一覧
               </button>
-              <h1 className="text-lg font-bold text-gray-800 dark:text-gray-100 truncate">{selected.title}</h1>
+              <h1 className="text-lg font-serif font-medium text-gray-800 dark:text-gray-100 truncate">{selected.title}</h1>
             </div>
             {!editing && (
               <div className="flex gap-2 flex-shrink-0">
@@ -399,13 +399,13 @@ export default function KnowledgePage() {
               </div>
 
               {selected.source && (
-                <div className="flex items-center gap-1 text-sm text-indigo-600 dark:text-indigo-400 mb-4">
+                <div className="flex items-center gap-1 text-sm text-terracotta-600 dark:text-terracotta-400 mb-4">
                   <ExternalLink className="w-3.5 h-3.5" />
                   <span className="truncate">{selected.source}</span>
                 </div>
               )}
 
-              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+              <div className="bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
                 <MarkdownRenderer>{selected.content}</MarkdownRenderer>
               </div>
 
@@ -455,7 +455,7 @@ function KnowledgeForm({
           value={form.title}
           onChange={(e) => setForm({ ...form, title: e.target.value })}
           maxLength={255}
-          className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
         />
       </div>
       <div>
@@ -464,7 +464,7 @@ function KnowledgeForm({
           value={form.content}
           onChange={(e) => setForm({ ...form, content: e.target.value })}
           rows={12}
-          className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+          className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus font-mono"
         />
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -473,7 +473,7 @@ function KnowledgeForm({
           <select
             value={form.category}
             onChange={(e) => setForm({ ...form, category: e.target.value as KnowledgeCategory })}
-            className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
           >
             {CATEGORIES.map((c) => (
               <option key={c.value} value={c.value}>{c.label}</option>
@@ -487,7 +487,7 @@ function KnowledgeForm({
             value={form.tags}
             onChange={(e) => setForm({ ...form, tags: e.target.value })}
             placeholder="fastapi, python, mcp"
-            className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
           />
         </div>
       </div>
@@ -498,14 +498,14 @@ function KnowledgeForm({
           value={form.source}
           onChange={(e) => setForm({ ...form, source: e.target.value })}
           placeholder="https://example.com/docs"
-          className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-focus"
         />
       </div>
       <div className="flex gap-2 pt-2">
         <button
           onClick={onSubmit}
           disabled={!form.title.trim() || loading}
-          className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+          className="px-4 py-2 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50"
         >
           {loading ? '処理中...' : submitLabel}
         </button>

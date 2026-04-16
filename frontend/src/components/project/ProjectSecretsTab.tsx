@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Eye, EyeOff, Copy, Pencil, Trash2, KeyRound } from 'lucide-react'
 import { secretsApi } from '../../api/secrets'
@@ -180,7 +180,7 @@ export default function ProjectSecretsTab({ projectId, isOwner }: Props) {
 
   return (
     <section>
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <KeyRound className="w-5 h-5 text-gray-400" />
@@ -190,7 +190,7 @@ export default function ProjectSecretsTab({ projectId, isOwner }: Props) {
           {isOwner && (
             <button
               onClick={openCreate}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 transition-colors"
             >
               <Plus className="w-4 h-4" />
               Add
@@ -257,7 +257,7 @@ export default function ProjectSecretsTab({ projectId, isOwner }: Props) {
                     <>
                       <button
                         onClick={() => openEdit(s)}
-                        className="p-1.5 rounded text-gray-400 hover:text-indigo-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        className="p-1.5 rounded text-gray-400 hover:text-terracotta-500 hover:bg-gray-100 dark:hover:bg-gray-700"
                         title="Edit"
                       >
                         <Pencil className="w-4 h-4" />
@@ -281,7 +281,7 @@ export default function ProjectSecretsTab({ projectId, isOwner }: Props) {
       {/* ── Create / Edit Modal ──────────────────────────── */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+          <div className="bg-gray-100 dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
               {editKey ? `Edit: ${editKey}` : 'Add Secret'}
             </h3>
@@ -295,7 +295,7 @@ export default function ProjectSecretsTab({ projectId, isOwner }: Props) {
                   value={formKey}
                   onChange={(e) => setFormKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ''))}
                   placeholder="e.g. OPENAI_API_KEY"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-mono text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-mono text-sm focus:ring-2 focus:ring-focus focus:border-transparent"
                 />
               </div>
             )}
@@ -309,7 +309,7 @@ export default function ProjectSecretsTab({ projectId, isOwner }: Props) {
                 value={formValue}
                 onChange={(e) => setFormValue(e.target.value)}
                 placeholder={editKey ? 'Enter new value...' : 'Enter secret value...'}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-mono text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-mono text-sm focus:ring-2 focus:ring-focus focus:border-transparent"
               />
             </div>
 
@@ -321,7 +321,7 @@ export default function ProjectSecretsTab({ projectId, isOwner }: Props) {
                 value={formDesc}
                 onChange={(e) => setFormDesc(e.target.value)}
                 placeholder="What is this secret for?"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-focus focus:border-transparent"
               />
             </div>
 
@@ -335,7 +335,7 @@ export default function ProjectSecretsTab({ projectId, isOwner }: Props) {
               <button
                 onClick={handleSubmit}
                 disabled={createMutation.isPending || updateMutation.isPending}
-                className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50"
               >
                 {editKey ? 'Update' : 'Create'}
               </button>

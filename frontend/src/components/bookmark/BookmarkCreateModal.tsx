@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { X, Loader2 } from 'lucide-react'
 import { api } from '../../api/client'
@@ -53,7 +53,7 @@ export default function BookmarkCreateModal({ projectId, collections, onClose, o
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4"
+        className="bg-gray-100 dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
@@ -72,7 +72,7 @@ export default function BookmarkCreateModal({ projectId, collections, onClose, o
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="https://example.com/article"
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-1 focus:ring-indigo-500"
+              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-1 focus:ring-focus"
               required
               autoFocus
             />
@@ -86,7 +86,7 @@ export default function BookmarkCreateModal({ projectId, collections, onClose, o
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="ページタイトル"
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-1 focus:ring-indigo-500"
+              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-1 focus:ring-focus"
             />
           </div>
 
@@ -97,7 +97,7 @@ export default function BookmarkCreateModal({ projectId, collections, onClose, o
               onChange={(e) => setDescription(e.target.value)}
               placeholder="メモ..."
               rows={2}
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-1 focus:ring-indigo-500 resize-none"
+              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-1 focus:ring-focus resize-none"
             />
           </div>
 
@@ -109,7 +109,7 @@ export default function BookmarkCreateModal({ projectId, collections, onClose, o
               value={tags}
               onChange={(e) => setTags(e.target.value)}
               placeholder="react, tutorial, frontend"
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-1 focus:ring-indigo-500"
+              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-1 focus:ring-focus"
             />
           </div>
 
@@ -120,7 +120,7 @@ export default function BookmarkCreateModal({ projectId, collections, onClose, o
             <select
               value={collectionId}
               onChange={(e) => setCollectionId(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-1 focus:ring-indigo-500"
+              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-1 focus:ring-focus"
             >
               <option value="">未分類</option>
               {collections.map((c) => (
@@ -142,7 +142,7 @@ export default function BookmarkCreateModal({ projectId, collections, onClose, o
             <button
               type="submit"
               disabled={createMutation.isPending || !url.trim()}
-              className="flex items-center gap-1 px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+              className="flex items-center gap-1 px-4 py-2 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50"
             >
               {createMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
               追加
