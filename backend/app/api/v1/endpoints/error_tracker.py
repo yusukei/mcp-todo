@@ -316,4 +316,83 @@ async def reopen_issue(
     return _issue_dict(issue.model_dump(by_alias=True))
 
 
+@router.get("/issues/{issue_id}/histogram")
+async def issue_histogram(
+    issue_id: str,
+    period: str = Query("24h", pattern=r"^\d+[hd]$"),
+    interval: str = Query("1h", pattern=r"^\d+[hm]$"),
+    user: User = Depends(get_current_user),
+) -> list[dict]:
+    """Return event counts bucketed by time interval for an issue."""
+    issue = await ErrorIssue.get(issue_id)
+    if issue is None:
+        raise HTTPException(status_code=404, detail={"code": "not_found"})
+    if not await _member_of_project(issue.project_id, user):
+        raise HTTPException(status_code=403, detail={"code": "forbidden"})
+
+    # Parse period/interval
+    def _parse_duration(s: str) -> timedelta:
+        val = int(s[:-1])
+        unit = s[-1]
+        if unit == "h":
+            return timedelta(hours=val)
+        if unit == "d":
+            return timedelta(days=val)
+        if unit == "m":
+            return timedelta(minutes=val)
+        return timedelta(hours=1)
+
+    period_td = _parse_duration(period)
+    interval_td = _parse_duration(interval)
+
+    now = datetime.now(UTC)
+    start = now - period_td
+    interval_secs = int(interval_td.total_seconds())
+
+    # Collect events from relevant daily partitions
+    counts: dict[int, int] = {}  # bucket_ts -> count
+    days_back = (now.date() - start.date()).days + 1
+    for offset in range(days_back + 1):
+        d = now - timedelta(days=offset)
+        try:
+            coll = await get_event_collection_for_date(d)
+        except Exception:
+            continue
+        pipeline = [
+            {"$match": {
+                "issue_id": str(issue.id),
+                "received_at": {"$gte": start.isoformat(), "$lte": now.isoformat()},
+            }},
+            {"$project": {"received_at": 1}},
+        ]
+        async for doc in coll.aggregate(pipeline):
+            ts_raw = doc.get("received_at")
+            if not ts_raw:
+                continue
+            if isinstance(ts_raw, str):
+                try:
+                    ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+            elif isinstance(ts_raw, datetime):
+                ts = ts_raw
+            else:
+                continue
+            bucket = int(ts.timestamp()) // interval_secs * interval_secs
+            counts[bucket] = counts.get(bucket, 0) + 1
+
+    # Fill empty buckets
+    result: list[dict] = []
+    bucket = int(start.timestamp()) // interval_secs * interval_secs
+    end_ts = int(now.timestamp())
+    while bucket <= end_ts:
+        result.append({
+            "timestamp": datetime.fromtimestamp(bucket, tz=UTC).isoformat(),
+            "count": counts.get(bucket, 0),
+        })
+        bucket += interval_secs
+
+    return result
+
+
 __all__ = ["router"]

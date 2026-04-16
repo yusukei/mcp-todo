@@ -35,6 +35,73 @@ function timeAgo(dateStr: string): string {
 
 // ── Components ───────────────────────────────────────────────────────
 
+function Sparkline({ issueId }: { issueId: string }) {
+  const { data } = useQuery({
+    queryKey: ['error-histogram', issueId, '24h', '1h'],
+    queryFn: () => errorTrackerApi.histogram(issueId, '24h', '1h'),
+    staleTime: 60_000,
+  })
+  if (!data || data.length === 0) return null
+  const max = Math.max(...data.map((d) => d.count), 1)
+  const w = 60
+  const h = 16
+  const barW = w / data.length
+  return (
+    <svg width={w} height={h} className="shrink-0">
+      {data.map((d, i) => {
+        const barH = (d.count / max) * h
+        return (
+          <rect
+            key={i}
+            x={i * barW}
+            y={h - barH}
+            width={Math.max(barW - 0.5, 0.5)}
+            height={barH}
+            className="fill-indigo-400 dark:fill-indigo-500"
+            rx={0.5}
+          />
+        )
+      })}
+    </svg>
+  )
+}
+
+function Histogram({ issueId }: { issueId: string }) {
+  const { data } = useQuery({
+    queryKey: ['error-histogram', issueId, '7d', '6h'],
+    queryFn: () => errorTrackerApi.histogram(issueId, '7d', '6h'),
+    staleTime: 60_000,
+  })
+  if (!data || data.length === 0) return null
+  const max = Math.max(...data.map((d) => d.count), 1)
+  const h = 48
+  const barW = 100 / data.length
+  return (
+    <div>
+      <div className="flex items-end justify-between text-[10px] text-gray-400 dark:text-gray-500 mb-1">
+        <span>7日前</span>
+        <span>現在</span>
+      </div>
+      <svg width="100%" height={h} preserveAspectRatio="none" viewBox={`0 0 100 ${h}`}>
+        {data.map((d, i) => {
+          const barH = (d.count / max) * h
+          return (
+            <rect
+              key={i}
+              x={i * barW}
+              y={h - barH}
+              width={Math.max(barW - 0.3, 0.3)}
+              height={barH}
+              className="fill-indigo-400 dark:fill-indigo-500"
+              rx={0.5}
+            />
+          )
+        })}
+      </svg>
+    </div>
+  )
+}
+
 function UntrustedBlock({ children }: { children: React.ReactNode }) {
   return (
     <div className="rounded border-l-2 border-orange-400 dark:border-orange-500 bg-gray-100 dark:bg-gray-800 px-3 py-2 text-sm">
@@ -124,6 +191,7 @@ function IssueRow({
         </div>
       </div>
       <div className="mt-1.5 flex items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400">
+        <Sparkline issueId={issue.id} />
         <span>{issue.event_count.toLocaleString()} 件</span>
         <span>{issue.user_count} ユーザー</span>
         {issue.environment && (
@@ -621,6 +689,13 @@ function IssueDetail({ issueId }: { issueId: string }) {
       <div className="flex-1 overflow-y-auto p-6">
         {tab === 'overview' && (
           <div className="space-y-6">
+            <section>
+              <h2 className="mb-2 text-sm font-semibold text-gray-700 dark:text-gray-200">
+                発生頻度（7日間）
+              </h2>
+              <Histogram issueId={issueId} />
+            </section>
+
             {exception ? (
               <section>
                 <h2 className="mb-2 text-sm font-semibold text-gray-700 dark:text-gray-200">

@@ -148,6 +148,14 @@ export const errorTrackerApi = {
 
   updateIssue: (issueId: string, data: { assignee_id?: string | null }) =>
     api.patch<ErrorIssue>(`/error-tracker/issues/${issueId}`, data).then((r) => r.data),
+
+  histogram: (issueId: string, period = '24h', interval = '1h') =>
+    api
+      .get<{ timestamp: string; count: number }[]>(
+        `/error-tracker/issues/${issueId}/histogram`,
+        { params: { period, interval } },
+      )
+      .then((r) => r.data),
 }
 
 export interface UserSummary {
