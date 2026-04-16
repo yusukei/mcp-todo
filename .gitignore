@@ -27,3 +27,4 @@ agent/*.spec
 test-mcp-client/*.png
 scripts/
 tmp/
+DESIGN.md
