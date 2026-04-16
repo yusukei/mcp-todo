@@ -154,9 +154,21 @@ async def list_error_issues(
 
 @mcp.tool()
 async def get_error_issue(issue_id: str) -> dict:
-    """Return a single Issue by id, with its most recent event summary."""
+    """Return a single Issue by id, with its most recent event summary.
+
+    Args:
+        issue_id: Issue ID (24-char hex ObjectId) or fingerprint prefix
+    """
     await authenticate()
-    issue = await ErrorIssue.get(issue_id)
+    issue = None
+    # Try ObjectId first
+    try:
+        issue = await ErrorIssue.get(issue_id)
+    except Exception:
+        pass
+    # Fallback: fingerprint prefix match
+    if issue is None:
+        issue = await ErrorIssue.find_one({"fingerprint": {"$regex": f"^{issue_id}"}})
     if issue is None:
         raise ToolError(f"Issue not found: {issue_id}")
     out = _issue_to_dict(issue)

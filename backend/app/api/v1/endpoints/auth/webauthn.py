@@ -294,7 +294,11 @@ async def webauthn_authenticate_verify(body: WebAuthnAuthenticateVerifyRequest, 
         # the webauthn library raises many distinct types and we collapse
         # them into a 401. Use logger.exception so the original cause is
         # actually visible.
-        logger.exception("WebAuthn authentication verification failed")
+        logger.exception(
+            "WebAuthn authentication verification failed for user=%s credential=%s",
+            user.id,
+            credential.id[:16] if credential.id else "?",
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Verification failed")
 
     # Update sign count

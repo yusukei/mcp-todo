@@ -472,6 +472,7 @@ async def remote_exec(
     cwd: str | None = None,
     env: dict[str, str] | None = None,
     inject_secrets: bool = False,
+    run_in_background: bool | None = None,
 ) -> dict:
     """Execute a shell command on the remote machine linked to this project.
 
@@ -493,6 +494,8 @@ async def remote_exec(
             precedence over secrets with the same key name. This is the
             recommended way to pass credentials — values never appear in the
             LLM context or in the response.
+        run_in_background: Accepted for compatibility but currently ignored.
+            All commands run synchronously and return on completion.
 
     Returns:
         dict with ``exit_code``, ``stdout``, ``stderr``, ``duration_ms``,
@@ -518,14 +521,13 @@ async def remote_exec(
 
     # ── inject_secrets: merge project secrets into env ────────────
     if inject_secrets:
-        from ...core.crypto import decrypt as _decrypt
         from ...models.secret import ProjectSecret, SecretAccessLog
 
         secrets = await ProjectSecret.find(
             ProjectSecret.project_id == binding.project_id,
         ).to_list()
         if secrets:
-            secret_env = {s.key: _decrypt(s.encrypted_value) for s in secrets}
+            secret_env = {s.key: s.value for s in secrets}
             if env is not None:
                 # Explicit env takes precedence over secrets
                 secret_env.update(env)
