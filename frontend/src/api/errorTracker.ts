@@ -52,6 +52,9 @@ export interface EventFrame {
   colno?: number
   in_app?: boolean
   module?: string
+  context_line?: string
+  pre_context?: string[]
+  post_context?: string[]
 }
 
 export interface EventBreadcrumb {
@@ -92,6 +95,9 @@ export interface ErrorEvent {
   contexts: Record<string, unknown>
   release: string | null
   environment: string | null
+  sdk?: { name?: string; version?: string } | null
+  user_agent?: string | null
+  symbolicated?: boolean
 }
 
 export const errorTrackerApi = {

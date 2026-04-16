@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     ENABLE_CLIP_QUEUE: bool = True
     ENABLE_ERROR_TRACKER_WORKER: bool = True
 
+    # ── Error tracker self-capture enrichment ─────────────────────────────
+    ENVIRONMENT: str = "production"
+    RELEASE: str = ""
+
     model_config = {"env_file": ("../.env", ".env"), "extra": "ignore"}
 
     # ── Derived: database ─────────────────────────────────────────────────

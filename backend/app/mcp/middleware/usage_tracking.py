@@ -32,7 +32,7 @@ async def _capture_mcp_error(exc: BaseException, *, tool_name: str) -> None:
     """MCPツールの予期しない例外をエラートラッカーに送る (fire-and-forget)."""
     try:
         from ...services.error_tracker.capture import capture_exception
-        await capture_exception(exc, extra={"mcp_tool": tool_name})
+        await capture_exception(exc, extra={"mcp_tool": tool_name}, tags={"mcp_tool": tool_name})
     except Exception:
         logger.exception("error-tracker capture: failed for mcp tool=%s", tool_name)
 

@@ -21,6 +21,8 @@ exists in the database.
 from __future__ import annotations
 
 import logging
+import platform
+import sys
 import traceback
 import uuid
 from datetime import UTC, datetime
@@ -62,6 +64,7 @@ def _build_sentry_event(
     exc: BaseException,
     *,
     extra: dict[str, Any] | None = None,
+    tags: dict[str, str] | None = None,
     event_id: str | None = None,
 ) -> tuple[str, bytes]:
     """Return (event_id, payload_bytes) for *exc*.
@@ -69,6 +72,7 @@ def _build_sentry_event(
     Produces a minimal Sentry-compatible event payload that the
     worker's pipeline (``pipeline.py``) can fingerprint and persist.
     """
+    from ...core.config import settings
     from .stream import json_dumps
 
     eid = event_id or uuid.uuid4().hex
@@ -116,7 +120,26 @@ def _build_sentry_event(
         "exception": {"values": values},
         "server_name": "mcp-todo-backend",
         "sdk": {"name": "mcp-todo.self-capture", "version": "1.0"},
+        "contexts": {
+            "runtime": {
+                "name": "Python",
+                "version": sys.version.split()[0],
+            },
+            "os": {
+                "name": platform.system(),
+                "version": platform.release(),
+            },
+        },
     }
+    if settings.ENVIRONMENT:
+        event["environment"] = settings.ENVIRONMENT
+    if settings.RELEASE:
+        event["release"] = settings.RELEASE
+    merged_tags = {}
+    if tags:
+        merged_tags.update(tags)
+    if merged_tags:
+        event["tags"] = merged_tags
     if extra:
         event["extra"] = extra
 
@@ -129,6 +152,7 @@ async def capture_exception(
     exc: BaseException,
     *,
     extra: dict[str, Any] | None = None,
+    tags: dict[str, str] | None = None,
 ) -> None:
     """Capture *exc* and enqueue it for the error tracker.
 
@@ -150,7 +174,7 @@ async def capture_exception(
         return
 
     project_id, error_project_id = ids
-    event_id, payload = _build_sentry_event(exc, extra=extra)
+    event_id, payload = _build_sentry_event(exc, extra=extra, tags=tags)
 
     try:
         from .stream import enqueue_event
