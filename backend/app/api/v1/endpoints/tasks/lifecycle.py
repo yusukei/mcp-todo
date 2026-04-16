@@ -44,6 +44,9 @@ async def complete_task(
     await task.save_updated()
     await publish_event(project_id, "task.updated", _task_dict(task))
     await _index_task(task)
+    # Resolve linked error issues
+    from .....services.error_tracker.lifecycle import resolve_linked_issues
+    await resolve_linked_issues(str(task.id))
     return _task_dict(task)
 
 
@@ -66,6 +69,9 @@ async def archive_task(project_id: str, task_id: str, user: User = Depends(get_c
     await task.save_updated()
     await publish_event(project_id, "task.updated", _task_dict(task))
     await _index_task(task)
+    # Ignore linked error issues
+    from .....services.error_tracker.lifecycle import ignore_linked_issues
+    await ignore_linked_issues(str(task.id))
     return _task_dict(task)
 
 

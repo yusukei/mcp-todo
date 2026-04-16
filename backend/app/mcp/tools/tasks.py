@@ -596,6 +596,9 @@ async def complete_task(task_id: str, completion_report: str | None = None) -> d
         await task.save_updated()
         await publish_event(task.project_id, "task.updated", _task_dict(task))
         await _index_task(task)
+        # Resolve linked error issues
+        from ...services.error_tracker.lifecycle import resolve_linked_issues
+        await resolve_linked_issues(str(task.id))
     return _task_dict(task)
 
 
@@ -635,6 +638,9 @@ async def archive_task(task_id: str) -> dict:
     await task.save_updated()
     await publish_event(task.project_id, "task.updated", _task_dict(task))
     await _index_task(task)
+    # Ignore linked error issues
+    from ...services.error_tracker.lifecycle import ignore_linked_issues
+    await ignore_linked_issues(str(task.id))
     return _task_dict(task)
 
 
@@ -1279,6 +1285,9 @@ async def bulk_complete_tasks(
                 completed.append(_task_dict(task))
                 project_ids.add(task.project_id)
                 await _index_task(task)
+                # Resolve linked error issues
+                from ...services.error_tracker.lifecycle import resolve_linked_issues
+                await resolve_linked_issues(str(task.id))
 
     for pid in project_ids:
         pid_count = sum(1 for t in tasks_to_save if t.project_id == pid and _task_dict(t) in completed)
@@ -1330,6 +1339,9 @@ async def bulk_archive_tasks(
             else:
                 archived.append(_task_dict(task))
                 project_ids.add(task.project_id)
+                # Ignore linked error issues
+                from ...services.error_tracker.lifecycle import ignore_linked_issues
+                await ignore_linked_issues(str(task.id))
 
     for pid in project_ids:
         pid_count = sum(1 for t in tasks_to_save if t.project_id == pid and _task_dict(t) in archived)
