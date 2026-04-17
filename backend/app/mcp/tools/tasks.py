@@ -11,6 +11,18 @@ from ...models.task import Comment, DecisionContext, DecisionOption, TaskPriorit
 from ...services.events import publish_event
 from ...services.serializers import task_to_dict as _task_dict
 from ...services.task_approval import cascade_approve_subtasks
+from ...services.task_links import (
+    CrossProjectError,
+    CycleError,
+    DuplicateLinkError,
+    LinkNotFoundError,
+    SelfReferenceError,
+    TargetNotFoundError,
+    cleanup_dependents,
+    link as _link_service,
+    list_dependents,
+    unlink as _unlink_service,
+)
 from ..auth import authenticate, check_project_access
 from ..server import mcp
 from .projects import _check_project_not_locked, _resolve_project_id
@@ -550,21 +562,161 @@ async def update_task(
 
 
 @mcp.tool()
-async def delete_task(task_id: str) -> dict:
+async def delete_task(task_id: str, force: bool = False) -> dict:
     """Delete a task (soft delete).
+
+    When other tasks list this task in their ``blocked_by`` list, deletion
+    is refused by default to prevent dangling references. Pass ``force=True``
+    to purge those references and delete anyway.
 
     Args:
         task_id: Task ID
+        force: If True, also remove ``task_id`` from every dependent's
+            ``blocked_by`` before deleting. Default False (refuse with a
+            ``blocks_dependents`` error listing the dependent task IDs).
+
+    Returns:
+        ``{"success": True, "task_id": ..., "cleaned_dependents": [...]}`` on
+        success; raises :class:`ToolError` with ``blocks_dependents`` when
+        dependents exist and ``force`` is False.
     """
     key_info = await authenticate()
     task = await _get_task_or_raise(task_id, key_info)
     await _check_project_not_locked(task.project_id)
 
+    dependents = await list_dependents(task.project_id, task_id)
+    if dependents and not force:
+        raise ToolError(
+            "blocks_dependents: task is blocking other tasks "
+            f"({', '.join(str(d.id) for d in dependents)}). "
+            "Pass force=true to purge references and delete anyway."
+        )
+
+    cleaned: list[Task] = []
+    if dependents and force:
+        actor = f"mcp:{key_info.get('key_id', 'unknown')}" if isinstance(key_info, dict) else "mcp"
+        cleaned = await cleanup_dependents(task_id, task.project_id, changed_by=actor)
+
     task.is_deleted = True
     await task.save_updated()
     await publish_event(task.project_id, "task.deleted", {"id": task_id})
+    for dep in cleaned:
+        await publish_event(task.project_id, "task.updated", _task_dict(dep))
     await _deindex_task(task_id)
-    return {"success": True, "task_id": task_id}
+    return {
+        "success": True,
+        "task_id": task_id,
+        "cleaned_dependents": [str(d.id) for d in cleaned],
+    }
+
+
+@mcp.tool()
+async def link_tasks(source_id: str, target_id: str, relation: str = "blocks") -> dict:
+    """Create a dependency: ``source_id`` will block ``target_id``.
+
+    Both tasks must belong to the same project that the caller has access
+    to. Attempts that would create a cycle in the ``blocks`` graph are
+    rejected with a ``cycle_detected`` error including the cycle path.
+
+    Args:
+        source_id: Task that will gain the outgoing ``blocks`` entry.
+        target_id: Task that will gain the incoming ``blocked_by`` entry.
+        relation: Reserved for future relation types. Only ``"blocks"`` is
+            currently accepted.
+
+    Returns:
+        ``{"success": True, "source": {...}, "target": {...}}`` with both
+        tasks serialized after the update.
+    """
+    if relation != "blocks":
+        raise ToolError(f"Unsupported relation: {relation!r}")
+
+    key_info = await authenticate()
+    # Both ends go through access control — ``_get_task_or_raise`` verifies
+    # existence + project membership. A caller that can see source but not
+    # target cannot create a link across trust boundaries.
+    source = await _get_task_or_raise(source_id, key_info)
+    target = await _get_task_or_raise(target_id, key_info)
+    await _check_project_not_locked(source.project_id)
+
+    actor = f"mcp:{key_info['key_name']}" if isinstance(key_info, dict) and key_info.get("key_name") else "mcp"
+    try:
+        updated_source, updated_target = await _link_service(
+            source_id=source_id,
+            target_id=target_id,
+            relation=relation,
+            changed_by=actor,
+        )
+    except SelfReferenceError as e:
+        raise ToolError(f"self_reference: {e}")
+    except TargetNotFoundError as e:
+        raise ToolError(f"target_not_found: {e}")
+    except CrossProjectError as e:
+        raise ToolError(f"cross_project: {e}")
+    except DuplicateLinkError as e:
+        raise ToolError(f"duplicate_link: {e}")
+    except CycleError as e:
+        path = " -> ".join(e.details.get("path", []))
+        raise ToolError(f"cycle_detected: would form cycle {path}")
+
+    await publish_event(source.project_id, "task.linked", {
+        "source_id": source_id,
+        "target_id": target_id,
+        "relation": relation,
+    })
+    await publish_event(source.project_id, "task.updated", _task_dict(updated_source))
+    await publish_event(source.project_id, "task.updated", _task_dict(updated_target))
+    return {
+        "success": True,
+        "source": _task_dict(updated_source),
+        "target": _task_dict(updated_target),
+    }
+
+
+@mcp.tool()
+async def unlink_tasks(source_id: str, target_id: str, relation: str = "blocks") -> dict:
+    """Remove the ``source_id -> target_id`` dependency if it exists.
+
+    Args:
+        source_id: Task whose ``blocks`` list should lose ``target_id``.
+        target_id: Task whose ``blocked_by`` list should lose ``source_id``.
+        relation: Only ``"blocks"`` is currently supported.
+
+    Returns:
+        ``{"success": True, "source": {...}, "target": {...}}`` on success.
+        Raises ``link_not_found`` if no such edge exists.
+    """
+    if relation != "blocks":
+        raise ToolError(f"Unsupported relation: {relation!r}")
+
+    key_info = await authenticate()
+    source = await _get_task_or_raise(source_id, key_info)
+    await _get_task_or_raise(target_id, key_info)
+    await _check_project_not_locked(source.project_id)
+
+    actor = f"mcp:{key_info['key_name']}" if isinstance(key_info, dict) and key_info.get("key_name") else "mcp"
+    try:
+        updated_source, updated_target = await _unlink_service(
+            source_id=source_id,
+            target_id=target_id,
+            relation=relation,
+            changed_by=actor,
+        )
+    except LinkNotFoundError as e:
+        raise ToolError(f"link_not_found: {e}")
+
+    await publish_event(source.project_id, "task.unlinked", {
+        "source_id": source_id,
+        "target_id": target_id,
+        "relation": relation,
+    })
+    await publish_event(source.project_id, "task.updated", _task_dict(updated_source))
+    await publish_event(source.project_id, "task.updated", _task_dict(updated_target))
+    return {
+        "success": True,
+        "source": _task_dict(updated_source),
+        "target": _task_dict(updated_target),
+    }
 
 
 @mcp.tool()

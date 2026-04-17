@@ -29,6 +29,8 @@ def task_to_dict(t: Task) -> dict:
         "due_date": t.due_date.isoformat() if t.due_date else None,
         "assignee_id": t.assignee_id,
         "parent_task_id": t.parent_task_id,
+        "blocks": list(t.blocks),
+        "blocked_by": list(t.blocked_by),
         "task_type": t.task_type,
         "decision_context": (
             {

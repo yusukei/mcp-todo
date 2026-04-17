@@ -1008,6 +1008,96 @@ class TestDeleteTask:
 
 
 # ---------------------------------------------------------------------------
+# link_tasks / unlink_tasks (Sprint 1 / S1-4)
+# ---------------------------------------------------------------------------
+
+
+class TestLinkTasks:
+    async def test_link_creates_both_sides(
+        self, admin_user, test_project, mock_auth, mock_check, mock_publish
+    ):
+        """link_tasks populates source.blocks and target.blocked_by."""
+        from app.mcp.tools.tasks import link_tasks
+
+        pid = str(test_project.id)
+        a = await make_task(pid, admin_user, title="A")
+        b = await make_task(pid, admin_user, title="B")
+
+        result = await link_tasks(source_id=str(a.id), target_id=str(b.id))
+        assert result["success"] is True
+        assert str(b.id) in result["source"]["blocks"]
+        assert str(a.id) in result["target"]["blocked_by"]
+
+    async def test_cycle_raises_tool_error(
+        self, admin_user, test_project, mock_auth, mock_check, mock_publish
+    ):
+        """Attempting to close a cycle raises ToolError(cycle_detected)."""
+        from fastmcp.exceptions import ToolError
+        from app.mcp.tools.tasks import link_tasks
+
+        pid = str(test_project.id)
+        a = await make_task(pid, admin_user)
+        b = await make_task(pid, admin_user)
+        await link_tasks(source_id=str(a.id), target_id=str(b.id))
+
+        with pytest.raises(ToolError, match="cycle_detected"):
+            await link_tasks(source_id=str(b.id), target_id=str(a.id))
+
+    async def test_self_reference_raises(
+        self, admin_user, test_project, mock_auth, mock_check, mock_publish
+    ):
+        """source == target is rejected as self_reference."""
+        from fastmcp.exceptions import ToolError
+        from app.mcp.tools.tasks import link_tasks
+
+        pid = str(test_project.id)
+        a = await make_task(pid, admin_user)
+        with pytest.raises(ToolError, match="self_reference"):
+            await link_tasks(source_id=str(a.id), target_id=str(a.id))
+
+    async def test_duplicate_raises(
+        self, admin_user, test_project, mock_auth, mock_check, mock_publish
+    ):
+        from fastmcp.exceptions import ToolError
+        from app.mcp.tools.tasks import link_tasks
+
+        pid = str(test_project.id)
+        a = await make_task(pid, admin_user)
+        b = await make_task(pid, admin_user)
+        await link_tasks(source_id=str(a.id), target_id=str(b.id))
+        with pytest.raises(ToolError, match="duplicate_link"):
+            await link_tasks(source_id=str(a.id), target_id=str(b.id))
+
+    async def test_unlink_removes_both_sides(
+        self, admin_user, test_project, mock_auth, mock_check, mock_publish
+    ):
+        from app.mcp.tools.tasks import link_tasks, unlink_tasks
+
+        pid = str(test_project.id)
+        a = await make_task(pid, admin_user)
+        b = await make_task(pid, admin_user)
+        await link_tasks(source_id=str(a.id), target_id=str(b.id))
+
+        result = await unlink_tasks(source_id=str(a.id), target_id=str(b.id))
+        assert result["success"] is True
+        assert result["source"]["blocks"] == []
+        assert result["target"]["blocked_by"] == []
+
+    async def test_unlink_missing_raises(
+        self, admin_user, test_project, mock_auth, mock_check, mock_publish
+    ):
+        from fastmcp.exceptions import ToolError
+        from app.mcp.tools.tasks import unlink_tasks
+
+        pid = str(test_project.id)
+        a = await make_task(pid, admin_user)
+        b = await make_task(pid, admin_user)
+
+        with pytest.raises(ToolError, match="link_not_found"):
+            await unlink_tasks(source_id=str(a.id), target_id=str(b.id))
+
+
+# ---------------------------------------------------------------------------
 # complete_task
 # ---------------------------------------------------------------------------
 

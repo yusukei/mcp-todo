@@ -13,6 +13,7 @@ from .....services.events import publish_event
 from .....services.search import deindex_task as _deindex_task, index_task as _index_task
 from .....services.serializers import task_to_dict as _task_dict
 from .....services.task_approval import cascade_approve_subtasks
+from .....services.task_links import cleanup_dependents, list_dependents
 from . import _shared
 from ._shared import (
     CreateTaskRequest,
@@ -195,13 +196,38 @@ async def update_task(
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_task(project_id: str, task_id: str, user: User = Depends(get_current_user)) -> None:
+async def delete_task(
+    project_id: str,
+    task_id: str,
+    force: bool = Query(False, description="When true, purge this task's ID from dependents' blocked_by before deletion"),
+    user: User = Depends(get_current_user),
+) -> None:
     valid_object_id(task_id)
     project = await check_project_access(project_id, user)
     check_not_locked(project)
     task = await Task.get(task_id)
     if not task or task.project_id != project_id or task.is_deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+
+    # Dependents: other tasks that list this task in their ``blocked_by``.
+    # Deleting while dependents exist would leave dangling references, so the
+    # default is to block and return the offending IDs. ``force=true`` explicitly
+    # purges the references first.
+    dependents = await list_dependents(project_id, task_id)
+    if dependents and not force:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "blocks_dependents",
+                "message": "Task is blocking other tasks; pass ?force=true to purge references and delete anyway.",
+                "dependents": [str(d.id) for d in dependents],
+            },
+        )
+
+    cleaned: list[Task] = []
+    if dependents and force:
+        cleaned = await cleanup_dependents(task_id, project_id, changed_by=str(user.id))
+
     task.is_deleted = True
     await task.save_updated()
 
@@ -211,4 +237,8 @@ async def delete_task(project_id: str, task_id: str, user: User = Depends(get_cu
         shutil.rmtree(task_upload_dir, ignore_errors=True)
 
     await publish_event(project_id, "task.deleted", {"id": task_id})
+    # Fan out task.updated for any dependents we mutated so listening clients
+    # refresh their blocked_by state without a follow-up refetch.
+    for dep in cleaned:
+        await publish_event(project_id, "task.updated", _task_dict(dep))
     await _deindex_task(task_id)

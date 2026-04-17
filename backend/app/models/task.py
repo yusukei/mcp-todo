@@ -71,6 +71,8 @@ class Task(Document):
     due_date: datetime | None = None
     assignee_id: str | None = None
     parent_task_id: str | None = None
+    blocks: list[str] = Field(default_factory=list)
+    blocked_by: list[str] = Field(default_factory=list)
     task_type: TaskType = TaskType.action
     decision_context: DecisionContext | None = None
     tags: list[str] = Field(default_factory=list)
@@ -106,6 +108,9 @@ class Task(Document):
             [("is_deleted", 1), ("needs_detail", 1), ("status", 1)],
             # Sorted task listings within a project
             [("project_id", 1), ("is_deleted", 1), ("sort_order", 1)],
+            # Cross-task dependencies (Sprint 1)
+            [("project_id", 1), ("blocked_by", 1)],
+            [("project_id", 1), ("blocks", 1)],
         ]
 
     def record_change(self, field: str, old_value: str | None, new_value: str | None, changed_by: str = "") -> None:

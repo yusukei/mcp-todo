@@ -27,6 +27,7 @@ from .bulk import router as _bulk_router
 from .comments import router as _comments_router
 from .crud import create_task, list_tasks, router as _crud_router
 from .lifecycle import router as _lifecycle_router
+from .links import router as _links_router
 
 router = APIRouter(prefix="/projects/{project_id}/tasks", tags=["tasks"])
 
@@ -46,6 +47,9 @@ router.add_api_route(
 router.include_router(_lifecycle_router)
 router.include_router(_comments_router)
 router.include_router(_attachments_router)
+# Register link routes BEFORE the dynamic /{task_id} routes in crud so the
+# fixed path segment ``/links`` takes precedence over the catch-all.
+router.include_router(_links_router)
 router.include_router(_crud_router)
 
 __all__ = ["router"]
