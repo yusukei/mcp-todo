@@ -473,37 +473,37 @@ async def remote_exec(
     env: dict[str, str] | None = None,
     inject_secrets: bool = False,
     run_in_background: bool | None = None,
-) -> dict:
-    """Execute a shell command on the remote machine linked to this project.
+    format: str = "text",
+) -> dict | str:
+    """Execute a shell command on the remote machine for this project.
 
-    The command runs in the project's configured remote directory (cwd).
-    Supports any shell command including git, docker, npm, etc.
+    Runs in the project's remote directory. Supports any shell command
+    (git, docker, npm, etc). See docs/mcp-tools/remote.md for details.
 
     Args:
-        project_id: Project ID or project name
+        project_id: Project ID or name
         command: Shell command to execute
-        timeout: Execution timeout in seconds (1-3600, default 60)
-        cwd: Optional subdirectory inside the workspace to run in. May be
-            relative to the workspace root or an absolute path inside it.
-            Path traversal outside the workspace is rejected.
-        env: Optional dict of extra environment variables. Merged with the
-            agent's existing environment (so PATH and friends survive).
-            Cross-platform alternative to ``set X=Y && cmd`` chains.
-        inject_secrets: If True, decrypt all project secrets and merge them
-            into the environment variables. Explicit ``env`` entries take
-            precedence over secrets with the same key name. This is the
-            recommended way to pass credentials — values never appear in the
-            LLM context or in the response.
-        run_in_background: If true, start the command in the background and
-            return a job_id immediately. Use ``remote_exec_status`` to poll
-            for completion. Useful for long-running commands (builds, deploys).
+        timeout: Seconds (1-3600, default 60)
+        cwd: Subdirectory inside the workspace (no traversal)
+        env: Extra env vars merged with the agent's env
+        inject_secrets: Merge all project secrets into env. Values never
+            appear in LLM context or response. Preferred for credentials.
+        run_in_background: Start in background, return ``job_id``
+            immediately. Poll with ``remote_exec_status``. Always returns
+            a dict regardless of ``format``.
+        format: ``"text"`` (default, bash-like plain text with
+            ``[stderr]``/``[exit N]`` markers) or ``"json"``.
 
     Returns:
-        dict with ``exit_code``, ``stdout``, ``stderr``, ``duration_ms``,
-        plus ``stdout_truncated`` / ``stderr_truncated`` flags and the
-        original ``stdout_total_bytes`` / ``stderr_total_bytes`` so callers
-        can detect output that exceeded the 2MB agent buffer.
+        ``format="text"`` → ``str``: stdout plus ``[stderr]``/``[exit N]``/
+        ``[... truncated ...]`` markers as needed.
+
+        ``format="json"`` → dict with ``exit_code``, ``stdout``, ``stderr``,
+        ``duration_ms``, and ``stdout_truncated``/``stderr_truncated`` +
+        ``*_total_bytes`` to detect output >2MB agent buffer.
     """
+    if format not in ("text", "json"):
+        raise ToolError("format must be 'text' or 'json'")
     async with _audit_on_denied("exec", project_id, detail=str(command)[:500]) as audit:
         audit.key_info = await authenticate()
         audit.binding = await _resolve_binding(project_id, audit.key_info)
@@ -585,6 +585,9 @@ async def remote_exec(
         stderr_len=len(result.get("stderr", "")),
     )
 
+    if format == "text":
+        return _format_exec_text(result)
+
     return {
         "exit_code": result.get("exit_code", -1),
         "stdout": result.get("stdout", ""),
@@ -597,22 +600,62 @@ async def remote_exec(
     }
 
 
+def _format_exec_text(result: dict) -> str:
+    """Render an exec result as Bash-like plain text.
+
+    Layout (sections omitted when empty/zero):
+        <stdout>
+        [stderr]
+        <stderr>
+        [exit N]
+        [stdout truncated at M bytes]
+        [stderr truncated at M bytes]
+    """
+    stdout = result.get("stdout", "") or ""
+    stderr = result.get("stderr", "") or ""
+    exit_code = result.get("exit_code", -1)
+
+    parts: list[str] = []
+    if stdout:
+        parts.append(stdout)
+        if not stdout.endswith("\n"):
+            parts.append("\n")
+
+    if stderr:
+        parts.append("[stderr]\n")
+        parts.append(stderr)
+        if not stderr.endswith("\n"):
+            parts.append("\n")
+
+    if exit_code != 0:
+        parts.append(f"[exit {exit_code}]\n")
+
+    if result.get("stdout_truncated"):
+        total = result.get("stdout_total_bytes", 0)
+        parts.append(f"[stdout truncated at {total} bytes]\n")
+    if result.get("stderr_truncated"):
+        total = result.get("stderr_total_bytes", 0)
+        parts.append(f"[stderr truncated at {total} bytes]\n")
+
+    return "".join(parts)
+
+
 @mcp.tool()
 async def remote_exec_status(
     project_id: str,
     job_id: str,
 ) -> dict:
-    """Check the status of a background command started with run_in_background=True.
+    """Poll status of a background command (``remote_exec run_in_background=True``).
 
     Args:
-        project_id: Project ID or project name
-        job_id: Job ID returned by remote_exec with run_in_background=True
+        project_id: Project ID or name
+        job_id: Job ID from ``remote_exec``
 
     Returns:
-        dict with ``job_id``, ``status`` ('running' or 'completed'),
-        ``command``, ``started_at``. When completed, also includes
+        dict with ``job_id``, ``status`` (``running``/``completed``),
+        ``command``, ``started_at``. When completed also includes
         ``exit_code``, ``stdout``, ``stderr``, ``completed_at``,
-        ``duration_ms``, and truncation flags.
+        ``duration_ms``, truncation flags.
     """
     async with _audit_on_denied("exec_status", project_id, detail=job_id) as audit:
         audit.key_info = await authenticate()
@@ -634,25 +677,45 @@ async def remote_read_file(
     offset: int | None = None,
     limit: int | None = None,
     encoding: str = "utf-8",
-) -> dict:
-    """Read a file on the remote machine linked to this project.
+    format: str = "text",
+    if_not_hash: str | None = None,
+) -> dict | str:
+    """Read a file on the remote machine for this project.
 
-    Path is relative to the project's remote directory, or absolute (must
-    still resolve inside the workspace).
+    Path is relative to the project's remote directory or absolute
+    (must resolve inside workspace).
 
     Args:
-        project_id: Project ID or project name
+        project_id: Project ID or name
         path: File path
-        offset: Starting line number (0 or 1 both mean first line; text mode only)
-        limit: Number of lines to read (text mode only)
-        encoding: 'utf-8' (default), 'utf-16', 'shift_jis', 'latin-1', etc.
-            Use 'binary' or 'base64' for binary files — content is then
-            base64-encoded with ``is_binary=True``.
+        offset: Starting line (1-based; text mode only)
+        limit: Line count (text mode only)
+        encoding: ``"utf-8"`` (default) / ``"utf-16"`` / ``"shift_jis"`` /
+            etc. Use ``"binary"``/``"base64"`` for binary files.
+        format: ``"text"`` (default, ``cat -n``-style ``N<TAB><line>\\n``)
+            or ``"json"``. Binary content always returns a dict.
+        if_not_hash: Conditional read. Pass a previously-returned content
+            sha256 hex to skip the full payload when unchanged. Matches
+            → compact ``unchanged sha256:<hash>`` / ``{"unchanged": true,
+            "hash": ...}``. Mismatch → full content + new hash (so the
+            caller can refresh its cache).
 
     Returns:
-        dict with ``content``, ``size``, ``path``, ``encoding``,
-        ``is_binary``, ``total_lines``, ``truncated``.
+        ``format="text"`` → ``str`` with ``<line>\\t<content>`` per line.
+        Appends ``[truncated at N total lines]`` when truncated. When
+        ``if_not_hash`` is supplied, a final ``[sha256:<hash>]`` line is
+        added so the caller can cache. On hash match, returns only
+        ``unchanged sha256:<hash>\\n``.
+
+        ``format="json"`` / binary → dict with ``content``, ``size``,
+        ``path``, ``encoding``, ``is_binary``, ``total_lines``,
+        ``truncated``. Includes ``hash`` when ``if_not_hash`` was given.
+        On hash match, returns ``{"unchanged": true, "hash": "..."}``.
     """
+    if format not in ("text", "json"):
+        raise ToolError("format must be 'text' or 'json'")
+    if if_not_hash is not None and not isinstance(if_not_hash, str):
+        raise ToolError("if_not_hash must be a string (sha256 hex) or null")
     async with _audit_on_denied("read_file", project_id, detail=str(path)[:500]) as audit:
         audit.key_info = await authenticate()
         audit.binding = await _resolve_binding(project_id, audit.key_info)
@@ -682,21 +745,82 @@ async def remote_read_file(
     )
     duration_ms = int((time.monotonic() - t0) * 1000)
     content = result.get("content", "")
+    is_binary = result.get("is_binary", False)
 
     await _log_operation(
         binding, "read_file", path, key_info,
         duration_ms=duration_ms, stdout_len=len(content),
     )
 
-    return {
+    # Content hash is computed lazily — only when the caller opted into
+    # conditional reads. Skip the hash work otherwise to keep the fast
+    # path cheap.
+    content_hash: str | None = None
+    if if_not_hash is not None:
+        import hashlib
+        content_hash = hashlib.sha256(
+            content.encode("utf-8") if isinstance(content, str) else content
+        ).hexdigest()
+        if content_hash == if_not_hash:
+            # Cache hit — return compact "unchanged" marker without
+            # re-sending the content.
+            if format == "text":
+                return f"unchanged sha256:{content_hash}\n"
+            return {"unchanged": True, "hash": content_hash}
+
+    # Text mode: emit Read-compatible `N\t<line>\n` output. Binary content
+    # cannot be rendered as text, so fall through to the dict branch.
+    if (
+        format == "text"
+        and not is_binary
+        and encoding not in ("binary", "base64")
+    ):
+        rendered = _format_read_text(
+            content,
+            start_line=offset if offset else 1,
+            truncated=result.get("truncated", False),
+            total_lines=result.get("total_lines", 0),
+        )
+        if content_hash is not None:
+            rendered = f"{rendered}[sha256:{content_hash}]\n"
+        return rendered
+
+    dict_result = {
         "content": content,
         "size": result.get("size", len(content)),
         "path": result.get("path", path),
         "encoding": result.get("encoding", encoding),
-        "is_binary": result.get("is_binary", False),
+        "is_binary": is_binary,
         "total_lines": result.get("total_lines", 0),
         "truncated": result.get("truncated", False),
     }
+    if content_hash is not None:
+        dict_result["hash"] = content_hash
+    return dict_result
+
+
+def _format_read_text(
+    content: str,
+    *,
+    start_line: int,
+    truncated: bool,
+    total_lines: int,
+) -> str:
+    """Render file content as ``cat -n``-style ``N<TAB><line>\\n`` text.
+
+    Matches the local ``Read`` tool format so callers can use remote files
+    with the same mental model as local reads.
+    """
+    if not content:
+        return ""
+    # ``content.split("\n")`` preserves the trailing empty element when the
+    # content ends with a newline — this mirrors cat -n which renders an
+    # extra numbered line for the final LF.
+    lines = content.split("\n")
+    out = [f"{start_line + i}\t{line}\n" for i, line in enumerate(lines)]
+    if truncated:
+        out.append(f"[truncated at {total_lines} total lines]\n")
+    return "".join(out)
 
 
 @mcp.tool()
@@ -704,12 +828,23 @@ async def remote_write_file(
     project_id: str,
     path: str,
     content: str,
-) -> dict:
-    """Write a file on the remote machine linked to this project.
+    format: str = "text",
+) -> dict | str:
+    """Write a file on the remote machine (creates parent dirs).
 
-    Path is relative to the project's remote directory, or absolute.
-    Parent directories are created automatically.
+    Args:
+        project_id: Project ID or name
+        path: Destination file path
+        content: File contents
+        format: ``"text"`` (default, ``wrote N bytes to <path>``) or ``"json"``
+
+    Returns:
+        ``format="text"`` → ``str`` single-line confirmation.
+
+        ``format="json"`` → dict with ``success``, ``bytes_written``, ``path``.
     """
+    if format not in ("text", "json"):
+        raise ToolError("format must be 'text' or 'json'")
     async with _audit_on_denied("write_file", project_id, detail=str(path)[:500]) as audit:
         audit.key_info = await authenticate()
         audit.binding = await _resolve_binding(project_id, audit.key_info)
@@ -728,15 +863,20 @@ async def remote_write_file(
         detail=path, key_info=key_info,
     )
     duration_ms = int((time.monotonic() - t0) * 1000)
+    bytes_written = result.get("bytes_written", 0)
+    result_path = result.get("path", path)
     await _log_operation(
         binding, "write_file", path, key_info,
-        duration_ms=duration_ms, stdout_len=result.get("bytes_written", 0),
+        duration_ms=duration_ms, stdout_len=bytes_written,
     )
+
+    if format == "text":
+        return f"wrote {bytes_written} bytes to {result_path}\n"
 
     return {
         "success": result.get("success", True),
-        "bytes_written": result.get("bytes_written", 0),
-        "path": result.get("path", path),
+        "bytes_written": bytes_written,
+        "path": result_path,
     }
 
 
@@ -747,22 +887,27 @@ async def remote_edit_file(
     old_string: str,
     new_string: str,
     replace_all: bool = False,
-) -> dict:
-    """Apply a string-replacement edit to a file on the remote machine.
-
-    Finds ``old_string`` in the file and replaces it with ``new_string``.
-    This is more efficient than reading the entire file, modifying it
-    locally, and writing it back — only the diff is sent over the wire.
+    format: str = "text",
+) -> dict | str:
+    """String-replace edit on a remote file (diff-only wire transfer).
 
     Args:
-        project_id: Project ID or project name
-        path: File path (relative to the project's remote directory, or absolute)
-        old_string: The exact text to find and replace (must exist in the file)
-        new_string: The replacement text (must differ from old_string)
-        replace_all: If true, replace every occurrence. If false (default),
-            old_string must appear exactly once — an error is returned when
-            the match is ambiguous (multiple occurrences).
+        project_id: Project ID or name
+        path: File path
+        old_string: Exact text to find (must exist)
+        new_string: Replacement text (must differ)
+        replace_all: Replace every occurrence. Default ``False`` — requires
+            unique match, errors on ambiguity.
+        format: ``"text"`` (default, ``edited <path>`` or
+            ``edited <path> (N replacements)``) or ``"json"``
+
+    Returns:
+        ``format="text"`` → ``str`` single-line confirmation.
+
+        ``format="json"`` → dict with ``success``, ``path``, ``replacements``.
     """
+    if format not in ("text", "json"):
+        raise ToolError("format must be 'text' or 'json'")
     async with _audit_on_denied("edit_file", project_id, detail=str(path)[:500]) as audit:
         audit.key_info = await authenticate()
         audit.binding = await _resolve_binding(project_id, audit.key_info)
@@ -800,10 +945,18 @@ async def remote_edit_file(
         duration_ms=duration_ms,
     )
 
+    result_path = result.get("path", path)
+    replacements = result.get("replacements", 1)
+
+    if format == "text":
+        if replacements == 1:
+            return f"edited {result_path}\n"
+        return f"edited {result_path} ({replacements} replacements)\n"
+
     return {
         "success": True,
-        "path": result.get("path", path),
-        "replacements": result.get("replacements", 1),
+        "path": result_path,
+        "replacements": replacements,
     }
 
 
@@ -811,11 +964,24 @@ async def remote_edit_file(
 async def remote_list_dir(
     project_id: str,
     path: str = ".",
-) -> dict:
-    """List directory contents on the remote machine linked to this project.
+    format: str = "text",
+) -> dict | str:
+    """List directory contents on the remote machine.
 
-    Path is relative to the project's remote directory, or absolute.
+    Args:
+        project_id: Project ID or name
+        path: Directory path (default ``.``)
+        format: ``"text"`` (default, ``ls -p``-style one entry per line,
+            dirs suffixed with ``/``) or ``"json"``
+
+    Returns:
+        ``format="text"`` → ``str``.
+
+        ``format="json"`` → dict with ``entries`` (``[{name, type, size,
+        mtime}]``), ``count``, ``path``.
     """
+    if format not in ("text", "json"):
+        raise ToolError("format must be 'text' or 'json'")
     async with _audit_on_denied("list_dir", project_id, detail=str(path)[:500]) as audit:
         audit.key_info = await authenticate()
         audit.binding = await _resolve_binding(project_id, audit.key_info)
@@ -836,11 +1002,33 @@ async def remote_list_dir(
         duration_ms=duration_ms, stdout_len=len(entries),
     )
 
+    if format == "text":
+        return _format_list_dir_text(entries)
+
     return {
         "entries": entries,
         "count": len(entries),
         "path": result.get("path", path),
     }
+
+
+def _format_list_dir_text(entries: list) -> str:
+    """Render directory entries as plain text, one per line.
+
+    Directories are suffixed with ``/`` (``ls -p`` style). Preserves the
+    agent's entry order so callers can rely on consistent sort.
+    """
+    lines: list[str] = []
+    for e in entries:
+        name = e.get("name", "")
+        if not name:
+            continue
+        # Agent reports directories as ``type == "dir"``; accept the
+        # spelled-out form too for resilience.
+        is_dir = e.get("type") in ("dir", "directory")
+        suffix = "/" if is_dir else ""
+        lines.append(f"{name}{suffix}\n")
+    return "".join(lines)
 
 
 # ── New tools (stat / file_exists / mkdir / delete / move / copy / glob / grep) ──
@@ -992,20 +1180,28 @@ async def remote_copy_file(
 
 @mcp.tool()
 async def remote_glob(
-    project_id: str, pattern: str, path: str = "."
-) -> dict:
-    """Find files matching a glob pattern under ``path`` on the remote machine.
+    project_id: str, pattern: str, path: str = ".",
+    format: str = "text",
+) -> dict | str:
+    """Find files by glob pattern (mtime-desc sorted, like local Glob).
 
-    Pattern semantics match Python's ``pathlib.Path.glob`` (use ``**`` for
-    recursive descent). Results are sorted by mtime descending — the most
-    recently modified files come first, matching Claude Code's local Glob
-    tool behavior.
+    Pattern semantics: Python ``pathlib.Path.glob`` (``**`` = recursive).
 
     Args:
-        project_id: Project ID or project name
-        pattern: Glob pattern, e.g. ``**/*.py`` or ``src/**/*.tsx``
-        path: Base directory (relative to workspace, default ``.``)
+        project_id: Project ID or name
+        pattern: Glob, e.g. ``**/*.py``
+        path: Base directory (default ``.``)
+        format: ``"text"`` (default, one path per line) or ``"json"``
+
+    Returns:
+        ``format="text"`` → ``str`` (1 path/line, mtime desc), appends
+        ``[truncated]`` when truncated.
+
+        ``format="json"`` → dict with ``matches``, ``count``, ``base``,
+        ``truncated``.
     """
+    if format not in ("text", "json"):
+        raise ToolError("format must be 'text' or 'json'")
     async with _audit_on_denied(
         "glob", project_id, detail=f"{pattern} @ {path}"[:500],
     ) as audit:
@@ -1022,7 +1218,19 @@ async def remote_glob(
         detail=f"{pattern} @ {path}", key_info=key_info,
     )
     await _log_operation(binding, "glob", f"{pattern} @ {path}", key_info)
+
+    if format == "text":
+        return _format_glob_text(result)
     return result
+
+
+def _format_glob_text(result: dict) -> str:
+    """Render glob matches as plain paths, one per line."""
+    matches = result.get("matches", []) or []
+    lines = [f"{m.get('path', '')}\n" for m in matches if m.get("path")]
+    if result.get("truncated"):
+        lines.append("[truncated]\n")
+    return "".join(lines)
 
 
 @mcp.tool()
@@ -1035,43 +1243,43 @@ async def remote_grep(
     max_results: int = 200,
     respect_gitignore: bool = False,
     context_lines: int = 0,
-) -> dict:
-    """Search for ``pattern`` (regex) inside files under ``path``.
+    output_mode: str = "content",
+    format: str = "text",
+) -> dict | str:
+    """Regex search in files under ``path`` (ripgrep / Python fallback).
+
+    Automatically skips vendored dirs (.git, node_modules, .venv, etc),
+    binary files, and files >10 MB. See docs/mcp-tools/remote.md for the
+    full list.
 
     Args:
-        project_id: Project ID or project name
-        pattern: Regular expression to search for
-        path: Base directory (relative to workspace, default ``.``)
-        glob: Optional file-name glob filter (e.g. ``*.py``)
-        case_insensitive: Match without regard to letter case
-        max_results: Maximum number of matches to return (1-2000)
-        respect_gitignore: When the agent has ripgrep available, honor
-            ``.gitignore`` / ``.ignore`` files. Default ``False`` for
-            backwards compatibility with the Python fallback. The Python
-            fallback never reads gitignore regardless of this flag.
-        context_lines: Number of lines to show before and after each match
-            (0-20, equivalent to ripgrep's ``-C`` flag). When > 0, each
-            match may include ``context_before`` and ``context_after``
-            arrays of ``{line, text}`` entries.
+        project_id: Project ID or name
+        pattern: Regex to search for
+        path: Base directory (default ``.``)
+        glob: File-name glob filter (e.g. ``*.py``)
+        case_insensitive: Case-insensitive match (ripgrep ``-i``)
+        max_results: Max matches (1-2000, default 200)
+        respect_gitignore: Honor ``.gitignore`` (ripgrep only; Python
+            fallback never reads gitignore)
+        context_lines: Lines before/after each match (0-20, ripgrep ``-C``)
+        output_mode: ``"content"`` (default, ``path:line:text``),
+            ``"files_with_matches"`` (unique paths), or ``"count"``
+            (``path:N``). Ignored when ``format="json"``.
+        format: ``"text"`` (default) or ``"json"``
 
-    Returns matches as ``[{file, line, text}]`` sorted by ``(file, line)``.
-    The result also includes ``files_scanned``, ``files_skipped_binary``,
-    ``files_skipped_large``, and ``engine`` (``"ripgrep"`` or ``"python"``)
-    for visibility into how the search ran.
+    Returns:
+        ``format="text"`` → ``str`` in ripgrep format, with
+        ``[truncated at N matches]`` suffix when applicable.
 
-    Engine: if the remote agent has ``ripgrep`` (``rg``) installed, it
-    is used and is 10–100× faster than the Python fallback. Otherwise
-    a pure-Python implementation is used.
-
-    The agent automatically skips:
-    - Heavy/vendored directories (.git, node_modules, .venv, venv, env,
-      __pycache__, .pytest_cache, .mypy_cache, .ruff_cache, dist, build,
-      target, .next, .nuxt, .cache, .idea, .vscode, coverage, …)
-    - Files with binary extensions (images, videos, archives, fonts,
-      compiled binaries, .pdf, .docx, …)
-    - Files larger than 10 MB
-    - Files whose first 8 KB contain a NUL byte (binary heuristic)
+        ``format="json"`` → dict with ``matches``, ``count``, ``truncated``,
+        ``files_scanned``, ``engine``.
     """
+    if format not in ("text", "json"):
+        raise ToolError("format must be 'text' or 'json'")
+    if output_mode not in ("content", "files_with_matches", "count"):
+        raise ToolError(
+            "output_mode must be 'content', 'files_with_matches', or 'count'"
+        )
     async with _audit_on_denied(
         "grep", project_id, detail=f"{pattern} @ {path}"[:500],
     ) as audit:
@@ -1103,4 +1311,360 @@ async def remote_grep(
         detail=f"{pattern} @ {path}", key_info=key_info,
     )
     await _log_operation(binding, "grep", f"{pattern} @ {path}", key_info)
+
+    if format == "text":
+        return _format_grep_text(
+            result, output_mode=output_mode, max_results=max_results,
+        )
     return result
+
+
+def _format_grep_text(
+    result: dict, *, output_mode: str, max_results: int,
+) -> str:
+    """Render grep results as ripgrep-style text.
+
+    Matches local ``Grep`` tool output so callers can use remote grep with
+    the same mental model. Normalises line terminators — upstream ``text``
+    may carry a trailing ``\\r`` or ``\\n`` from the source file.
+    """
+    matches = result.get("matches", []) or []
+    truncated = result.get("truncated", False)
+
+    if output_mode == "files_with_matches":
+        seen: set[str] = set()
+        lines: list[str] = []
+        for m in matches:
+            f = m.get("file", "")
+            if f and f not in seen:
+                seen.add(f)
+                lines.append(f"{f}\n")
+        if truncated:
+            lines.append("[truncated: more files may exist]\n")
+        return "".join(lines)
+
+    if output_mode == "count":
+        counts: dict[str, int] = {}
+        for m in matches:
+            f = m.get("file", "")
+            if f:
+                counts[f] = counts.get(f, 0) + 1
+        out_lines = [f"{f}:{n}\n" for f, n in counts.items()]
+        if truncated:
+            out_lines.append("[truncated: counts are lower bound]\n")
+        return "".join(out_lines)
+
+    # output_mode == "content" — ripgrep "path:line:text" with '-' for context
+    out: list[str] = []
+    for m in matches:
+        f = m.get("file", "")
+        line = m.get("line", 0)
+        for c in m.get("context_before", []) or []:
+            out.append(
+                f"{f}-{c.get('line', 0)}-{_strip_line(c.get('text', ''))}\n"
+            )
+        out.append(f"{f}:{line}:{_strip_line(m.get('text', ''))}\n")
+        for c in m.get("context_after", []) or []:
+            out.append(
+                f"{f}-{c.get('line', 0)}-{_strip_line(c.get('text', ''))}\n"
+            )
+    if truncated:
+        out.append(f"[truncated at {max_results} matches]\n")
+    return "".join(out)
+
+
+def _strip_line(s: str) -> str:
+    """Strip a single trailing newline/CR pair from a grep text line."""
+    if s.endswith("\r\n"):
+        return s[:-2]
+    if s.endswith("\n") or s.endswith("\r"):
+        return s[:-1]
+    return s
+
+
+# ──────────────────────────────────────────────
+# Batch endpoints — amortize MCP framing overhead when the caller has
+# multiple reads/commands to issue in a row.
+# ──────────────────────────────────────────────
+
+MAX_BATCH_FILES = 20
+MAX_BATCH_COMMANDS = 10
+MAX_BATCH_BYTES = 1_000_000  # 1 MB soft cap on aggregate read output
+
+
+@mcp.tool()
+async def remote_read_files(
+    project_id: str,
+    paths: list[str],
+    encoding: str = "utf-8",
+    format: str = "text",
+) -> dict | str:
+    """Read multiple files in a single MCP call (amortizes framing cost).
+
+    Each path is read sequentially via the same agent protocol as
+    ``remote_read_file``. Per-file errors are surfaced inline so one bad
+    path doesn't poison the whole batch.
+
+    Args:
+        project_id: Project ID or name
+        paths: File paths (max ``MAX_BATCH_FILES`` = 20)
+        encoding: Applied to every file
+        format: ``"text"`` (default) → header-separated concatenation:
+            ``=== <path> ===\\n<content>\\n``. Per-file errors render as
+            ``=== <path> ===\\n[error: <msg>]\\n``.
+            ``"json"`` → dict with ``files`` list.
+
+    Returns:
+        ``format="text"`` → ``str`` with ``=== <path> ===`` headers.
+
+        ``format="json"`` → ``{"files": [{path, content?, error?, size,
+        total_lines, truncated}], "count": N, "errors": M}``.
+    """
+    if format not in ("text", "json"):
+        raise ToolError("format must be 'text' or 'json'")
+    if not isinstance(paths, list) or not paths:
+        raise ToolError("paths must be a non-empty list of strings")
+    if len(paths) > MAX_BATCH_FILES:
+        raise ToolError(f"paths exceeds the {MAX_BATCH_FILES}-file batch limit")
+
+    async with _audit_on_denied(
+        "read_files", project_id, detail=f"{len(paths)} paths",
+    ) as audit:
+        audit.key_info = await authenticate()
+        audit.binding = await _resolve_binding(project_id, audit.key_info)
+        for p in paths:
+            if not isinstance(p, str):
+                raise ToolError("all paths must be strings")
+            _validate_remote_path(p)
+    key_info = audit.key_info
+    binding = audit.binding
+
+    files_out: list[dict] = []
+    total_bytes = 0
+    errors = 0
+    for path in paths:
+        try:
+            res = await _send_to_agent(
+                binding, "read_file",
+                {"path": path, "cwd": binding.remote_path, "encoding": encoding},
+                detail=path, key_info=key_info,
+            )
+            content = res.get("content", "") or ""
+            total_bytes += len(content)
+            files_out.append({
+                "path": res.get("path", path),
+                "content": content,
+                "size": res.get("size", len(content)),
+                "encoding": res.get("encoding", encoding),
+                "is_binary": res.get("is_binary", False),
+                "total_lines": res.get("total_lines", 0),
+                "truncated": res.get("truncated", False),
+            })
+            if total_bytes > MAX_BATCH_BYTES:
+                # Cap aggregate size to keep the response bounded. The
+                # caller can retry the remaining paths in a follow-up call.
+                files_out.append({
+                    "path": "",
+                    "error": (
+                        f"batch aggregate exceeded {MAX_BATCH_BYTES} bytes "
+                        f"after {len(files_out)}/{len(paths)} files; retry "
+                        f"remaining in a new call"
+                    ),
+                })
+                errors += 1
+                break
+        except ToolError as e:
+            errors += 1
+            files_out.append({"path": path, "error": str(e)})
+
+    await _log_operation(
+        binding, "read_files", f"{len(paths)} paths", key_info,
+        stdout_len=total_bytes,
+    )
+
+    if format == "text":
+        parts: list[str] = []
+        for f in files_out:
+            p = f.get("path", "")
+            parts.append(f"=== {p} ===\n")
+            if "error" in f:
+                parts.append(f"[error: {f['error']}]\n")
+                continue
+            content = f.get("content", "")
+            if content and not content.endswith("\n"):
+                parts.append(content)
+                parts.append("\n")
+            else:
+                parts.append(content)
+        return "".join(parts)
+
+    return {
+        "files": files_out,
+        "count": len(files_out),
+        "errors": errors,
+    }
+
+
+@mcp.tool()
+async def remote_exec_batch(
+    project_id: str,
+    commands: list[str],
+    timeout: int = 60,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+    inject_secrets: bool = False,
+    stop_on_error: bool = False,
+    format: str = "text",
+) -> dict | str:
+    """Run multiple shell commands in one MCP call (amortizes framing cost).
+
+    Commands run serially on the agent. Sharing a single call lets the
+    caller avoid per-command MCP/schema overhead.
+
+    Args:
+        project_id: Project ID or name
+        commands: Shell commands (max ``MAX_BATCH_COMMANDS`` = 10)
+        timeout: Per-command timeout (1-3600, default 60)
+        cwd: Optional subdirectory for all commands
+        env: Extra env vars for all commands
+        inject_secrets: Inject project secrets into env (same semantics as
+            ``remote_exec``)
+        stop_on_error: If ``True``, halt after the first non-zero exit.
+            Default ``False`` runs all commands and collects results.
+        format: ``"text"`` (default) → per-command blocks with
+            ``$ <command>\\n<stdout>\\n[exit N]\\n``. ``"json"`` → list dict.
+
+    Returns:
+        ``format="text"`` → ``str`` with per-command blocks.
+
+        ``format="json"`` → ``{"commands": [{command, exit_code, stdout,
+        stderr, duration_ms}], "count": N, "stopped": bool}``.
+    """
+    if format not in ("text", "json"):
+        raise ToolError("format must be 'text' or 'json'")
+    if not isinstance(commands, list) or not commands:
+        raise ToolError("commands must be a non-empty list of strings")
+    if len(commands) > MAX_BATCH_COMMANDS:
+        raise ToolError(
+            f"commands exceeds the {MAX_BATCH_COMMANDS}-command batch limit"
+        )
+
+    async with _audit_on_denied(
+        "exec_batch", project_id, detail=f"{len(commands)} commands",
+    ) as audit:
+        audit.key_info = await authenticate()
+        audit.binding = await _resolve_binding(project_id, audit.key_info)
+        for c in commands:
+            if not isinstance(c, str):
+                raise ToolError("all commands must be strings")
+            _validate_remote_command(c)
+        if cwd is not None:
+            _validate_remote_path(cwd)
+        if env is not None:
+            _validate_remote_env(env)
+    key_info = audit.key_info
+    binding = audit.binding
+
+    # inject_secrets — same path as single remote_exec
+    if inject_secrets:
+        from ...models.secret import ProjectSecret, SecretAccessLog
+
+        secrets = await ProjectSecret.find(
+            ProjectSecret.project_id == binding.project_id,
+        ).to_list()
+        if secrets:
+            secret_env = {s.key: s.value for s in secrets}
+            if env is not None:
+                secret_env.update(env)
+            env = secret_env
+            _validate_remote_env(env)
+            for s in secrets:
+                await SecretAccessLog(
+                    project_id=binding.project_id,
+                    secret_key=s.key,
+                    operation="inject",
+                    user_id=key_info.get("user_id", ""),
+                    auth_kind=key_info.get("auth_kind", ""),
+                ).insert()
+
+    timeout = max(1, min(timeout, settings.REMOTE_MAX_TIMEOUT_SECONDS))
+    results: list[dict] = []
+    stopped = False
+    for command in commands:
+        payload: dict = {
+            "command": command,
+            "cwd": binding.remote_path,
+            "timeout": timeout,
+        }
+        if cwd is not None:
+            payload["cwd_override"] = cwd
+        if env is not None:
+            payload["env"] = env
+
+        t0 = time.monotonic()
+        try:
+            res = await _send_to_agent(
+                binding, "exec", payload,
+                detail=command, key_info=key_info, timeout=timeout + 5,
+            )
+        except ToolError as e:
+            results.append({
+                "command": command,
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": str(e),
+                "duration_ms": int((time.monotonic() - t0) * 1000),
+            })
+            if stop_on_error:
+                stopped = True
+                break
+            continue
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        exit_code = res.get("exit_code", -1)
+        results.append({
+            "command": command,
+            "exit_code": exit_code,
+            "stdout": res.get("stdout", ""),
+            "stderr": res.get("stderr", ""),
+            "duration_ms": duration_ms,
+        })
+        await _log_operation(
+            binding, "exec", command, key_info,
+            duration_ms=duration_ms,
+            exit_code=exit_code,
+            stdout_len=len(res.get("stdout", "")),
+            stderr_len=len(res.get("stderr", "")),
+        )
+        if stop_on_error and exit_code != 0:
+            stopped = True
+            break
+
+    if format == "text":
+        parts: list[str] = []
+        for r in results:
+            parts.append(f"$ {r['command']}\n")
+            stdout = r.get("stdout", "")
+            if stdout:
+                parts.append(stdout)
+                if not stdout.endswith("\n"):
+                    parts.append("\n")
+            stderr = r.get("stderr", "")
+            if stderr:
+                parts.append("[stderr]\n")
+                parts.append(stderr)
+                if not stderr.endswith("\n"):
+                    parts.append("\n")
+            if r.get("exit_code", 0) != 0:
+                parts.append(f"[exit {r['exit_code']}]\n")
+        if stopped:
+            parts.append(
+                f"[stopped after {len(results)}/{len(commands)} commands "
+                f"due to non-zero exit]\n"
+            )
+        return "".join(parts)
+
+    return {
+        "commands": results,
+        "count": len(results),
+        "stopped": stopped,
+    }

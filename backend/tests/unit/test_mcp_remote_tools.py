@@ -181,7 +181,9 @@ class TestRemoteExec:
             "stderr_total_bytes": 0,
         })
         with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
-            result = await remote.remote_exec(project_id="p", command="echo hi")
+            result = await remote.remote_exec(
+                project_id="p", command="echo hi", format="json",
+            )
 
         assert result["exit_code"] == 0
         assert result["stdout"] == "hello"
@@ -230,7 +232,9 @@ class TestRemoteExec:
             "stderr_total_bytes": 0,
         })
         with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
-            result = await remote.remote_exec(project_id="p", command="cat huge.log")
+            result = await remote.remote_exec(
+                project_id="p", command="cat huge.log", format="json",
+            )
         assert result["stdout_truncated"] is True
         assert result["stdout_total_bytes"] == 5_000_000
 
@@ -256,6 +260,93 @@ class TestRemoteExec:
         with patch("app.mcp.tools.remote.agent_manager.send_request", new=AsyncMock()):
             with pytest.raises(ToolError, match="empty"):
                 await remote.remote_exec(project_id="p", command="   ")
+
+    # ── format="text" (default): Bash-like plain text for token efficiency
+
+    async def test_exec_text_format_is_default(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "exit_code": 0, "stdout": "hello\n", "stderr": "",
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_exec(project_id="p", command="echo hello")
+        assert isinstance(result, str)
+        assert result == "hello\n"
+
+    async def test_exec_text_zero_exit_omits_exit_marker(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "exit_code": 0, "stdout": "ok\n", "stderr": "",
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_exec(project_id="p", command="true")
+        assert "[exit" not in result
+
+    async def test_exec_text_nonzero_exit_shows_exit_marker(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "exit_code": 2, "stdout": "", "stderr": "boom\n",
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_exec(project_id="p", command="false")
+        assert "[stderr]\nboom\n" in result
+        assert "[exit 2]" in result
+
+    async def test_exec_text_empty_stderr_omits_stderr_block(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "exit_code": 0, "stdout": "line\n", "stderr": "",
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_exec(project_id="p", command="echo line")
+        assert "[stderr]" not in result
+
+    async def test_exec_text_truncation_markers(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "exit_code": 0,
+            "stdout": "x" * 100,
+            "stderr": "",
+            "stdout_truncated": True,
+            "stderr_truncated": False,
+            "stdout_total_bytes": 5_000_000,
+            "stderr_total_bytes": 0,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_exec(project_id="p", command="cat huge.log")
+        assert "[stdout truncated at 5000000 bytes]" in result
+        assert "[stderr truncated" not in result
+
+    async def test_exec_text_vs_json_size_reduction(self, patch_auth):
+        """Typical command output: text format must be meaningfully smaller than JSON."""
+        import json as _json
+
+        send_request = AsyncMock(return_value={
+            "exit_code": 0,
+            "stdout": "line1\nline2\nline3\nline4\nline5\n" * 10,
+            "stderr": "",
+            "stdout_truncated": False,
+            "stderr_truncated": False,
+            "stdout_total_bytes": 300,
+            "stderr_total_bytes": 0,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            text_result = await remote.remote_exec(
+                project_id="p", command="cat lines", format="text",
+            )
+            json_result = await remote.remote_exec(
+                project_id="p", command="cat lines", format="json",
+            )
+        json_bytes = len(_json.dumps(json_result))
+        text_bytes = len(text_result)
+        # ≥30% reduction is the acceptance target
+        assert text_bytes <= json_bytes * 0.7, (
+            f"text={text_bytes}B json={json_bytes}B (text must be ≤70% of json)"
+        )
+
+    async def test_exec_rejects_invalid_format(self, patch_auth):
+        with patch("app.mcp.tools.remote.agent_manager.send_request", new=AsyncMock()):
+            with pytest.raises(ToolError, match="format"):
+                await remote.remote_exec(
+                    project_id="p", command="ls", format="xml",
+                )
+
+
 # ──────────────────────────────────────────────
 # remote_read_file
 # ──────────────────────────────────────────────
@@ -275,6 +366,7 @@ class TestRemoteReadFile:
         with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
             result = await remote.remote_read_file(
                 project_id="p", path="lines.txt", offset=2, limit=2,
+                format="json",
             )
 
         args, _kwargs = send_request.call_args
@@ -295,12 +387,14 @@ class TestRemoteReadFile:
             "truncated": False,
         })
         with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            # Binary always returns dict regardless of format.
             result = await remote.remote_read_file(
                 project_id="p", path="blob.bin", encoding="binary",
             )
 
         args, _ = send_request.call_args
         assert args[2]["encoding"] == "binary"
+        assert isinstance(result, dict)
         assert result["is_binary"] is True
         assert result["encoding"] == "base64"
 
@@ -325,6 +419,219 @@ class TestRemoteReadFile:
         with patch("app.mcp.tools.remote.agent_manager.send_request", new=AsyncMock()):
             with pytest.raises(ToolError, match=">= 0"):
                 await remote.remote_read_file(project_id="p", path="x.txt", limit=-5)
+
+    # ── format="text" (default): Read-compatible cat -n output
+
+    async def test_read_text_format_is_default(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "content": "line1\nline2\nline3\n",
+            "size": 18, "path": "/work/f.txt", "encoding": "utf-8",
+            "is_binary": False, "total_lines": 3, "truncated": False,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_read_file(project_id="p", path="f.txt")
+        assert isinstance(result, str)
+        assert result == "1\tline1\n2\tline2\n3\tline3\n4\t\n"
+
+    async def test_read_text_offset_reflected_in_line_numbers(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "content": "line5\nline6\n",
+            "size": 12, "path": "/work/f.txt", "encoding": "utf-8",
+            "is_binary": False, "total_lines": 10, "truncated": False,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_read_file(
+                project_id="p", path="f.txt", offset=5, limit=2,
+            )
+        assert result.startswith("5\tline5\n6\tline6\n")
+
+    async def test_read_text_appends_truncation_marker(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "content": "line1\nline2\n",
+            "size": 12, "path": "/work/f.txt", "encoding": "utf-8",
+            "is_binary": False, "total_lines": 500, "truncated": True,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_read_file(
+                project_id="p", path="f.txt", limit=2,
+            )
+        assert "[truncated at 500 total lines]" in result
+
+    async def test_read_text_binary_returns_dict(self, patch_auth):
+        """Binary content cannot be rendered as text — always dict."""
+        send_request = AsyncMock(return_value={
+            "content": "aGVsbG8=",
+            "size": 5, "path": "/work/blob.bin", "encoding": "base64",
+            "is_binary": True, "total_lines": 0, "truncated": False,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            # format="text" is default but binary must still return dict.
+            result = await remote.remote_read_file(
+                project_id="p", path="blob.bin", encoding="binary",
+            )
+        assert isinstance(result, dict)
+        assert result["is_binary"] is True
+
+    async def test_read_text_empty_content(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "content": "",
+            "size": 0, "path": "/work/empty.txt", "encoding": "utf-8",
+            "is_binary": False, "total_lines": 0, "truncated": False,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_read_file(project_id="p", path="empty.txt")
+        assert result == ""
+
+    async def test_read_rejects_invalid_format(self, patch_auth):
+        with patch("app.mcp.tools.remote.agent_manager.send_request", new=AsyncMock()):
+            with pytest.raises(ToolError, match="format"):
+                await remote.remote_read_file(
+                    project_id="p", path="x.txt", format="xml",
+                )
+
+    async def test_read_text_vs_json_size_reduction(self, patch_auth):
+        """Typical text file: text format must be meaningfully smaller than JSON."""
+        import json as _json
+
+        send_request = AsyncMock(return_value={
+            "content": "the quick brown fox\n" * 20,
+            "size": 400, "path": "D:\\work\\lines.txt", "encoding": "utf-8",
+            "is_binary": False, "total_lines": 20, "truncated": False,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            text_result = await remote.remote_read_file(
+                project_id="p", path="lines.txt",
+            )
+            json_result = await remote.remote_read_file(
+                project_id="p", path="lines.txt", format="json",
+            )
+        json_bytes = len(_json.dumps(json_result))
+        text_bytes = len(text_result)
+        # Text must stay within +5% of a local-Read-equivalent baseline.
+        # Practically this means text should be ≤ JSON size (JSON has
+        # ~160B of metadata overhead).
+        assert text_bytes < json_bytes, (
+            f"text={text_bytes}B json={json_bytes}B (text must be smaller)"
+        )
+
+    # ── if_not_hash: conditional read / differential response
+
+    async def test_read_if_not_hash_match_returns_unchanged_text(self, patch_auth):
+        import hashlib
+
+        content = "line1\nline2\nline3\n"
+        expected_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+        send_request = AsyncMock(return_value={
+            "content": content,
+            "size": len(content), "path": "/work/f.txt", "encoding": "utf-8",
+            "is_binary": False, "total_lines": 3, "truncated": False,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_read_file(
+                project_id="p", path="f.txt", if_not_hash=expected_hash,
+            )
+        assert isinstance(result, str)
+        assert result == f"unchanged sha256:{expected_hash}\n"
+
+    async def test_read_if_not_hash_match_returns_unchanged_json(self, patch_auth):
+        import hashlib
+
+        content = "hello\n"
+        expected_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+        send_request = AsyncMock(return_value={
+            "content": content,
+            "size": 6, "path": "/work/f.txt", "encoding": "utf-8",
+            "is_binary": False, "total_lines": 1, "truncated": False,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_read_file(
+                project_id="p", path="f.txt", format="json",
+                if_not_hash=expected_hash,
+            )
+        assert result == {"unchanged": True, "hash": expected_hash}
+
+    async def test_read_if_not_hash_mismatch_returns_full_content_plus_hash(
+        self, patch_auth,
+    ):
+        import hashlib
+
+        content = "new content\n"
+        new_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        stale_hash = "0" * 64
+
+        send_request = AsyncMock(return_value={
+            "content": content,
+            "size": len(content), "path": "/work/f.txt", "encoding": "utf-8",
+            "is_binary": False, "total_lines": 1, "truncated": False,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_read_file(
+                project_id="p", path="f.txt", if_not_hash=stale_hash,
+            )
+        assert isinstance(result, str)
+        # Full content rendered, with hash trailer so caller can update cache.
+        assert "1\tnew content\n" in result
+        assert f"[sha256:{new_hash}]\n" in result
+
+    async def test_read_if_not_hash_json_mismatch_includes_hash_field(
+        self, patch_auth,
+    ):
+        import hashlib
+
+        content = "body\n"
+        new_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+        send_request = AsyncMock(return_value={
+            "content": content,
+            "size": 5, "path": "/work/f.txt", "encoding": "utf-8",
+            "is_binary": False, "total_lines": 1, "truncated": False,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_read_file(
+                project_id="p", path="f.txt", format="json",
+                if_not_hash="deadbeef" * 8,
+            )
+        assert result["hash"] == new_hash
+        assert result["content"] == content
+
+    async def test_read_without_if_not_hash_omits_hash(self, patch_auth):
+        """When caller didn't opt into caching, no hash work is done."""
+        send_request = AsyncMock(return_value={
+            "content": "x\n",
+            "size": 2, "path": "/work/f.txt", "encoding": "utf-8",
+            "is_binary": False, "total_lines": 1, "truncated": False,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_read_file(
+                project_id="p", path="f.txt", format="json",
+            )
+        assert "hash" not in result
+
+    async def test_read_if_not_hash_match_90_percent_reduction(self, patch_auth):
+        """Unchanged response must be dramatically smaller than full content."""
+        import hashlib
+
+        content = "line of data\n" * 200  # 2.6 KB of content
+        expected_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+        send_request = AsyncMock(return_value={
+            "content": content,
+            "size": len(content), "path": "/work/big.txt", "encoding": "utf-8",
+            "is_binary": False, "total_lines": 200, "truncated": False,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            full_result = await remote.remote_read_file(
+                project_id="p", path="big.txt",
+            )
+            unchanged_result = await remote.remote_read_file(
+                project_id="p", path="big.txt", if_not_hash=expected_hash,
+            )
+        # unchanged marker must be ≤10% of full content
+        assert len(unchanged_result) <= len(full_result) * 0.1, (
+            f"unchanged={len(unchanged_result)}B full={len(full_result)}B"
+        )
 
 
 # ──────────────────────────────────────────────
@@ -411,10 +718,118 @@ class TestRemoteGlob:
         with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
             result = await remote.remote_glob(
                 project_id="p", pattern="**/*.py", path=".",
+                format="json",
             )
         args, _ = send_request.call_args
         assert args[2]["pattern"] == "**/*.py"
         assert result["count"] == 1
+
+    # ── format="text" (default): one path per line
+
+    async def test_glob_text_format_is_default(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "matches": [
+                {"path": "src/a.py", "size": 100, "mtime": "t3"},
+                {"path": "src/b.py", "size": 200, "mtime": "t2"},
+                {"path": "src/c.py", "size": 300, "mtime": "t1"},
+            ],
+            "count": 3, "base": "src", "truncated": False,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_glob(
+                project_id="p", pattern="**/*.py",
+            )
+        assert isinstance(result, str)
+        assert result == "src/a.py\nsrc/b.py\nsrc/c.py\n"
+
+    async def test_glob_text_appends_truncated_marker(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "matches": [{"path": "a.py", "size": 1, "mtime": "t"}],
+            "count": 1, "base": ".", "truncated": True,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_glob(project_id="p", pattern="*.py")
+        assert "[truncated]" in result
+
+    async def test_glob_rejects_invalid_format(self, patch_auth):
+        with patch("app.mcp.tools.remote.agent_manager.send_request", new=AsyncMock()):
+            with pytest.raises(ToolError, match="format"):
+                await remote.remote_glob(
+                    project_id="p", pattern="*.py", format="xml",
+                )
+
+
+class TestRemoteListDir:
+    async def test_list_dir_text_format_is_default(self, patch_auth):
+        # Agent uses the short ``type == "dir"`` form.
+        send_request = AsyncMock(return_value={
+            "entries": [
+                {"name": "README.md", "type": "file", "size": 100, "mtime": "t"},
+                {"name": "src", "type": "dir"},
+                {"name": "tests", "type": "dir"},
+                {"name": "pyproject.toml", "type": "file", "size": 50, "mtime": "t"},
+            ],
+            "path": ".",
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_list_dir(project_id="p", path=".")
+        assert isinstance(result, str)
+        assert result == "README.md\nsrc/\ntests/\npyproject.toml\n"
+
+    async def test_list_dir_text_accepts_both_dir_type_spellings(self, patch_auth):
+        """Accept both 'dir' (agent) and 'directory' (doc spec) for resilience."""
+        send_request = AsyncMock(return_value={
+            "entries": [
+                {"name": "a", "type": "dir"},
+                {"name": "b", "type": "directory"},
+            ],
+            "path": ".",
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_list_dir(project_id="p", path=".")
+        assert result == "a/\nb/\n"
+
+    async def test_list_dir_json_format_returns_dict(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "entries": [{"name": "a.txt", "type": "file", "size": 1, "mtime": "t"}],
+            "path": ".",
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_list_dir(
+                project_id="p", path=".", format="json",
+            )
+        assert isinstance(result, dict)
+        assert result["entries"][0]["name"] == "a.txt"
+        assert result["count"] == 1
+
+    async def test_list_dir_rejects_invalid_format(self, patch_auth):
+        with patch("app.mcp.tools.remote.agent_manager.send_request", new=AsyncMock()):
+            with pytest.raises(ToolError, match="format"):
+                await remote.remote_list_dir(
+                    project_id="p", path=".", format="xml",
+                )
+
+    async def test_list_dir_text_vs_json_size_reduction(self, patch_auth):
+        """50-entry listing: text must be meaningfully smaller."""
+        import json as _json
+
+        entries = [
+            {"name": f"file_{i:02d}.py", "type": "file",
+             "size": 100 + i, "mtime": "2026-04-17T00:00:00+00:00"}
+            for i in range(50)
+        ]
+        send_request = AsyncMock(return_value={"entries": entries, "path": "."})
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            text_result = await remote.remote_list_dir(project_id="p", path=".")
+            json_result = await remote.remote_list_dir(
+                project_id="p", path=".", format="json",
+            )
+        json_bytes = len(_json.dumps(json_result))
+        text_bytes = len(text_result)
+        # 50%+ reduction is the acceptance target.
+        assert text_bytes <= json_bytes * 0.5, (
+            f"text={text_bytes}B json={json_bytes}B (text must be ≤50% of json)"
+        )
 
 
 class TestRemoteGrep:
@@ -433,6 +848,7 @@ class TestRemoteGrep:
                 glob="*.py",
                 case_insensitive=True,
                 max_results=50,
+                format="json",
             )
         args, _ = send_request.call_args
         payload = args[2]
@@ -493,6 +909,7 @@ class TestRemoteGrep:
         with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
             result = await remote.remote_grep(
                 project_id="p", pattern="needle", context_lines=2,
+                format="json",
             )
         payload = send_request.call_args[0][2]
         assert payload["context_lines"] == 2
@@ -514,6 +931,123 @@ class TestRemoteGrep:
     async def test_grep_rejects_context_lines_too_large(self, patch_auth):
         with pytest.raises(ToolError, match="context_lines"):
             await remote.remote_grep(project_id="p", pattern="x", context_lines=21)
+
+    # ── format="text" (default): ripgrep-style rendering
+
+    async def test_grep_text_format_is_default(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "matches": [
+                {"file": "a.py", "line": 1, "text": "import foo\r"},
+                {"file": "a.py", "line": 5, "text": "foo.bar()\n"},
+                {"file": "b.py", "line": 2, "text": "from foo import x"},
+            ],
+            "count": 3, "files_scanned": 2, "truncated": False,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_grep(project_id="p", pattern="foo")
+        assert isinstance(result, str)
+        assert result == (
+            "a.py:1:import foo\n"
+            "a.py:5:foo.bar()\n"
+            "b.py:2:from foo import x\n"
+        )
+
+    async def test_grep_text_files_with_matches_mode(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "matches": [
+                {"file": "a.py", "line": 1, "text": "x"},
+                {"file": "a.py", "line": 5, "text": "y"},
+                {"file": "b.py", "line": 2, "text": "z"},
+            ],
+            "count": 3, "files_scanned": 2, "truncated": False,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_grep(
+                project_id="p", pattern="x",
+                output_mode="files_with_matches",
+            )
+        assert result == "a.py\nb.py\n"
+
+    async def test_grep_text_count_mode(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "matches": [
+                {"file": "a.py", "line": 1, "text": "x"},
+                {"file": "a.py", "line": 5, "text": "y"},
+                {"file": "b.py", "line": 2, "text": "z"},
+            ],
+            "count": 3, "files_scanned": 2, "truncated": False,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_grep(
+                project_id="p", pattern="x", output_mode="count",
+            )
+        assert "a.py:2" in result
+        assert "b.py:1" in result
+
+    async def test_grep_text_context_lines(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "matches": [{
+                "file": "a.py", "line": 5, "text": "needle\n",
+                "context_before": [{"line": 4, "text": "before"}],
+                "context_after": [{"line": 6, "text": "after"}],
+            }],
+            "count": 1, "files_scanned": 1, "truncated": False,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_grep(
+                project_id="p", pattern="needle", context_lines=1,
+            )
+        assert result == (
+            "a.py-4-before\n"
+            "a.py:5:needle\n"
+            "a.py-6-after\n"
+        )
+
+    async def test_grep_text_truncation_marker(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "matches": [{"file": "a.py", "line": 1, "text": "hit"}],
+            "count": 1, "files_scanned": 1, "truncated": True,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_grep(
+                project_id="p", pattern="hit", max_results=200,
+            )
+        assert "[truncated at 200 matches]" in result
+
+    async def test_grep_rejects_invalid_format(self, patch_auth):
+        with pytest.raises(ToolError, match="format"):
+            await remote.remote_grep(project_id="p", pattern="x", format="xml")
+
+    async def test_grep_rejects_invalid_output_mode(self, patch_auth):
+        with pytest.raises(ToolError, match="output_mode"):
+            await remote.remote_grep(
+                project_id="p", pattern="x", output_mode="bogus",
+            )
+
+    async def test_grep_text_vs_json_size_reduction(self, patch_auth):
+        """Multi-match result: text format must be meaningfully smaller."""
+        import json as _json
+
+        matches = [
+            {"file": f"src/module_{i}.py", "line": i * 3, "text": f"hit number {i}"}
+            for i in range(20)
+        ]
+        agent_result = {
+            "matches": matches, "count": 20,
+            "files_scanned": 20, "truncated": False,
+        }
+        send_request = AsyncMock(return_value=agent_result)
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            text_result = await remote.remote_grep(project_id="p", pattern="hit")
+            json_result = await remote.remote_grep(
+                project_id="p", pattern="hit", format="json",
+            )
+        json_bytes = len(_json.dumps(json_result))
+        text_bytes = len(text_result)
+        # Content mode should be meaningfully smaller than per-match JSON.
+        assert text_bytes <= json_bytes * 0.6, (
+            f"text={text_bytes}B json={json_bytes}B (text must be ≤60% of json)"
+        )
 
 
 # ──────────────────────────────────────────────
@@ -951,6 +1485,158 @@ class TestAuditLogPropagates:
 # ──────────────────────────────────────────────
 
 
+class TestRemoteReadFilesBatch:
+    async def test_read_files_concatenates_with_headers(self, patch_auth):
+        # Each call to send_request returns a different file.
+        payloads = [
+            {"content": "a content\n", "size": 10, "path": "/work/a.txt",
+             "encoding": "utf-8", "is_binary": False, "total_lines": 1,
+             "truncated": False},
+            {"content": "b content\n", "size": 10, "path": "/work/b.txt",
+             "encoding": "utf-8", "is_binary": False, "total_lines": 1,
+             "truncated": False},
+        ]
+        send_request = AsyncMock(side_effect=payloads)
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_read_files(
+                project_id="p", paths=["a.txt", "b.txt"],
+            )
+        assert result == (
+            "=== /work/a.txt ===\n"
+            "a content\n"
+            "=== /work/b.txt ===\n"
+            "b content\n"
+        )
+
+    async def test_read_files_per_file_error_inline(self, patch_auth):
+        good = {"content": "ok\n", "size": 3, "path": "/work/a.txt",
+                "encoding": "utf-8", "is_binary": False, "total_lines": 1,
+                "truncated": False}
+
+        async def side_effect(agent_id, msg_type, payload, **kwargs):
+            if payload["path"] == "a.txt":
+                return good
+            raise ToolError("file not found")
+
+        with patch(
+            "app.mcp.tools.remote.agent_manager.send_request",
+            new=AsyncMock(side_effect=side_effect),
+        ):
+            result = await remote.remote_read_files(
+                project_id="p", paths=["a.txt", "missing.txt"],
+                format="json",
+            )
+        assert result["count"] == 2
+        assert result["errors"] == 1
+        assert result["files"][0]["content"] == "ok\n"
+        assert "file not found" in result["files"][1]["error"]
+
+    async def test_read_files_rejects_empty_list(self, patch_auth):
+        with pytest.raises(ToolError, match="non-empty"):
+            await remote.remote_read_files(project_id="p", paths=[])
+
+    async def test_read_files_rejects_oversized_batch(self, patch_auth):
+        with pytest.raises(ToolError, match="batch limit"):
+            await remote.remote_read_files(
+                project_id="p", paths=[f"f{i}.txt" for i in range(25)],
+            )
+
+    async def test_read_files_rejects_invalid_format(self, patch_auth):
+        with pytest.raises(ToolError, match="format"):
+            await remote.remote_read_files(
+                project_id="p", paths=["a.txt"], format="xml",
+            )
+
+    async def test_read_files_vs_individual_calls_size(self, patch_auth):
+        """5-file batch text must be smaller than 5 individual JSON responses."""
+        import json as _json
+
+        payloads = [
+            {"content": f"content of file {i}\n",
+             "size": 20, "path": f"/work/file_{i}.txt",
+             "encoding": "utf-8", "is_binary": False, "total_lines": 1,
+             "truncated": False}
+            for i in range(5)
+        ]
+        send_request = AsyncMock(side_effect=payloads)
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            batch_text = await remote.remote_read_files(
+                project_id="p", paths=[f"file_{i}.txt" for i in range(5)],
+            )
+        # Simulated sum of 5 individual dict responses
+        individual_json_total = sum(len(_json.dumps(p)) for p in payloads)
+        assert len(batch_text) < individual_json_total
+
+
+class TestRemoteExecBatch:
+    async def test_exec_batch_concatenates_blocks(self, patch_auth):
+        payloads = [
+            {"exit_code": 0, "stdout": "hello\n", "stderr": ""},
+            {"exit_code": 0, "stdout": "world\n", "stderr": ""},
+        ]
+        send_request = AsyncMock(side_effect=payloads)
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_exec_batch(
+                project_id="p", commands=["echo hello", "echo world"],
+            )
+        assert result == (
+            "$ echo hello\nhello\n"
+            "$ echo world\nworld\n"
+        )
+
+    async def test_exec_batch_stop_on_error(self, patch_auth):
+        payloads = [
+            {"exit_code": 1, "stdout": "", "stderr": "boom\n"},
+            # second command should NOT be called
+        ]
+        send_request = AsyncMock(side_effect=payloads)
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_exec_batch(
+                project_id="p", commands=["false", "echo skipped"],
+                stop_on_error=True, format="json",
+            )
+        assert result["count"] == 1
+        assert result["stopped"] is True
+
+    async def test_exec_batch_continues_on_error_by_default(self, patch_auth):
+        payloads = [
+            {"exit_code": 1, "stdout": "", "stderr": "boom\n"},
+            {"exit_code": 0, "stdout": "ok\n", "stderr": ""},
+        ]
+        send_request = AsyncMock(side_effect=payloads)
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_exec_batch(
+                project_id="p", commands=["false", "true"],
+                format="json",
+            )
+        assert result["count"] == 2
+        assert result["stopped"] is False
+
+    async def test_exec_batch_rejects_empty_list(self, patch_auth):
+        with pytest.raises(ToolError, match="non-empty"):
+            await remote.remote_exec_batch(project_id="p", commands=[])
+
+    async def test_exec_batch_rejects_oversized(self, patch_auth):
+        with pytest.raises(ToolError, match="batch limit"):
+            await remote.remote_exec_batch(
+                project_id="p",
+                commands=[f"echo {i}" for i in range(15)],
+            )
+
+    async def test_exec_batch_rejects_invalid_command(self, patch_auth):
+        """Security passthrough: the same validators reject bad commands."""
+        with pytest.raises(ToolError, match="Invalid"):
+            await remote.remote_exec_batch(
+                project_id="p", commands=["ls\nrm -rf /"],
+            )
+
+    async def test_exec_batch_rejects_invalid_format(self, patch_auth):
+        with pytest.raises(ToolError, match="format"):
+            await remote.remote_exec_batch(
+                project_id="p", commands=["ls"], format="xml",
+            )
+
+
 class TestRemoteEditFile:
     async def test_edit_passes_payload_to_agent(self, patch_auth):
         send_request = AsyncMock(return_value={
@@ -964,6 +1650,7 @@ class TestRemoteEditFile:
                 path="src/main.py",
                 old_string="return 1",
                 new_string="return 42",
+                format="json",
             )
 
         args, _kwargs = send_request.call_args
@@ -989,6 +1676,7 @@ class TestRemoteEditFile:
                 old_string="foo",
                 new_string="bar",
                 replace_all=True,
+                format="json",
             )
 
         args, _ = send_request.call_args
@@ -1027,3 +1715,101 @@ class TestRemoteEditFile:
                 project_id="p", path="../../../etc/passwd",
                 old_string="root", new_string="hacked",
             )
+
+    # ── format="text" (default): single-line confirmation
+
+    async def test_edit_text_single_replacement(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "success": True, "path": "/work/x.txt", "replacements": 1,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_edit_file(
+                project_id="p", path="x.txt",
+                old_string="a", new_string="b",
+            )
+        assert result == "edited /work/x.txt\n"
+
+    async def test_edit_text_multiple_replacements(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "success": True, "path": "/work/x.txt", "replacements": 3,
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_edit_file(
+                project_id="p", path="x.txt",
+                old_string="a", new_string="b", replace_all=True,
+            )
+        assert result == "edited /work/x.txt (3 replacements)\n"
+
+    async def test_edit_rejects_invalid_format(self, patch_auth):
+        with patch("app.mcp.tools.remote.agent_manager.send_request", new=AsyncMock()):
+            with pytest.raises(ToolError, match="format"):
+                await remote.remote_edit_file(
+                    project_id="p", path="x.txt",
+                    old_string="a", new_string="b", format="xml",
+                )
+
+
+# ──────────────────────────────────────────────
+# remote_write_file
+# ──────────────────────────────────────────────
+
+
+class TestRemoteWriteFile:
+    async def test_write_text_format_is_default(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "success": True, "bytes_written": 1234, "path": "/work/f.txt",
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_write_file(
+                project_id="p", path="f.txt", content="hello",
+            )
+        assert isinstance(result, str)
+        assert result == "wrote 1234 bytes to /work/f.txt\n"
+
+    async def test_write_json_format_returns_dict(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "success": True, "bytes_written": 5, "path": "/work/f.txt",
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_write_file(
+                project_id="p", path="f.txt", content="hello",
+                format="json",
+            )
+        assert isinstance(result, dict)
+        assert result["bytes_written"] == 5
+        assert result["success"] is True
+
+    async def test_write_rejects_invalid_format(self, patch_auth):
+        with patch("app.mcp.tools.remote.agent_manager.send_request", new=AsyncMock()):
+            with pytest.raises(ToolError, match="format"):
+                await remote.remote_write_file(
+                    project_id="p", path="f.txt", content="x", format="xml",
+                )
+
+    async def test_write_text_reduction_vs_json(self, patch_auth):
+        """Text response is meaningfully smaller than JSON.
+
+        The path echo keeps parity with local Write's output, so the
+        reduction is path-length-dominated (≈30% for long paths, higher
+        for short ones).
+        """
+        import json as _json
+
+        send_request = AsyncMock(return_value={
+            "success": True, "bytes_written": 45812, "path": "/work/f.txt",
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            text_result = await remote.remote_write_file(
+                project_id="p", path="f.txt", content="x" * 100,
+            )
+            json_result = await remote.remote_write_file(
+                project_id="p", path="f.txt", content="x" * 100,
+                format="json",
+            )
+        json_bytes = len(_json.dumps(json_result))
+        text_bytes = len(text_result)
+        # Text must be at least 30% smaller than JSON. A short path like
+        # ``/work/f.txt`` gives ≈50%; realistic absolute paths give ≈30%.
+        assert text_bytes <= json_bytes * 0.7, (
+            f"text={text_bytes}B json={json_bytes}B (text must be ≤70% of json)"
+        )
