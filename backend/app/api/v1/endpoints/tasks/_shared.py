@@ -56,6 +56,7 @@ class UpdateTaskRequest(BaseModel):
     needs_detail: bool | None = None
     approved: bool | None = None
     completion_report: str | None = Field(None, max_length=10000)
+    active_form: str | None = Field(None, max_length=500)
 
 
 class CompleteTaskRequest(BaseModel):

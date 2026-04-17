@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import shutil
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -44,6 +45,7 @@ async def list_tasks(
     approved: bool | None = None,
     archived: bool | None = None,
     parent_task_id: str | None = None,
+    updated_since: datetime | None = Query(None, description="ISO 8601; return only tasks with updated_at strictly greater"),
     limit: int | None = Query(None, ge=1),
     skip: int = Query(0, ge=0),
     user: User = Depends(get_current_user),
@@ -51,6 +53,10 @@ async def list_tasks(
     await check_project_access(project_id, user)
 
     query = Task.find(Task.project_id == project_id, Task.is_deleted == False)
+    if updated_since is not None:
+        # Reconcile support (S2-3): clients fetch the diff since the last SSE
+        # event's ``server_time`` to recover from short disconnects.
+        query = query.find({"updated_at": {"$gt": updated_since}})
     if task_status:
         _statuses = [s.strip() for s in task_status.split(",")]
         if len(_statuses) == 1:
@@ -149,9 +155,14 @@ async def update_task(
     if "priority" in updates:
         task.record_change("priority", task.priority, updates["priority"], actor)
         task.priority = updates["priority"]
+    status_transitioned_to_done = False
     if "status" in updates:
+        old_status = task.status
         task.record_change("status", task.status, updates["status"], actor)
         task.transition_status(updates["status"])
+        status_transitioned_to_done = (
+            old_status != TaskStatus.done and updates["status"] == TaskStatus.done
+        )
     if "due_date" in updates:
         task.due_date = updates["due_date"]
     if "assignee_id" in updates:
@@ -186,11 +197,15 @@ async def update_task(
             cascade_approved = True
     if "completion_report" in updates:
         task.completion_report = updates["completion_report"]
+    if "active_form" in updates:
+        task.active_form = updates["active_form"]
 
     await task.save_updated()
     if cascade_approved:
         await cascade_approve_subtasks(str(task.id), actor)
     await publish_event(project_id, "task.updated", _task_dict(task))
+    if status_transitioned_to_done:
+        await publish_event(project_id, "task.completed", _task_dict(task))
     await _index_task(task)
     return _task_dict(task)
 

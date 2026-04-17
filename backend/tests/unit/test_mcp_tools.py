@@ -1008,6 +1008,97 @@ class TestDeleteTask:
 
 
 # ---------------------------------------------------------------------------
+# list_tasks updated_since (Sprint 2 / S2-3)
+# ---------------------------------------------------------------------------
+
+
+class TestListTasksUpdatedSince:
+    async def test_updated_since_filters_by_timestamp(
+        self, admin_user, test_project, mock_auth, mock_check, mock_publish
+    ):
+        """Only tasks with updated_at > threshold are returned."""
+        import asyncio
+        from app.mcp.tools.tasks import list_tasks
+
+        pid = str(test_project.id)
+        t_old = await make_task(pid, admin_user, title="old")
+
+        # Mongomock is millisecond-granular; give the new task a distinct timestamp.
+        await asyncio.sleep(0.05)
+        threshold = datetime.now(UTC)
+        await asyncio.sleep(0.05)
+        t_new = await make_task(pid, admin_user, title="new")
+
+        result = await list_tasks(
+            project_id=pid,
+            updated_since=threshold.isoformat(),
+        )
+        ids = {t["id"] for t in result["items"]}
+        assert str(t_new.id) in ids
+        assert str(t_old.id) not in ids
+
+    async def test_invalid_updated_since_raises(
+        self, admin_user, test_project, mock_auth, mock_check, mock_publish
+    ):
+        from fastmcp.exceptions import ToolError
+        from app.mcp.tools.tasks import list_tasks
+
+        with pytest.raises(ToolError, match="Invalid updated_since"):
+            await list_tasks(project_id=str(test_project.id), updated_since="not-a-date")
+
+
+# ---------------------------------------------------------------------------
+# active_form (Sprint 2 / S2-2)
+# ---------------------------------------------------------------------------
+
+
+class TestActiveForm:
+    async def test_update_active_form(
+        self, admin_user, test_project, mock_auth, mock_check, mock_publish
+    ):
+        """update_task can set active_form, serializer includes it."""
+        from app.mcp.tools.tasks import update_task
+
+        pid = str(test_project.id)
+        task = await make_task(pid, admin_user, status=TaskStatus.in_progress)
+
+        result = await update_task(
+            task_id=str(task.id), active_form="Refactoring parser..."
+        )
+        assert result["active_form"] == "Refactoring parser..."
+
+        db_task = await Task.get(task.id)
+        assert db_task.active_form == "Refactoring parser..."
+
+    async def test_clear_active_form_with_empty_string(
+        self, admin_user, test_project, mock_auth, mock_check, mock_publish
+    ):
+        """Empty string clears active_form (serialized as None)."""
+        from app.mcp.tools.tasks import update_task
+
+        pid = str(test_project.id)
+        task = await make_task(pid, admin_user)
+        task.active_form = "old"
+        await task.save()
+
+        result = await update_task(task_id=str(task.id), active_form="")
+        assert result["active_form"] is None
+
+    async def test_active_form_too_long_raises(
+        self, admin_user, test_project, mock_auth, mock_check, mock_publish
+    ):
+        """active_form over 500 chars is rejected with ToolError."""
+        from fastmcp.exceptions import ToolError
+        from app.mcp.tools.tasks import update_task
+
+        pid = str(test_project.id)
+        task = await make_task(pid, admin_user)
+
+        with pytest.raises(ToolError, match="active_form exceeds"):
+            await update_task(task_id=str(task.id), active_form="x" * 501)
+
+
+# ---------------------------------------------------------------------------
 # link_tasks / unlink_tasks (Sprint 1 / S1-4)
 # ---------------------------------------------------------------------------
 
@@ -1106,7 +1197,8 @@ class TestCompleteTask:
     async def test_marks_done_with_completed_at(
         self, admin_user, test_project, mock_auth, mock_check, mock_publish
     ):
-        """complete_task sets status to done and completed_at."""
+        """complete_task sets status to done and completed_at,
+        firing both task.updated and task.completed on transition."""
         from app.mcp.tools.tasks import complete_task
 
         pid = str(test_project.id)
@@ -1121,7 +1213,26 @@ class TestCompleteTask:
         assert db_task.status == TaskStatus.done
         assert db_task.completed_at is not None
 
-        mock_publish.assert_called_once()
+        # S2-1: both task.updated and task.completed fire on transition INTO done.
+        event_types = [call.args[1] for call in mock_publish.call_args_list]
+        assert "task.updated" in event_types
+        assert "task.completed" in event_types
+
+    async def test_no_completed_event_when_already_done(
+        self, admin_user, test_project, mock_auth, mock_check, mock_publish
+    ):
+        """Re-completing a done task must not fire a duplicate task.completed event."""
+        from app.mcp.tools.tasks import complete_task
+
+        pid = str(test_project.id)
+        task = await make_task(pid, admin_user, status=TaskStatus.done)
+
+        # Calling complete_task on a done task with a new completion_report
+        # still saves the report but must not re-fire task.completed.
+        await complete_task(task_id=str(task.id), completion_report="retry")
+
+        event_types = [call.args[1] for call in mock_publish.call_args_list]
+        assert "task.completed" not in event_types
         call_args = mock_publish.call_args
         assert call_args[0][1] == "task.updated"
 

@@ -36,6 +36,7 @@ async def complete_task(
     user: User = Depends(get_current_user),
 ) -> dict:
     _, task = await _get_editable_task(project_id, task_id, user)
+    was_done = task.status == TaskStatus.done
     task.record_change("status", task.status, TaskStatus.done, str(user.id))
     task.status = TaskStatus.done
     task.completed_at = datetime.now(UTC)
@@ -43,6 +44,10 @@ async def complete_task(
         task.completion_report = body.completion_report
     await task.save_updated()
     await publish_event(project_id, "task.updated", _task_dict(task))
+    # Fire task.completed only on transition INTO done — this is the hook
+    # clients subscribe to for desktop/audio notifications (S2-6).
+    if not was_done:
+        await publish_event(project_id, "task.completed", _task_dict(task))
     await _index_task(task)
     # Resolve linked error issues
     from .....services.error_tracker.lifecycle import resolve_linked_issues

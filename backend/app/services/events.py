@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import UTC, datetime
 
 from ..core.redis import get_redis
 
@@ -11,7 +12,14 @@ _CHANNEL = "todo:events"
 async def publish_event(project_id: str, event_type: str, data: dict) -> None:
     try:
         redis = get_redis()
-        payload = json.dumps({"type": event_type, "project_id": project_id, "data": data})
+        # ``server_time`` is consumed by clients as the cursor for
+        # ``list_tasks(updated_since=...)`` reconcile (S2-3). Always UTC.
+        payload = json.dumps({
+            "type": event_type,
+            "project_id": project_id,
+            "data": data,
+            "server_time": datetime.now(UTC).isoformat(),
+        })
         await redis.publish(_CHANNEL, payload)
     except Exception as e:
         logger.warning("Failed to publish event %s: %s", event_type, e)

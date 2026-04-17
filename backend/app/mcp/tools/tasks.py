@@ -144,7 +144,7 @@ def _parse_decision_context(value: dict | None) -> DecisionContext | None:
 UPDATABLE_FIELDS = {
     "title", "description", "status", "priority", "due_date",
     "assignee_id", "tags", "needs_detail", "approved", "sort_order", "archived",
-    "completion_report", "task_type", "decision_context",
+    "completion_report", "task_type", "decision_context", "active_form",
 }
 
 
@@ -161,6 +161,7 @@ async def list_tasks(
     archived: bool | None = False,
     due_before: str | None = None,
     due_after: str | None = None,
+    updated_since: str | None = None,
     sort_by: str = "sort_order",
     order: str = "asc",
     limit: int = 50,
@@ -184,6 +185,7 @@ async def list_tasks(
         archived: Filter by archived flag (true/false). Default false (hides archived). Set to null/omit to include all.
         due_before: Filter tasks due before this date. Supports ISO 8601, or shorthands: today, tomorrow, yesterday, this_week, next_week, this_month, +7d, -3d
         due_after: Filter tasks due after this date. Supports ISO 8601, or shorthands: today, tomorrow, yesterday, this_week, next_week, this_month, +7d, -3d
+        updated_since: Return only tasks whose ``updated_at`` is strictly greater than this timestamp (ISO 8601). Used for SSE reconcile after short disconnects.
         sort_by: Sort field: sort_order (default) / created_at / due_date / priority / updated_at
         order: Sort direction: asc (default) / desc
         limit: Maximum number of tasks to return (default 50)
@@ -218,6 +220,12 @@ async def list_tasks(
         filters.setdefault("due_date", {})["$lte"] = _parse_date_filter(due_before)
     if due_after:
         filters.setdefault("due_date", {})["$gte"] = _parse_date_filter(due_after)
+    if updated_since:
+        try:
+            since = datetime.fromisoformat(updated_since)
+        except ValueError:
+            raise ToolError(f"Invalid updated_since '{updated_since}': expected ISO 8601")
+        filters["updated_at"] = {"$gt": since}
 
     query = Task.find(filters)
 
@@ -499,6 +507,7 @@ async def update_task(
     completion_report: str | None = None,
     needs_detail: bool | None = None,
     approved: bool | None = None,
+    active_form: str | None = None,
 ) -> dict:
     """Update a task. Only provided fields are changed.
 
@@ -524,6 +533,7 @@ async def update_task(
         completion_report: Completion report text (supports Markdown)
         needs_detail: Flag indicating the user cannot decide whether/how to address this task and needs investigation results first. Setting true automatically clears approved.
         approved: Flag indicating the task is approved for implementation. Setting true automatically clears needs_detail.
+        active_form: One-line description of what is being done right now (shown in Live Activity Feed while status=in_progress). Max 500 chars. Pass empty string or null to clear.
     """
     if title is not None and len(title) > 255:
         raise ToolError("Title exceeds maximum length of 255 characters")
@@ -531,6 +541,8 @@ async def update_task(
         raise ToolError("Description exceeds maximum length of 10000 characters")
     if completion_report is not None and len(completion_report) > 10000:
         raise ToolError("Completion report exceeds maximum length of 10000 characters")
+    if active_form is not None and len(active_form) > 500:
+        raise ToolError("active_form exceeds maximum length of 500 characters")
 
     key_info = await authenticate()
 
@@ -572,6 +584,9 @@ async def update_task(
         updates["needs_detail"] = needs_detail
     if approved is not None:
         updates["approved"] = approved
+    if active_form is not None:
+        # Empty string clears the field (stored as None) per the docstring convention.
+        updates["active_form"] = active_form if active_form else None
 
     disallowed = set(updates.keys()) - UPDATABLE_FIELDS
     if disallowed:
@@ -785,6 +800,7 @@ async def complete_task(task_id: str, completion_report: str | None = None) -> d
     await _check_project_not_locked(task.project_id)
 
     actor = f"mcp:{key_info['key_name']}" if key_info.get("key_name") else "mcp"
+    was_done = task.status == TaskStatus.done
     changed = False
     if task.status != TaskStatus.done:
         task.record_change("status", task.status, TaskStatus.done, actor)
@@ -797,6 +813,9 @@ async def complete_task(task_id: str, completion_report: str | None = None) -> d
     if changed:
         await task.save_updated()
         await publish_event(task.project_id, "task.updated", _task_dict(task))
+        # Fire task.completed only on transition INTO done (S2-1).
+        if not was_done:
+            await publish_event(task.project_id, "task.completed", _task_dict(task))
         await _index_task(task)
         # Resolve linked error issues
         from ...services.error_tracker.lifecycle import resolve_linked_issues
