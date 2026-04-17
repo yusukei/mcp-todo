@@ -285,4 +285,99 @@ describe('useSSE', () => {
       MockEventSource.instances[0].simulateMessage('invalid json {{{}')
     }).not.toThrow()
   })
+
+  it('イベントの server_time を localStorage に保存する (S2-3 reconcile)', async () => {
+    useAuthStore.setState({ user: createMockUser() })
+    localStorage.removeItem('sse.lastServerTime')
+    renderHook(() => useSSE(), { wrapper: makeWrapper() })
+    await waitForEventSource()
+
+    const ts = '2026-04-17T14:00:00+00:00'
+    MockEventSource.instances[0].simulateMessage(
+      JSON.stringify({
+        type: 'task.updated',
+        project_id: 'proj-1',
+        data: { id: 'task-1' },
+        server_time: ts,
+      })
+    )
+
+    expect(localStorage.getItem('sse.lastServerTime')).toBe(ts)
+  })
+
+  it('task.linked イベントで source/target 両方の task クエリを invalidate する', async () => {
+    const qc = new QueryClient()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+
+    useAuthStore.setState({ user: createMockUser() })
+    renderHook(() => useSSE(), {
+      wrapper: ({ children }) =>
+        createElement(QueryClientProvider, { client: qc }, children),
+    })
+    await waitForEventSource()
+
+    MockEventSource.instances[0].simulateMessage(
+      JSON.stringify({
+        type: 'task.linked',
+        project_id: 'proj-1',
+        data: { source_id: 'task-A', target_id: 'task-B', relation: 'blocks' },
+      })
+    )
+
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['task', 'task-A'] })
+    )
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['task', 'task-B'] })
+    )
+  })
+
+  it('task.unlinked イベントでも両端の task クエリを invalidate する', async () => {
+    const qc = new QueryClient()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+
+    useAuthStore.setState({ user: createMockUser() })
+    renderHook(() => useSSE(), {
+      wrapper: ({ children }) =>
+        createElement(QueryClientProvider, { client: qc }, children),
+    })
+    await waitForEventSource()
+
+    MockEventSource.instances[0].simulateMessage(
+      JSON.stringify({
+        type: 'task.unlinked',
+        project_id: 'proj-1',
+        data: { source_id: 'src', target_id: 'tgt' },
+      })
+    )
+
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['task', 'src'] })
+    )
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['task', 'tgt'] })
+    )
+  })
+
+  it('再接続時に lastServerTime があれば tasks/projects を invalidate する (reconcile)', async () => {
+    const qc = new QueryClient()
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+
+    // Pre-seed the cursor so the next connection triggers reconcile.
+    localStorage.setItem('sse.lastServerTime', '2026-04-17T13:00:00+00:00')
+    useAuthStore.setState({ user: createMockUser() })
+
+    renderHook(() => useSSE(), {
+      wrapper: ({ children }) =>
+        createElement(QueryClientProvider, { client: qc }, children),
+    })
+    await waitForEventSource()
+
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['tasks'] })
+    )
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['projects'] })
+    )
+  })
 })
