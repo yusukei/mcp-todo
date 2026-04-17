@@ -123,6 +123,10 @@ export function useSSE() {
           if (event.type.startsWith('task.') || event.type.startsWith('tasks.')) {
             queryClient.invalidateQueries({ queryKey: ['tasks', projectId] })
             queryClient.invalidateQueries({ queryKey: ['project-summary', projectId] })
+            // Refresh cross-project Live Activity panel (S2-8) on any
+            // task change — status/active_form updates can add or remove
+            // the task from the in-progress feed.
+            queryClient.invalidateQueries({ queryKey: ['tasks', 'live'] })
             if (event.data?.id) {
               queryClient.invalidateQueries({ queryKey: ['task', event.data.id] })
             }

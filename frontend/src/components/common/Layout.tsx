@@ -13,6 +13,7 @@ import { FolderOpen, LogOut, Settings, UserCog, CheckSquare, Menu, X, BookOpen, 
 import { api } from '../../api/client'
 import { useAuthStore } from '../../store/auth'
 import { useSSE } from '../../hooks/useSSE'
+import LiveActivityPanel from './LiveActivityPanel'
 import ThemeToggle from './ThemeToggle'
 import ErrorBoundary, { PageErrorFallback } from './ErrorBoundary'
 import type { Project } from '../../types'
@@ -295,6 +296,9 @@ export default function Layout() {
           <Outlet />
         </ErrorBoundary>
       </main>
+
+      {/* Sprint 2 / S2-8: cross-project Live Activity floating panel */}
+      <LiveActivityPanel />
     </div>
   )
 }
