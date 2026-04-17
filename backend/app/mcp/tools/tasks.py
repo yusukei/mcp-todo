@@ -59,6 +59,49 @@ def _task_summary(task: "Task") -> dict:
     return d
 
 
+def _task_minimal(task: "Task") -> dict:
+    """Minimal hub-API task representation.
+
+    Intended for overview calls like ``get_work_context`` where the LLM
+    just needs to see "what's on the list". Heavier fields (description,
+    tags, comments, completion_report, activity_log) are only fetched via
+    ``get_task`` / ``get_task_context`` when the user drills in.
+
+    Included fields:
+    - id, title, status, priority
+    - due_date (when set)
+    - assignee_id (when set)
+    - needs_detail / approved (when truthy)
+    """
+    d: dict = {
+        "id": str(task.id),
+        "title": task.title,
+        "status": task.status,
+        "priority": task.priority,
+    }
+    if getattr(task, "due_date", None):
+        d["due_date"] = task.due_date.isoformat()
+    if getattr(task, "assignee_id", None):
+        d["assignee_id"] = task.assignee_id
+    if getattr(task, "needs_detail", False):
+        d["needs_detail"] = True
+    if getattr(task, "approved", False):
+        d["approved"] = True
+    return d
+
+
+def _task_serializer(detail: str):
+    """Resolve a detail level (``"minimal"``/``"summary"``/``"full"``) to the
+    matching task serializer."""
+    if detail == "minimal":
+        return _task_minimal
+    if detail == "summary":
+        return _task_summary
+    if detail == "full":
+        return _task_dict
+    raise ToolError("detail must be 'minimal', 'summary', or 'full'")
+
+
 def _parse_date_filter(value: str) -> datetime:
     """Parse a date filter value. Supports ISO 8601 and shorthands."""
     shorthands = {
@@ -270,6 +313,7 @@ async def get_work_context(
     project_id: str,
     limit: int = 20,
     skip: int = 0,
+    detail: str = "minimal",
 ) -> dict:
     """Get a comprehensive work context for the current session.
 
@@ -281,9 +325,15 @@ async def get_work_context(
             are not supported; loop over projects from list_projects if needed)
         limit: Maximum number of tasks per category (default 20)
         skip: Number of tasks to skip per category for pagination (default 0)
+        detail: Task serialization level.
+            - ``"minimal"`` (default): id, title, status, priority, and
+              due_date/assignee/flags when set — ideal for overviews.
+            - ``"summary"``: all fields except comments/attachments.
+            - ``"full"``: everything including comments and attachments.
     """
     key_info = await authenticate()
     now = datetime.now(UTC)
+    serialize = _task_serializer(detail)
 
     project_id = await _resolve_project_id(project_id)
     await check_project_access(project_id, key_info)
@@ -311,10 +361,10 @@ async def get_work_context(
     )
 
     return {
-        "approved": {"items": [_task_summary(t) for t in approved_tasks], "total": approved_total, "limit": limit, "skip": skip},
-        "in_progress": {"items": [_task_summary(t) for t in in_progress_tasks], "total": in_progress_total, "limit": limit, "skip": skip},
-        "overdue": {"items": [_task_summary(t) for t in overdue_tasks], "total": overdue_total, "limit": limit, "skip": skip},
-        "needs_detail": {"items": [_task_summary(t) for t in needs_detail_tasks], "total": needs_detail_total, "limit": limit, "skip": skip},
+        "approved": {"items": [serialize(t) for t in approved_tasks], "total": approved_total, "limit": limit, "skip": skip},
+        "in_progress": {"items": [serialize(t) for t in in_progress_tasks], "total": in_progress_total, "limit": limit, "skip": skip},
+        "overdue": {"items": [serialize(t) for t in overdue_tasks], "total": overdue_total, "limit": limit, "skip": skip},
+        "needs_detail": {"items": [serialize(t) for t in needs_detail_tasks], "total": needs_detail_total, "limit": limit, "skip": skip},
     }
 
 

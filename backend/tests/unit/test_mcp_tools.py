@@ -2339,3 +2339,136 @@ class TestSearchTasksRegexEscape:
 
         assert result["total"] == 1
         assert result["items"][0]["title"] == "task*important"
+
+
+class TestGetWorkContextMinimal:
+    """Verify get_work_context returns minimal-mode payloads by default."""
+
+    async def test_default_is_minimal(
+        self, admin_user, test_project, mock_auth, mock_check,
+    ):
+        from app.mcp.tools.tasks import get_work_context
+
+        await make_task(
+            str(test_project.id), admin_user,
+            title="Task A", tags=["tag1", "tag2"], approved=True,
+        )
+
+        with patch(
+            "app.mcp.tools.tasks._resolve_project_id",
+            new_callable=AsyncMock,
+            return_value=str(test_project.id),
+        ):
+            result = await get_work_context(project_id=str(test_project.id))
+
+        # minimal mode should NOT include description or tags
+        item = result["approved"]["items"][0]
+        assert "id" in item
+        assert "title" in item
+        assert "status" in item
+        assert "priority" in item
+        assert "description" not in item
+        assert "tags" not in item
+        assert "comments" not in item
+        assert "attachments" not in item
+
+    async def test_detail_summary_restores_fields(
+        self, admin_user, test_project, mock_auth, mock_check,
+    ):
+        from app.mcp.tools.tasks import get_work_context
+
+        task = await make_task(
+            str(test_project.id), admin_user,
+            title="Task A", tags=["x"], approved=True,
+        )
+        task.description = "body"
+        await task.save()
+
+        with patch(
+            "app.mcp.tools.tasks._resolve_project_id",
+            new_callable=AsyncMock,
+            return_value=str(test_project.id),
+        ):
+            result = await get_work_context(
+                project_id=str(test_project.id), detail="summary",
+            )
+
+        item = result["approved"]["items"][0]
+        assert item.get("description") == "body"
+        assert item.get("tags") == ["x"]
+        assert "comments" not in item  # summary still drops comments
+
+    async def test_detail_full_includes_comments(
+        self, admin_user, test_project, mock_auth, mock_check,
+    ):
+        from app.mcp.tools.tasks import get_work_context
+
+        await make_task(
+            str(test_project.id), admin_user,
+            title="Task A", approved=True,
+        )
+
+        with patch(
+            "app.mcp.tools.tasks._resolve_project_id",
+            new_callable=AsyncMock,
+            return_value=str(test_project.id),
+        ):
+            result = await get_work_context(
+                project_id=str(test_project.id), detail="full",
+            )
+
+        item = result["approved"]["items"][0]
+        assert "comments" in item
+        assert "attachments" in item
+
+    async def test_rejects_invalid_detail(
+        self, admin_user, test_project, mock_auth, mock_check,
+    ):
+        from fastmcp.exceptions import ToolError
+
+        from app.mcp.tools.tasks import get_work_context
+
+        with patch(
+            "app.mcp.tools.tasks._resolve_project_id",
+            new_callable=AsyncMock,
+            return_value=str(test_project.id),
+        ):
+            with pytest.raises(ToolError, match="detail must be"):
+                await get_work_context(
+                    project_id=str(test_project.id), detail="bogus",
+                )
+
+    async def test_minimal_vs_summary_size_reduction(
+        self, admin_user, test_project, mock_auth, mock_check,
+    ):
+        """Minimal default should be much smaller than the previous summary default."""
+        import json as _json
+
+        from app.mcp.tools.tasks import get_work_context
+
+        for i in range(5):
+            t = await make_task(
+                str(test_project.id), admin_user,
+                title=f"Task {i}",
+                tags=["tag", "another"],
+                approved=True,
+            )
+            t.description = "long description line. " * 15
+            await t.save()
+
+        with patch(
+            "app.mcp.tools.tasks._resolve_project_id",
+            new_callable=AsyncMock,
+            return_value=str(test_project.id),
+        ):
+            minimal = await get_work_context(project_id=str(test_project.id))
+            summary = await get_work_context(
+                project_id=str(test_project.id), detail="summary",
+            )
+
+        mb = len(_json.dumps(minimal))
+        sb = len(_json.dumps(summary))
+        # 50% reduction is the acceptance target.
+        assert mb <= sb * 0.5, (
+            f"minimal={mb}B summary={sb}B (minimal must be ≤50% of summary)"
+        )
