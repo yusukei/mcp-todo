@@ -30,7 +30,7 @@ import urllib.request
 from pathlib import Path
 from typing import Iterable
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 logger = logging.getLogger("workspace-agent.update")
 
