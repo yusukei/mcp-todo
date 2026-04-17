@@ -127,6 +127,55 @@ def _detect_shells() -> list[str]:
         return shells or ["/bin/sh"]
 
 
+# Sentinel meaning "use asyncio.create_subprocess_shell" (platform default).
+_DEFAULT_SHELL = object()
+
+
+def _resolve_shell_exec(hint: str) -> object | list[str] | None:
+    """Map a ``shell=`` hint to an argv prefix for ``create_subprocess_exec``.
+
+    Returns:
+        ``_DEFAULT_SHELL`` sentinel → use ``create_subprocess_shell``
+        ``list[str]`` → argv prefix (e.g. ``[bash_path, "-c"]``)
+        ``None`` → requested shell is unavailable on this agent
+    """
+    if hint in ("", "default"):
+        return _DEFAULT_SHELL
+    shells = _detect_shells()
+
+    def _match_stem(candidates: tuple[str, ...]) -> str | None:
+        for s in shells:
+            stem = os.path.splitext(os.path.basename(s))[0].lower()
+            if stem in candidates:
+                return s
+        return None
+
+    if hint in ("bash", "sh"):
+        # busybox-w32 only dispatches sub-applets; it needs the ``sh``
+        # applet name before the script.
+        bash_path = _match_stem(("bash", "sh"))
+        if bash_path and os.path.basename(bash_path).lower().startswith("busybox"):
+            return [bash_path, "sh", "-c"]
+        if bash_path:
+            return [bash_path, "-c"]
+        return None
+
+    if hint in ("pwsh", "powershell"):
+        ps_path = _match_stem(("pwsh", "powershell"))
+        if ps_path:
+            return [ps_path, "-NoProfile", "-Command"]
+        return None
+
+    if hint == "cmd":
+        cmd_path = _match_stem(("cmd",))
+        if cmd_path:
+            return [cmd_path, "/c"]
+        return None
+
+    # Unknown hint — explicit error rather than silent fallback.
+    return None
+
+
 def _resolve_safe_path(path: str, cwd: str | None) -> str:
     """Resolve a user-supplied path against cwd, ensuring it stays inside cwd.
 
@@ -384,9 +433,12 @@ async def handle_exec_status(msg: dict) -> dict:
 async def handle_exec(msg: dict) -> dict:
     """Execute a shell command and return stdout/stderr.
 
-    New optional fields:
+    Optional fields:
     - ``cwd_override``: subdirectory inside the workspace to run in
     - ``env``: extra environment variables to merge with the agent's env
+    - ``shell``: ``"default"`` (native), ``"bash"`` / ``"sh"`` (POSIX via
+      Git/msys2/busybox), ``"cmd"`` (Windows cmd.exe), ``"pwsh"`` /
+      ``"powershell"`` (PowerShell). Unknown shells return a clear error.
 
     The response always includes ``stdout_truncated`` / ``stderr_truncated``
     flags + total byte counts so callers can detect output that exceeded
@@ -397,6 +449,7 @@ async def handle_exec(msg: dict) -> dict:
     cwd_override = msg.get("cwd_override")
     extra_env = msg.get("env") or {}
     timeout = min(msg.get("timeout", 60), 3600)
+    shell_hint = (msg.get("shell") or "default").lower()
 
     if base_cwd and not os.path.isdir(base_cwd):
         return {
@@ -476,7 +529,30 @@ async def handle_exec(msg: dict) -> dict:
         if not IS_WINDOWS:
             kwargs["preexec_fn"] = os.setsid
 
-        proc = await asyncio.create_subprocess_shell(command, **kwargs)
+        # Shell selection — ``default`` keeps the historical behaviour
+        # (asyncio.create_subprocess_shell → cmd on Windows, /bin/sh on
+        # POSIX). Explicit shells route through create_subprocess_exec
+        # so we can point at any interpreter (bash, pwsh, busybox).
+        shell_exec = _resolve_shell_exec(shell_hint)
+        if shell_exec is None:
+            return {
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": (
+                    f"shell={shell_hint!r} not available on this agent "
+                    f"(available: {[os.path.basename(s) for s in _detect_shells()]})"
+                ),
+                "stdout_truncated": False,
+                "stderr_truncated": False,
+                "stdout_total_bytes": 0,
+                "stderr_total_bytes": 0,
+            }
+        if shell_exec is _DEFAULT_SHELL:
+            proc = await asyncio.create_subprocess_shell(command, **kwargs)
+        else:
+            proc = await asyncio.create_subprocess_exec(
+                *shell_exec, command, **kwargs,
+            )
 
         try:
             stdout, stderr = await asyncio.wait_for(

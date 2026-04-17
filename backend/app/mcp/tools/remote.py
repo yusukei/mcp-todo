@@ -509,6 +509,7 @@ async def remote_exec(
     run_in_background: bool | None = None,
     format: str = "text",
     max_bytes: int | None = None,
+    shell: str = "default",
 ) -> dict | str:
     """Execute a shell command on the remote machine for this project.
 
@@ -528,6 +529,12 @@ async def remote_exec(
             a dict regardless of ``format``.
         format: ``"text"`` (default, bash-like plain text with
             ``[stderr]``/``[exit N]`` markers) or ``"json"``.
+        shell: Interpreter to run the command under.
+            ``"default"`` (platform native: cmd on Windows, /bin/sh on
+            POSIX), ``"bash"``/``"sh"`` (POSIX tools via Git for Windows
+            / msys2 / busybox on Windows; ``/bin/bash`` etc on POSIX),
+            ``"pwsh"``/``"powershell"``, ``"cmd"``. Availability is
+            discoverable via ``list_remote_agents().available_shells``.
 
     Returns:
         ``format="text"`` → ``str``: stdout plus ``[stderr]``/``[exit N]``/
@@ -539,6 +546,10 @@ async def remote_exec(
     """
     if format not in ("text", "json"):
         raise ToolError("format must be 'text' or 'json'")
+    if shell not in ("default", "bash", "sh", "cmd", "pwsh", "powershell"):
+        raise ToolError(
+            "shell must be 'default', 'bash', 'sh', 'cmd', 'pwsh', or 'powershell'"
+        )
     async with _audit_on_denied("exec", project_id, detail=str(command)[:500]) as audit:
         audit.key_info = await authenticate()
         audit.binding = await _resolve_binding(project_id, audit.key_info)
@@ -589,6 +600,8 @@ async def remote_exec(
         payload["cwd_override"] = cwd
     if env is not None:
         payload["env"] = env
+    if shell != "default":
+        payload["shell"] = shell
 
     # Background execution: start and return job_id immediately
     if run_in_background:

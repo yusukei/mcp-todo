@@ -346,6 +346,37 @@ class TestRemoteExec:
                     project_id="p", command="ls", format="xml",
                 )
 
+    async def test_exec_shell_default_omits_shell_field(self, patch_auth):
+        """shell='default' must not send a shell key to the agent."""
+        send_request = AsyncMock(return_value={
+            "exit_code": 0, "stdout": "", "stderr": "",
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            await remote.remote_exec(
+                project_id="p", command="echo hi",
+            )
+        payload = send_request.call_args[0][2]
+        assert "shell" not in payload
+
+    async def test_exec_shell_bash_forwarded_to_agent(self, patch_auth):
+        send_request = AsyncMock(return_value={
+            "exit_code": 0, "stdout": "bash world\n", "stderr": "",
+        })
+        with patch("app.mcp.tools.remote.agent_manager.send_request", send_request):
+            result = await remote.remote_exec(
+                project_id="p", command="echo bash world", shell="bash",
+            )
+        payload = send_request.call_args[0][2]
+        assert payload["shell"] == "bash"
+        assert result == "bash world\n"
+
+    async def test_exec_rejects_unknown_shell(self, patch_auth):
+        with patch("app.mcp.tools.remote.agent_manager.send_request", new=AsyncMock()):
+            with pytest.raises(ToolError, match="shell"):
+                await remote.remote_exec(
+                    project_id="p", command="ls", shell="fish",
+                )
+
 
 # ──────────────────────────────────────────────
 # remote_read_file

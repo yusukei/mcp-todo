@@ -104,6 +104,7 @@ async def remote_exec(
 | `inject_secrets` | bool | — | False | **True で環境変数にシークレット自動注入** |
 | `run_in_background` | bool | — | None | True なら非同期実行し job_id を即返す |
 | `format` | str | — | `"text"` | 応答形式。`"text"` は bash 互換のプレーンテキスト。`"json"` は詳細 dict |
+| `shell` | str | — | `"default"` | 実行シェル。`"default"`（プラットフォーム既定）/ `"bash"` / `"sh"` / `"cmd"` / `"pwsh"` / `"powershell"`。利用可能シェルは `list_remote_agents().available_shells` で確認 |
 
 **inject_secrets = True の動作**:
 - プロジェクトの全シークレット (set_secret で登録) を環境変数として注入
