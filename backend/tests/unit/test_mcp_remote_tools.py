@@ -1201,6 +1201,65 @@ class TestListRemoteAgents:
         assert entry["auto_update"] is True  # model default
         assert entry["update_channel"] == "stable"  # model default
 
+    async def test_returns_shell_fields(self, admin_user):
+        """list_remote_agents exposes available_shells and default_shell."""
+        from app.core.security import hash_api_key
+        from app.models.remote import RemoteAgent
+
+        agent = RemoteAgent(
+            name="win-agent-with-bash",
+            key_hash=hash_api_key("ta_listtest_token_0003"),
+            owner_id=str(admin_user.id),
+            os_type="win32",
+            available_shells=["cmd", "pwsh", "bash"],
+        )
+        await agent.insert()
+
+        with patch(
+            "app.mcp.tools.remote.authenticate",
+            new=AsyncMock(return_value=_MOCK_KEY_INFO),
+        ):
+            result = await remote.list_remote_agents()
+
+        entry = next(e for e in result if e["name"] == "win-agent-with-bash")
+        assert entry["available_shells"] == ["cmd", "pwsh", "bash"]
+        # bash wins because it's POSIX and the agent reported it
+        assert entry["default_shell"] == "bash"
+
+
+class TestDeriveDefaultShell:
+    """Unit coverage for the platform-aware default-shell picker."""
+
+    def test_bash_wins_when_reported(self):
+        assert (
+            remote._derive_default_shell("win32", ["cmd", "pwsh", "bash"]) == "bash"
+        )
+
+    def test_basename_match_for_full_paths(self):
+        """Agent reports absolute paths; helper must still match on stem."""
+        shells = [
+            r"C:\Windows\system32\cmd.exe",
+            r"C:\Program Files\Git\bin\bash.exe",
+        ]
+        assert remote._derive_default_shell("win32", shells) == "bash"
+
+    def test_posix_fallback_when_no_reported_shells(self):
+        assert remote._derive_default_shell("linux", []) == "sh"
+        assert remote._derive_default_shell("darwin", []) == "sh"
+
+    def test_windows_fallback_when_no_reported_shells(self):
+        """Legacy agents (no shell reporting) keep cmd.exe as default."""
+        assert remote._derive_default_shell("win32", []) == "cmd"
+        assert remote._derive_default_shell("windows", []) == "cmd"
+
+    def test_prefers_zsh_over_sh(self):
+        assert remote._derive_default_shell("darwin", ["sh", "zsh"]) == "zsh"
+
+    def test_prefers_zsh_over_sh_with_paths(self):
+        assert (
+            remote._derive_default_shell("darwin", ["/bin/sh", "/bin/zsh"]) == "zsh"
+        )
+
 
 # ──────────────────────────────────────────────
 # Regression: CLAUDE.md "No error hiding" / Security H-3

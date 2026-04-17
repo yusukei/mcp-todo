@@ -440,7 +440,9 @@ async def list_remote_agents() -> list[dict]:
     """List registered remote agents and their connection status.
 
     Returns a list of agents with id, name, hostname, os_type, is_online,
-    and the number of projects bound to the agent.
+    the number of projects bound to the agent, and shell information
+    (``available_shells`` reported by the agent + ``default_shell``
+    derived from ``os_type`` when the agent hasn't reported one).
     """
     await authenticate()
 
@@ -449,6 +451,7 @@ async def list_remote_agents() -> list[dict]:
     for a in agents:
         aid = str(a.id)
         project_count = await Project.find({"remote.agent_id": aid}).count()
+        available = list(a.available_shells or [])
         result.append({
             "id": aid,
             "name": a.name,
@@ -460,8 +463,39 @@ async def list_remote_agents() -> list[dict]:
             "agent_version": a.agent_version,
             "auto_update": a.auto_update,
             "update_channel": a.update_channel,
+            "available_shells": available,
+            "default_shell": _derive_default_shell(a.os_type, available),
         })
     return result
+
+
+def _derive_default_shell(os_type: str, available_shells: list[str]) -> str:
+    """Pick a sensible default shell for the agent.
+
+    The agent reports shells as absolute paths (e.g.
+    ``C:\\Windows\\system32\\cmd.exe``); we match on the basename stem
+    so the policy works regardless of install location.
+
+    Prefers an explicitly reported POSIX shell when present, else falls
+    back to the platform-native default. Kept conservative so existing
+    ``remote_exec`` callers see the same shell they've always used.
+    """
+    import os as _os
+
+    stems = {
+        _os.path.splitext(_os.path.basename(s))[0].lower()
+        for s in available_shells
+        if isinstance(s, str) and s
+    }
+    for preferred in ("bash", "zsh", "sh"):
+        if preferred in stems:
+            return preferred
+    if os_type in ("win32", "windows"):
+        # Windows native default — cmd remains the interop-safe choice
+        # for every installation, with or without Git/msys2/WSL.
+        return "cmd"
+    # POSIX hosts effectively always have ``sh``.
+    return "sh"
 
 
 @mcp.tool()

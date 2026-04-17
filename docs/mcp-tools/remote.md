@@ -6,6 +6,23 @@
 
 GitHub Actions / SSH トンネル経由でリモートマシンのコマンド実行・ファイル操作を実行します。秘密注入、監査ログ、リトライ機能を備えています。
 
+## OS 別シェル互換チートシート
+
+エージェントの `os_type` を `list_remote_agents` で確認して、適切な構文を選ぶ。`default_shell` が `bash` ならほぼ POSIX 互換で書ける。
+
+| やりたいこと | `cmd` (Windows 既定) | `pwsh` (PowerShell) | `bash`/`sh` (POSIX) |
+|---|---|---|---|
+| 末尾 N 行 | `more +N file`（近似） | `Get-Content -Tail N file` | `tail -n N file` |
+| 先頭 N 行 | `more <file \| more +0` | `Get-Content -Head N file` | `head -n N file` |
+| 文字列検索 | `findstr "pattern" file` | `Select-String "pattern" file` | `grep "pattern" file` |
+| 再帰検索 | `findstr /s "pattern" *.py` | `Select-String -Recurse -Include *.py "pattern"` | `grep -r "pattern" --include="*.py" .` |
+| パイプ | `cmd1 \| cmd2`（ファイル処理は別物） | `cmd1 \| cmd2` | `cmd1 \| cmd2` |
+| ヒアドキュメント | ❌ | `@"..."@` (ヒアストリング) | `<<EOF ... EOF` |
+| 文字置換 | （標準ツール無し） | `(Get-Content f) -replace 'a','b' \| Set-Content f` | `sed -i 's/a/b/g' f` |
+| 複数行スクリプト | ❌（`remote_exec` は CR/LF 拒否） | セミコロン `;` 区切り | 同左または `sh -c '...'` |
+
+**実装メモ**: LLM が Unix コマンドを書く習慣なら、`remote_exec` の `shell` パラメータ（Phase 2 以降）で `bash` を選ぶのが圧倒的に楽。Windows エージェントでも Git for Windows / msys2 / busybox-w32 いずれかがあれば POSIX シェルが使える。
+
 ## パラメータ命名ポリシー
 
 - **`project_id` は必須**。複数プロジェクト（= 複数リモートワークスペース）の区別のため、自動解決は行わない。LLM 呼び出し側は常にコンテキストに応じて明示指定すること。

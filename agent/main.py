@@ -65,17 +65,59 @@ RG_PATH: str | None = _detect_ripgrep()
 
 
 def _detect_shells() -> list[str]:
+    """Report every shell we can actually launch.
+
+    Windows: cmd.exe always; PowerShell flavors when present; and — new
+    — common bash locations (Git for Windows, msys2, WSL wrapper) so
+    the backend can route ``shell="bash"`` requests to a real POSIX
+    environment without user-installed tooling.
+
+    POSIX: whichever of zsh/bash/sh exist under ``/bin``.
+    """
     if IS_WINDOWS:
-        shells = []
+        shells: list[str] = []
         comspec = os.environ.get("COMSPEC", r"C:\Windows\system32\cmd.exe")
         if os.path.exists(comspec):
             shells.append(comspec)
+
         for ps in [
             r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
             r"C:\Program Files\PowerShell\7\pwsh.exe",
         ]:
             if os.path.exists(ps):
                 shells.append(ps)
+
+        # Git for Windows, msys2, and a bundled busybox fallback. First
+        # existing match wins — callers only need one bash entry.
+        program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+        program_files_x86 = os.environ.get(
+            "ProgramFiles(x86)", r"C:\Program Files (x86)",
+        )
+        local_appdata = os.environ.get(
+            "LOCALAPPDATA",
+            os.path.expanduser(r"~\AppData\Local"),
+        )
+        agent_dir = os.path.dirname(os.path.abspath(__file__))
+        bash_candidates = [
+            # Git for Windows — the most common install path, widely
+            # present on dev machines with no extra work from the user.
+            os.path.join(program_files, "Git", "bin", "bash.exe"),
+            os.path.join(program_files, "Git", "usr", "bin", "bash.exe"),
+            os.path.join(program_files_x86, "Git", "bin", "bash.exe"),
+            # msys2
+            r"C:\msys64\usr\bin\bash.exe",
+            r"C:\msys2\usr\bin\bash.exe",
+            # User-scope installs
+            os.path.join(local_appdata, "Programs", "Git", "bin", "bash.exe"),
+            # Busybox-w32 shipped alongside the agent binary (Phase 3
+            # fallback). Kept last so real bash wins when both exist.
+            os.path.join(agent_dir, "busybox.exe"),
+        ]
+        for candidate in bash_candidates:
+            if os.path.exists(candidate):
+                shells.append(candidate)
+                break  # one bash entry is enough
+
         return shells or [comspec]
     else:
         shells = []
