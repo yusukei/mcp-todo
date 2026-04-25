@@ -56,11 +56,17 @@ export default function TasksPane({
   }, [])
 
   const { data: tasks = [], isLoading, isError } = useQuery<Task[]>({
-    queryKey: ['tasks', projectId],
+    queryKey: ['tasks', projectId, 'workbench'],
     queryFn: () =>
       api
-        .get(`/projects/${projectId}/tasks`)
-        .then((r) => r.data as Task[]),
+        .get(`/projects/${projectId}/tasks`, {
+          params: { archived: false },
+        })
+        // The list endpoint returns ``{items, total, ...}`` (paged
+        // shape). Extract ``items`` so the rest of this component
+        // can treat ``tasks`` as a plain array.
+        .then((r) => (r.data?.items ?? []) as Task[]),
+    enabled: !!projectId,
   })
 
   if (isLoading) {
