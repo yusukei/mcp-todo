@@ -162,6 +162,12 @@ async def agent_websocket(ws: WebSocket):
                 reported_version = msg.get("agent_version")
                 if reported_version:
                     agent.agent_version = reported_version
+                # ``host_id`` joins the agent record with the supervisor
+                # record running on the same physical host. Optional —
+                # legacy agents without the field keep ``host_id=""``.
+                reported_host_id = msg.get("host_id")
+                if reported_host_id:
+                    agent.host_id = reported_host_id
                 agent.last_seen_at = datetime.now(UTC)
                 await agent.save()
                 # Check for available updates *after* persisting the

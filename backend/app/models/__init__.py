@@ -20,7 +20,7 @@ from .mcp_tool_usage import McpToolCallEvent, McpToolUsageBucket
 from .project import Project, ProjectMember, ProjectRemoteBinding
 from .secret import ProjectSecret, SecretAccessLog
 from .task import Attachment, Comment, Task
-from .remote import AgentRelease, RemoteAgent, RemoteExecLog
+from .remote import AgentRelease, RemoteAgent, RemoteExecLog, RemoteSupervisor
 from .user import AuthType, User
 
 __all__ = [
@@ -52,6 +52,7 @@ __all__ = [
     "ClipStatus",
     "RemoteAgent",
     "RemoteExecLog",
+    "RemoteSupervisor",
     "AgentRelease",
     "ProjectSecret",
     "SecretAccessLog",

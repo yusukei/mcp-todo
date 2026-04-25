@@ -16,6 +16,11 @@ class RemoteAgent(Document):
     name: str
     key_hash: Indexed(str, unique=True)  # type: ignore[valid-type]
     owner_id: str  # User ID who registered this agent
+    # Stable identifier for "this physical host", reported by the agent
+    # at auth-time. Lets the backend join an agent record with the
+    # supervisor running on the same machine — see ``RemoteSupervisor``.
+    # Empty string for legacy agents that predate the field.
+    host_id: str = ""
     hostname: str = ""
     os_type: str = ""  # "darwin", "linux", "windows"
     available_shells: list[str] = Field(default_factory=list)
@@ -76,6 +81,47 @@ class RemoteExecLog(Document):
             [("agent_id", 1), ("created_at", -1)],
             [("project_id", 1), ("created_at", -1)],
             [("mcp_key_owner_id", 1), ("created_at", -1)],
+        ]
+
+
+class RemoteSupervisor(Document):
+    """Registered Rust supervisor managing a remote agent process.
+
+    A supervisor lives on the same host as exactly one agent; it owns
+    the agent's OS process (spawn / restart / upgrade / log capture)
+    and exposes that surface to operators via the ``supervisor_*``
+    MCP tools. The supervisor's WebSocket is a separate channel from
+    the agent's — they share neither auth token nor envelope namespace.
+
+    Authorization: ``sv_`` tokens grant restart / upgrade / config
+    reload; treat them as more sensitive than ``ta_`` agent tokens.
+    See the Rust Supervisor design doc §3.4 (Token Lifecycle) for the
+    rotation / revocation flow.
+    """
+
+    name: str
+    key_hash: Indexed(str, unique=True)  # type: ignore[valid-type]
+    owner_id: str  # User ID who registered this supervisor
+    # Same value the agent on this host reports in ``RemoteAgent.host_id``.
+    # Joining on ``host_id`` lets the UI display "supervisor X manages
+    # agent Y" without an explicit foreign key.
+    host_id: str = ""
+    hostname: str = ""
+    os_type: str = ""
+    last_seen_at: datetime | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    # Versions reported via ``supervisor_info`` push.
+    supervisor_version: str | None = None
+    agent_version: str | None = None  # version of the agent the supervisor is currently running
+    agent_pid: int | None = None
+    agent_uptime_s: int | None = None
+
+    class Settings:
+        name = "remote_supervisors"
+        indexes = [
+            [("owner_id", 1), ("created_at", -1)],
+            [("host_id", 1)],
         ]
 
 

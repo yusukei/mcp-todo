@@ -62,6 +62,22 @@ def _detect_ripgrep() -> str | None:
 RG_PATH: str | None = _detect_ripgrep()
 
 
+def _compute_host_id() -> str:
+    """Stable per-host identifier (sha256 hex, 16 chars).
+
+    Used by the supervisor / backend to join the supervisor record
+    with the agent record running on the same physical machine. We
+    derive it from ``platform.node()`` because that is good enough
+    for the single-host personal-use deployment; renaming the host
+    intentionally invalidates the binding, which is the correct
+    behavior.
+    """
+    import hashlib
+
+    raw = f"{platform.node()}::{sys.platform}".encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:16]
+
+
 def _detect_shells() -> list[str]:
     """Report every shell we can actually launch.
 
@@ -1939,6 +1955,7 @@ class WorkspaceAgent:
             await ws.send(json.dumps({
                 "type": "agent_info",
                 "hostname": platform.node(),
+                "host_id": _compute_host_id(),
                 "os": sys.platform,
                 "shells": _detect_shells(),
                 "agent_version": __version__,
@@ -2012,6 +2029,16 @@ class WorkspaceAgent:
 
     async def _handle_message(self, msg: dict) -> None:
         msg_type = msg.get("type")
+
+        if msg_type == "shutdown":
+            # Graceful shutdown requested by the supervisor (or another
+            # operator with admin access to the agent's WebSocket). The
+            # supervisor uses this as the first step of its kill chain
+            # — see Rust Supervisor design doc §6.2 — before falling
+            # back to CTRL_BREAK_EVENT and finally TerminateJobObject.
+            logger.info("Shutdown requested over WS")
+            self._spawn_task(self.shutdown())
+            return
 
         if msg_type == "terminal_create":
             self._spawn_task(
