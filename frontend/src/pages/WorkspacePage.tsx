@@ -1,7 +1,7 @@
 ﻿import { useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Plus, Server, RefreshCw, FolderOpen, ExternalLink } from 'lucide-react'
+import { Plus, Server, RefreshCw, FolderOpen, ExternalLink, Terminal as TerminalIcon } from 'lucide-react'
 import { api } from '../api/client'
 import AgentList, { type Agent } from '../components/workspace/AgentList'
 import AgentRegisterDialog from '../components/workspace/AgentRegisterDialog'
@@ -143,6 +143,16 @@ export default function WorkspacePage() {
               バインドの編集はプロジェクト設定画面から行います
             </p>
           </div>
+          {selectedAgent?.is_online && (
+            <Link
+              to={`/workspaces/terminal/${selectedAgent.id}`}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-terracotta-600 hover:bg-terracotta-700 text-white rounded-lg"
+              title="Web Terminal を開く"
+            >
+              <TerminalIcon className="w-3.5 h-3.5" />
+              ターミナル
+            </Link>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">

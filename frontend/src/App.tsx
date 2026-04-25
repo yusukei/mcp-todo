@@ -22,6 +22,7 @@ const ProjectPage = React.lazy(() => import('./pages/ProjectPage'))
 const KnowledgePage = React.lazy(() => import('./pages/KnowledgePage'))
 const DocSiteViewerPage = React.lazy(() => import('./pages/DocSiteViewerPage'))
 const WorkspacePage = React.lazy(() => import('./pages/WorkspacePage'))
+const TerminalPage = React.lazy(() => import('./pages/TerminalPage'))
 const ChatPage = React.lazy(() => import('./pages/ChatPage'))
 const BookmarksPage = React.lazy(() => import('./pages/BookmarksPage'))
 const GoogleCallbackPage = React.lazy(() => import('./pages/GoogleCallbackPage'))
@@ -77,6 +78,14 @@ function AppRoutes() {
               element={
                 <AdminRoute>
                   {lazy(<WorkspacePage />)}
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="workspaces/terminal/:agentId"
+              element={
+                <AdminRoute>
+                  {lazy(<TerminalPage />)}
                 </AdminRoute>
               }
             />
