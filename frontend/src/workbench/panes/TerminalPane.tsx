@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, Server, ExternalLink } from 'lucide-react'
 import { api } from '../../api/client'
 import TerminalView from '../../components/workspace/TerminalView'
+import type { TerminalViewHandle } from '../../components/workspace/TerminalView'
 import type { PaneComponentProps } from '../paneRegistry'
+import { useWorkbenchEvent } from '../eventBus'
 
 interface ProjectWithRemote {
   id: string
@@ -37,6 +39,7 @@ interface AgentInfo {
  *   ``terminal_attach`` failures.
  */
 export default function TerminalPane({
+  paneId,
   projectId,
   paneConfig,
   onConfigChange,
@@ -45,6 +48,20 @@ export default function TerminalPane({
     sessionId?: string
     agentId?: string
   }
+
+  // Imperative handle on TerminalView so we can inject ``cd <path>``
+  // when this pane is the routing target for an ``open-terminal-cwd``
+  // event from the file browser.
+  const tvRef = useRef<TerminalViewHandle | null>(null)
+
+  useWorkbenchEvent(paneId, 'open-terminal-cwd', ({ cwd }) => {
+    // Quote the path so spaces / special chars don't break the cd.
+    // Use double quotes + escape any embedded double quotes; this
+    // matches the most common posix + Windows cmd quoting style. The
+    // trailing newline submits the line.
+    const safe = cwd.replace(/"/g, '\\"')
+    tvRef.current?.sendInput(`cd "${safe}"\n`)
+  })
 
   const { data: project, isLoading: projectLoading } = useQuery<ProjectWithRemote>({
     queryKey: ['project', projectId],
@@ -167,6 +184,7 @@ export default function TerminalPane({
   return (
     <TerminalView
       key={tvKey}
+      ref={tvRef}
       agentId={liveAgentId!}
       agentName={agent?.name}
       sessionId={config.sessionId}

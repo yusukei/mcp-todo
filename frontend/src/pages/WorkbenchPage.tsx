@@ -25,6 +25,7 @@ import {
 } from '../workbench/treeUtils'
 import type { LayoutTree, PaneType } from '../workbench/types'
 import { KNOWN_PANE_TYPES } from '../workbench/paneRegistry'
+import { WorkbenchEventProvider } from '../workbench/eventBus'
 
 interface State {
   tree: LayoutTree
@@ -221,18 +222,20 @@ export default function WorkbenchPage() {
         </span>
       </div>
       <div className="flex-1 min-h-0">
-        <WorkbenchLayout
-          tree={state.tree}
-          projectId={projectId}
-          onActivateTab={onActivateTab}
-          onCloseTab={onCloseTab}
-          onAddTab={onAddTab}
-          onChangePaneType={onChangePaneType}
-          onConfigChange={onConfigChange}
-          onSplit={onSplit}
-          onCloseGroup={onCloseGroup}
-          onSplitSizes={onSplitSizes}
-        />
+        <WorkbenchEventProvider tree={state.tree}>
+          <WorkbenchLayout
+            tree={state.tree}
+            projectId={projectId}
+            onActivateTab={onActivateTab}
+            onCloseTab={onCloseTab}
+            onAddTab={onAddTab}
+            onChangePaneType={onChangePaneType}
+            onConfigChange={onConfigChange}
+            onSplit={onSplit}
+            onCloseGroup={onCloseGroup}
+            onSplitSizes={onSplitSizes}
+          />
+        </WorkbenchEventProvider>
       </div>
     </div>
   )

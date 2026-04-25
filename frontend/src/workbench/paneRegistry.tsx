@@ -13,6 +13,10 @@ import FileBrowserPane from './panes/FileBrowserPane'
 import UnsupportedPane from './panes/UnsupportedPane'
 
 export interface PaneComponentProps {
+  /** Stable pane id (Pane.id). Panes use this to register cross-pane
+   *  event listeners with the workbench event bus and to identify
+   *  themselves when reporting focus. */
+  paneId: string
   /** The Workbench's project context. Most panes scope their queries
    *  to this. */
   projectId: string

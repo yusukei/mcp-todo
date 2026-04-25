@@ -11,6 +11,7 @@ import {
 import { api } from '../../api/client'
 import MarkdownRenderer from '../../components/common/MarkdownRenderer'
 import type { PaneComponentProps } from '../paneRegistry'
+import { useWorkbenchEvent } from '../eventBus'
 
 interface DocSummary {
   id: string
@@ -41,12 +42,23 @@ interface DocListResponse {
  * deleted the doc in another tab between mount and refetch).
  */
 export default function DocPane({
+  paneId,
   projectId,
   paneConfig,
   onConfigChange,
 }: PaneComponentProps) {
   const config = paneConfig as { docId?: string }
   const [pickerOpen, setPickerOpen] = useState(!config.docId)
+
+  // Cross-pane wiring: a click in TasksPane / FileBrowserPane emits
+  // ``open-doc``; the workbench event bus picks one DocPane to route
+  // to (focused → most-recent → first). On receipt we just patch
+  // paneConfig — the existing ``useQuery`` reacts to the new docId.
+  useWorkbenchEvent(paneId, 'open-doc', ({ docId }) => {
+    if (!docId || docId === config.docId) return
+    onConfigChange({ docId })
+    setPickerOpen(false)
+  })
 
   const docList = useQuery<DocListResponse>({
     queryKey: ['documents', projectId, 'workbench-picker'],

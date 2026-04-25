@@ -9,7 +9,9 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { api } from '../../api/client'
+import { showInfoToast } from '../../components/common/Toast'
 import type { PaneComponentProps } from '../paneRegistry'
+import { useWorkbenchEventBus } from '../eventBus'
 
 interface DirEntry {
   name: string
@@ -68,23 +70,29 @@ const isMarkdown = (name: string): boolean =>
  *
  * paneConfig: ``{ cwd?: string }`` (relative to ``project.remote.remote_path``).
  *
- * Cross-pane wiring is deferred to PR3:
- *  - markdown file click → console.log "open-doc" (will become a
- *    workbench event-bus emit so an open DocPane swaps to the file)
- *  - directory cmd-click → console.log "open-terminal-cwd" (will
- *    drive ``cd <path>`` in the active TerminalPane)
+ * Cross-pane wiring (PR3):
+ *  - directory cmd/ctrl-click → ``open-terminal-cwd`` event so the
+ *    active TerminalPane runs ``cd "<path>"``.
+ *  - markdown file click currently surfaces an info toast: project
+ *    documents (DocPane) are independent records and do not have a
+ *    file-system path field, so an automatic markdown↔doc mapping
+ *    isn't possible without a backend schema change. Tracked for a
+ *    follow-up.
  *
- * The pane is intentionally minimal for PR2b — preview / context
- * menu / git status views are out of scope; the full feature set
- * lives in the standalone Project's File Browser tab.
+ * The pane is intentionally minimal — preview / context menu /
+ * git status views are out of scope; the full feature set lives in
+ * the standalone Project's File Browser tab.
  */
 export default function FileBrowserPane({
+  paneId,
   projectId,
   paneConfig,
   onConfigChange,
 }: PaneComponentProps) {
+  void paneId // FileBrowserPane only emits; no subscriptions.
   const config = paneConfig as { cwd?: string }
   const cwd = config.cwd ?? '.'
+  const bus = useWorkbenchEventBus()
 
   const list = useQuery<ListResponse>({
     queryKey: ['workspace-files', projectId, cwd],
@@ -112,31 +120,31 @@ export default function FileBrowserPane({
 
       if (isDir(entry)) {
         if (ev.metaKey || ev.ctrlKey) {
-          // Cmd/Ctrl+click on a directory will, in PR3, ``cd``
-          // into it inside the active TerminalPane via a
-          // workbench event. For now we surface intent via the
-          // dev console so the integration point is testable
-          // before the bus exists.
-          // eslint-disable-next-line no-console
-          console.info('[Workbench] open-terminal-cwd:', fullPath)
+          // Cmd/Ctrl+click on a directory: route a ``cd <path>`` to
+          // the active TerminalPane via the workbench event bus.
+          // The bus picks the focused-or-most-recent terminal pane,
+          // or surfaces a "no terminal pane" toast if none exist.
+          bus.emit('open-terminal-cwd', { cwd: fullPath })
           return
         }
         navigateTo(fullPath)
         return
       }
-      // File click. PR3 will route markdown files to an open
-      // DocPane via the workbench event bus; non-markdown files
-      // will get an "open in /file viewer" path. Both stubs land
-      // in the console for now.
+      // Markdown files in the workspace filesystem aren't linked to
+      // ``ProjectDocument`` records (those are stored in Mongo and
+      // have no ``path`` field). Surface that limitation rather
+      // than emitting an event we can't service correctly.
       if (isMarkdown(entry.name)) {
-        // eslint-disable-next-line no-console
-        console.info('[Workbench] open-doc (markdown):', fullPath)
+        showInfoToast(
+          `Workspace markdown files are not yet linked to project Docs. Open ${entry.name} via the file viewer.`,
+        )
       } else {
-        // eslint-disable-next-line no-console
-        console.info('[Workbench] open-file:', fullPath)
+        showInfoToast(
+          `File preview is not yet implemented for ${entry.name}.`,
+        )
       }
     },
-    [cwd, navigateTo],
+    [cwd, navigateTo, bus],
   )
 
   const crumbs = breadcrumbs(cwd)

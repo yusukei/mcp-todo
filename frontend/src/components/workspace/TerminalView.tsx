@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -24,6 +24,18 @@ interface TerminalViewProps {
   onDisconnect?: (reason: string) => void
 }
 
+/**
+ * Imperative handle exposed via ``ref`` so callers (e.g. workbench
+ * panes routing cross-pane events) can inject input into the PTY
+ * without forcing a prop-driven re-render that would tear down the
+ * terminal.
+ */
+export interface TerminalViewHandle {
+  /** Send a raw string to the PTY (no echo, no prediction). Returns
+   *  ``true`` if the WS was open and the bytes were enqueued. */
+  sendInput: (data: string) => boolean
+}
+
 interface PendingChar {
   ch: string
   t0: number
@@ -43,14 +55,14 @@ const computeStats = (samples: number[]): LatencyStats => {
   return { count: samples.length, p50: p(0.5), p95: p(0.95), last: samples[samples.length - 1] }
 }
 
-export default function TerminalView({
+const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function TerminalView({
   agentId,
   agentName,
   shell,
   sessionId,
   onSessionStarted,
   onDisconnect,
-}: TerminalViewProps) {
+}, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -58,6 +70,24 @@ export default function TerminalView({
   const engineRef = useRef<PredictiveEngine | null>(null)
   const pendingRef = useRef<PendingChar[]>([])
   const samplesRef = useRef<number[]>([])
+
+  // Expose ``sendInput`` through the ref so a cross-pane event (e.g.
+  // FileBrowserPane → ``cd <path>``) can inject keystrokes without
+  // going through the prediction engine. Bytes go straight to the
+  // WebSocket; the agent's PTY echoes them back through the normal
+  // output pipeline.
+  useImperativeHandle(
+    ref,
+    () => ({
+      sendInput: (data: string) => {
+        const ws = wsRef.current
+        if (!ws || ws.readyState !== WebSocket.OPEN) return false
+        ws.send(JSON.stringify({ type: 'input', data }))
+        return true
+      },
+    }),
+    [],
+  )
   // Latency measurement only counts after session_started; before that
   // the echo path is not yet established and any typed bytes would
   // match against the first prompt redraw seconds later, polluting
@@ -403,4 +433,6 @@ export default function TerminalView({
       <div ref={containerRef} className="flex-1 bg-[#1a1b26] overflow-hidden" />
     </div>
   )
-}
+})
+
+export default TerminalView
