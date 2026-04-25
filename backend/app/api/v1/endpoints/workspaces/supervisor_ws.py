@@ -120,17 +120,22 @@ async def supervisor_websocket(ws: WebSocket) -> None:
     # supervisor and the agent on the same physical host both report
     # the same value, so the UI can render "supervisor X manages
     # agent Y" without an explicit FK.
+    initial_updates: dict[str, object] = {
+        "last_seen_at": datetime.now(UTC),
+    }
     reported_host_id = msg.get("host_id")
     if reported_host_id:
-        supervisor.host_id = reported_host_id
+        initial_updates["host_id"] = reported_host_id
 
     await ws.send_text(
         json.dumps({"type": "auth_ok", "supervisor_id": supervisor_id})
     )
 
     await supervisor_manager.register(supervisor_id, ws)
-    supervisor.last_seen_at = datetime.now(UTC)
-    await supervisor.save()
+    # Persist auth-time fields via $set so we don't accidentally
+    # overwrite anything an admin updated via REST while this WS was
+    # being negotiated.
+    await supervisor.set(initial_updates)
     logger.info(
         "Supervisor connected: %s (%s)", supervisor.name, supervisor_id
     )
@@ -151,6 +156,11 @@ async def supervisor_websocket(ws: WebSocket) -> None:
             msg_type = msg.get("type")
             request_id = msg.get("request_id")
 
+            # Refresh the bus registry TTL on every inbound frame so
+            # heartbeat-driven cluster routing stays alive without a
+            # background loop.
+            await supervisor_manager.refresh_registration(supervisor_id)
+
             # Push frames carry no request_id — skip the correlation
             # check so ``resolve_request`` doesn't waste a lookup.
             if (
@@ -162,9 +172,13 @@ async def supervisor_websocket(ws: WebSocket) -> None:
 
             if msg_type == "supervisor_info":
                 payload = msg.get("payload") or {}
-                _apply_supervisor_info(supervisor, payload)
-                supervisor.last_seen_at = datetime.now(UTC)
-                await supervisor.save()
+                updates = _build_supervisor_info_updates(payload)
+                updates["last_seen_at"] = datetime.now(UTC)
+                # ``set`` issues a Mongo $set so other fields the
+                # operator may have updated concurrently (e.g.
+                # auto_update via REST) are not overwritten by our
+                # stale in-memory copy.
+                await supervisor.set(updates)
 
             elif msg_type == "supervisor_event":
                 payload = msg.get("payload") or {}
@@ -179,9 +193,10 @@ async def supervisor_websocket(ws: WebSocket) -> None:
                 if event in {"agent_started", "agent_restarted"}:
                     new_pid = payload.get("agent_pid")
                     if isinstance(new_pid, int):
-                        supervisor.agent_pid = new_pid
-                        supervisor.last_seen_at = datetime.now(UTC)
-                        await supervisor.save()
+                        await supervisor.set({
+                            "agent_pid": new_pid,
+                            "last_seen_at": datetime.now(UTC),
+                        })
 
             elif msg_type == "supervisor_log":
                 # Day 4 just logs the count + sample. Day 5 will fan
@@ -210,9 +225,8 @@ async def supervisor_websocket(ws: WebSocket) -> None:
         )
     finally:
         await supervisor_manager.unregister(supervisor_id, ws)
-        supervisor.last_seen_at = datetime.now(UTC)
         try:
-            await supervisor.save()
+            await supervisor.set({"last_seen_at": datetime.now(UTC)})
         except Exception:
             logger.exception(
                 "Failed to persist supervisor last_seen_at on disconnect (%s)",
@@ -220,28 +234,30 @@ async def supervisor_websocket(ws: WebSocket) -> None:
             )
 
 
-def _apply_supervisor_info(
-    supervisor: RemoteSupervisor, payload: dict
-) -> None:
-    """Copy the supervisor_info push payload into the model.
+def _build_supervisor_info_updates(payload: dict) -> dict[str, object]:
+    """Translate a ``supervisor_info`` push payload into the dict of
+    fields to ``$set`` on the ``RemoteSupervisor`` document.
 
-    Only fields that the supervisor explicitly reports are touched —
-    None / missing values leave the existing value alone so a partial
-    payload doesn't blank out previously-known data.
+    Only fields the supervisor explicitly reports are emitted — None
+    / missing values are skipped so a partial payload never blanks
+    out previously-known data, and other unrelated fields the
+    operator may have set via REST are never touched.
     """
+    updates: dict[str, object] = {}
     if (hostname := payload.get("hostname")):
-        supervisor.hostname = hostname
+        updates["hostname"] = hostname
     if (os_type := payload.get("os")):
-        supervisor.os_type = os_type
+        updates["os_type"] = os_type
     if (host_id := payload.get("host_id")):
-        supervisor.host_id = host_id
+        updates["host_id"] = host_id
     if (sv_version := payload.get("supervisor_version")):
-        supervisor.supervisor_version = sv_version
+        updates["supervisor_version"] = sv_version
     if (agent_version := payload.get("agent_version")):
-        supervisor.agent_version = agent_version
+        updates["agent_version"] = agent_version
     agent_pid = payload.get("agent_pid")
     if isinstance(agent_pid, int):
-        supervisor.agent_pid = agent_pid
+        updates["agent_pid"] = agent_pid
     agent_uptime = payload.get("agent_uptime_s")
     if isinstance(agent_uptime, int):
-        supervisor.agent_uptime_s = agent_uptime
+        updates["agent_uptime_s"] = agent_uptime
+    return updates

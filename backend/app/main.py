@@ -163,7 +163,9 @@ async def lifespan(app: FastAPI):
     # the bus listeners are bound to this event loop, so the
     # subsequent shutdown.stop() unwinds them cleanly.
     from .services.agent_manager import agent_manager as _agent_mgr_startup
+    from .services.supervisor_manager import supervisor_manager as _sup_mgr_startup
     await _agent_mgr_startup.start()
+    await _sup_mgr_startup.start()
 
     # Warn about default DB passwords
     if "changeme" in settings.MONGO_URI.lower():
@@ -284,6 +286,7 @@ async def lifespan(app: FastAPI):
         )
 
     from .services.agent_manager import agent_manager as _agent_mgr
+    from .services.supervisor_manager import supervisor_manager as _sup_mgr
     try:
         yield
     finally:
@@ -302,6 +305,7 @@ async def lifespan(app: FastAPI):
     # AFTER the drain so any in-flight remote dispatch can still
     # publish its response to the bus.
     await _agent_mgr.stop()
+    await _sup_mgr.stop()
     # Stop the index notification consumer on the indexer sidecar.
     # In single-process mode this is a no-op (start() was never
     # called when ENABLE_INDEXERS=True and the ``indexer_consumer``

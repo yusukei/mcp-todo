@@ -121,8 +121,10 @@ async def agent_websocket(ws: WebSocket):
 
     await agent_manager.register(agent_id, ws)
 
-    agent.last_seen_at = datetime.now(UTC)
-    await agent.save()
+    # Persist via $set so admin-driven updates (e.g. auto_update via
+    # REST) made between auth and now are not clobbered by our stale
+    # in-memory copy of the document.
+    await agent.set({"last_seen_at": datetime.now(UTC)})
     logger.info("Agent connected: %s (%s)", agent.name, agent_id)
 
     # ── Message loop ──
@@ -155,24 +157,35 @@ async def agent_websocket(ws: WebSocket):
                 continue
 
             if msg_type == "agent_info":
-                agent.hostname = msg.get("hostname", agent.hostname)
-                agent.os_type = msg.get("os", agent.os_type)
-                agent.available_shells = msg.get("shells", agent.available_shells)
-                # New: agent reports its version on every (re)connection.
-                reported_version = msg.get("agent_version")
-                if reported_version:
-                    agent.agent_version = reported_version
+                # Build a $set updates dict from the *reported* fields
+                # only. Anything missing in the push leaves the DB
+                # value alone, and (crucially) other fields that the
+                # operator updated via REST while the WS was open are
+                # never overwritten by our stale in-memory copy.
+                updates: dict[str, object] = {
+                    "last_seen_at": datetime.now(UTC),
+                }
+                if (hostname := msg.get("hostname")):
+                    updates["hostname"] = hostname
+                if (os_type := msg.get("os")):
+                    updates["os_type"] = os_type
+                if (shells := msg.get("shells")) is not None:
+                    updates["available_shells"] = shells
+                if (reported_version := msg.get("agent_version")):
+                    updates["agent_version"] = reported_version
                 # ``host_id`` joins the agent record with the supervisor
                 # record running on the same physical host. Optional —
                 # legacy agents without the field keep ``host_id=""``.
-                reported_host_id = msg.get("host_id")
-                if reported_host_id:
-                    agent.host_id = reported_host_id
-                agent.last_seen_at = datetime.now(UTC)
-                await agent.save()
-                # Check for available updates *after* persisting the
-                # reported version so the comparison uses fresh data.
-                await maybe_push_update(ws, agent)
+                if (reported_host_id := msg.get("host_id")):
+                    updates["host_id"] = reported_host_id
+                await agent.set(updates)
+                # ``maybe_push_update`` reads ``agent.auto_update`` /
+                # ``agent.update_channel`` etc. We need the freshest
+                # values (the operator may have toggled them between
+                # this connect and now), so reload before comparing.
+                fresh = await RemoteAgent.get(agent.id)
+                if fresh is not None:
+                    await maybe_push_update(ws, fresh)
 
             elif msg_type == "ping":
                 # Agent-initiated heartbeat. Respond immediately so the
@@ -180,8 +193,7 @@ async def agent_websocket(ws: WebSocket):
                 # refresh the Redis TTL and update last_seen_at.
                 await ws.send_text(json.dumps({"type": "pong"}))
                 await agent_manager.refresh_agent_registration(agent_id)
-                agent.last_seen_at = datetime.now(UTC)
-                await agent.save()
+                await agent.set({"last_seen_at": datetime.now(UTC)})
 
             elif msg_type in ("terminal_output", "terminal_exit"):
                 from .....services.terminal_router import terminal_router
@@ -208,9 +220,8 @@ async def agent_websocket(ws: WebSocket):
         logger.exception("Agent WebSocket error (%s)", agent_id)
     finally:
         await agent_manager.unregister(agent_id, ws)  # Only remove if this is still the current connection
-        agent.last_seen_at = datetime.now(UTC)
         try:
-            await agent.save()
+            await agent.set({"last_seen_at": datetime.now(UTC)})
         except Exception:
             # Cleanup path: the WS is already tearing down. A failure
             # to persist last_seen_at is a monitoring concern, not a
