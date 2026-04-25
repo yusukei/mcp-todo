@@ -11,12 +11,20 @@ The DSN host is derived from ``settings.BASE_URL`` (or
 injection attacks where an attacker could redirect SDK events to an
 arbitrary domain.
 
-Finding the right project: the first ``enabled`` ErrorTrackingConfig ordered
-by creation date is used.  This is deterministic (MongoDB order is
-not guaranteed without an explicit sort) and correct for the typical
-single-project deployment.  Multi-project deployments where a specific
-project should own frontend errors can add a ``is_frontend_default``
-marker in the future.
+# Zero-config mode
+
+Operators do not need to touch the DB or the admin UI to enable
+error tracking. Every Project gets an ``ErrorTrackingConfig``
+auto-provisioned at creation time
+(see ``services.error_tracker.provision``) with a generated DSN
+key, ``allowed_origin_wildcard=True``, and a ``numeric_dsn_id``
+(stable crc32-derived int that the Sentry SDK can parse without
+truncating the ObjectId hex in the DSN path).
+
+This endpoint just looks up the first enabled config and emits its
+DSN. Legacy rows that predate ``numeric_dsn_id`` are migrated
+on-the-fly here so the field is always populated by the time the
+SDK initialises.
 """
 
 from __future__ import annotations
@@ -57,35 +65,20 @@ async def public_config() -> ORJSONResponse:
     now = datetime.now(UTC)
     dsn: str | None = None
 
-    # Order by created_at so the result is deterministic across restarts.
     async for ep in ErrorTrackingConfig.find(ErrorTrackingConfig.enabled == True).sort("+created_at"):  # noqa: E712
         active_keys = ep.active_public_keys(now)
         if not active_keys:
             continue
-        public_key = active_keys[0]
-        # DSN format: {scheme}://{public_key}@{host}/{numeric_dsn_id}
-        # The Sentry SDK extracts the leading digit run from the
-        # path segment (``projectId.match(/^\d+/)``) so a 24-char
-        # ObjectId would be truncated. ``numeric_dsn_id`` is a
-        # crc32-derived positive int — Sentry SDK reads it intact.
-        # Sentry SDK derives envelope URL as
-        #   {scheme}://{host}/api/{numeric_dsn_id}/envelope/
-        # which the ingest router resolves back to the full
-        # ErrorTrackingConfig via the indexed lookup.
-        # Lazy migration of legacy rows: assign numeric_dsn_id and
-        # auto-add the frontend origin to allowed_origins so a fresh
-        # ErrorTrackingConfig works without any manual configuration
-        # in single-origin deployments. Skipped when nothing changes.
-        dirty = False
+        # Lazy migration: rows that predate the ``numeric_dsn_id``
+        # field still exist in the DB; populate it on the first
+        # /public-config hit so the Sentry SDK gets a parseable
+        # path. ``provision_error_tracking_config`` sets this on
+        # every freshly-created ETC, so this is purely a one-shot
+        # upgrade affordance.
         if not ep.numeric_dsn_id:
             ep.ensure_numeric_dsn_id()
-            dirty = True
-        frontend_origin = (settings.FRONTEND_URL or "").rstrip("/")
-        if frontend_origin and frontend_origin not in ep.allowed_origins:
-            ep.allowed_origins = [*ep.allowed_origins, frontend_origin]
-            dirty = True
-        if dirty:
             await ep.save()
+        public_key = active_keys[0]
         dsn = origin.replace("://", f"://{public_key}@", 1) + f"/{ep.numeric_dsn_id}"
         break
 

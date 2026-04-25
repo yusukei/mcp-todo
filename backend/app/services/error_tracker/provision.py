@@ -53,6 +53,11 @@ async def provision_error_tracking_config(
         allowed_origins=[],
         created_by=created_by,
     )
+    # Assign the numeric DSN id BEFORE insert so the row is fully
+    # usable from the moment the project exists — the Sentry SDK
+    # would otherwise truncate the ObjectId hex in the DSN path
+    # to its leading digit run and 401 every event.
+    config.ensure_numeric_dsn_id()
     await config.insert()
     await ErrorAuditLog(
         project_id=project_id,
