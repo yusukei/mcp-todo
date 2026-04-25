@@ -98,7 +98,22 @@ async def envelope_preflight(project_id: str, request: Request) -> Response:
     origin = request.headers.get("origin")
     from ..models.error_tracker import ErrorTrackingConfig
 
-    project = await ErrorTrackingConfig.find_one(ErrorTrackingConfig.project_id == project_id)
+    # Mirror ``resolve_error_project``'s lookup order: try numeric
+    # DSN id first (the Sentry SDK truncates ObjectId hex to its
+    # leading digit run), fall back to the legacy ObjectId path.
+    project: ErrorTrackingConfig | None = None
+    if project_id.isdigit():
+        try:
+            numeric = int(project_id)
+            project = await ErrorTrackingConfig.find_one(
+                ErrorTrackingConfig.numeric_dsn_id == numeric
+            )
+        except ValueError:
+            project = None
+    if project is None:
+        project = await ErrorTrackingConfig.find_one(
+            ErrorTrackingConfig.project_id == project_id
+        )
     if project is None or not origin_allowed(project, origin):
         # Respond 204 but with no ``Allow-Origin``; the preflight
         # then fails safely inside the browser.

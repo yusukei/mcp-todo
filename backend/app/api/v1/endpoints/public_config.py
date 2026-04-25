@@ -63,10 +63,20 @@ async def public_config() -> ORJSONResponse:
         if not active_keys:
             continue
         public_key = active_keys[0]
-        project_id = ep.project_id
-        # DSN format: {scheme}://{public_key}@{host}/{project_id}
-        # Sentry SDK derives the envelope URL as {scheme}://{host}/api/{project_id}/envelope/
-        dsn = origin.replace("://", f"://{public_key}@", 1) + f"/{project_id}"
+        # DSN format: {scheme}://{public_key}@{host}/{numeric_dsn_id}
+        # The Sentry SDK extracts the leading digit run from the
+        # path segment (``projectId.match(/^\d+/)``) so a 24-char
+        # ObjectId would be truncated. ``numeric_dsn_id`` is a
+        # crc32-derived positive int — Sentry SDK reads it intact.
+        # Sentry SDK derives envelope URL as
+        #   {scheme}://{host}/api/{numeric_dsn_id}/envelope/
+        # which the ingest router resolves back to the full
+        # ErrorTrackingConfig via the indexed lookup.
+        if not ep.numeric_dsn_id:
+            # Lazy assignment for legacy rows that predate the field.
+            ep.ensure_numeric_dsn_id()
+            await ep.save()
+        dsn = origin.replace("://", f"://{public_key}@", 1) + f"/{ep.numeric_dsn_id}"
         break
 
     return ORJSONResponse({"sentry_dsn": dsn})

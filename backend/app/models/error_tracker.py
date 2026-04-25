@@ -70,10 +70,33 @@ class DsnKeyRecord(BaseModel):
 # ErrorTrackingConfig — one per mcp-todo Project that opts in.
 # ─────────────────────────────────────────────────────────────
 
+def _compute_dsn_id(project_id: str) -> int:
+    """Stable numeric DSN id derived from a Mongo ObjectId hex.
+
+    The Sentry SDK extracts the leading digit run from a DSN's
+    project_id segment (``projectId.match(/^\\d+/)``). A 24-char
+    Mongo ObjectId like ``69bfffad73ed736a9d13fd0f`` would be
+    truncated to ``69``, breaking project lookup at ingest time.
+    Encoding the project_id as a deterministic ~10-digit positive
+    int keeps the DSN parseable while remaining reversible at the
+    ingest endpoint via an indexed lookup on ``numeric_dsn_id``.
+
+    crc32 is good enough — collisions among <1k configs are
+    negligible and we enforce uniqueness at write time.
+    """
+    import zlib
+    return zlib.crc32(project_id.encode("utf-8")) & 0x7FFFFFFF
+
+
 class ErrorTrackingConfig(Document):
     """Per-project configuration for error ingestion."""
 
     project_id: Indexed(str)  # type: ignore[valid-type] — FK to Project._id as str
+    # Stable numeric DSN id used in the DSN's path segment so the
+    # Sentry SDK can parse it without truncating to leading digits.
+    # Defaults to 0 (sentinel meaning "not yet assigned"); the save
+    # hook + a startup backfill (in app.main.lifespan) populates it.
+    numeric_dsn_id: Indexed(int) = 0  # type: ignore[valid-type]
     name: str = ""
 
     # DSN keys (primary + up to one previous during rotation grace).
@@ -108,13 +131,29 @@ class ErrorTrackingConfig(Document):
         name = "error_projects"
         indexes = [
             IndexModel([("project_id", 1)], unique=True),
+            # Numeric DSN id lookup at ingest time. The Sentry SDK
+            # only emits numeric path segments, so the ingest URL
+            # carries this value and we resolve back to the full
+            # ErrorTrackingConfig from it.
+            IndexModel([("numeric_dsn_id", 1)], unique=True, sparse=True),
             # Active-key lookup at ingest time. A simple non-unique
             # index on the array; the ingest path verifies
             # project_id / expiry separately.
             IndexModel([("keys.public_key", 1)]),
         ]
 
+    def ensure_numeric_dsn_id(self) -> None:
+        """Assign ``numeric_dsn_id`` if it's still the 0 sentinel.
+
+        Call this before any ``insert()`` / ``save()`` and the
+        startup backfill so existing rows pick up the field on
+        first save after the upgrade.
+        """
+        if not self.numeric_dsn_id:
+            self.numeric_dsn_id = _compute_dsn_id(self.project_id)
+
     async def save_updated(self) -> "ErrorTrackingConfig":
+        self.ensure_numeric_dsn_id()
         self.updated_at = datetime.now(UTC)
         await self.save()
         return self

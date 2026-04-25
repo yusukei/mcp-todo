@@ -100,7 +100,26 @@ async def resolve_error_project(
     if not public_key:
         raise AuthError("invalid_dsn", "missing sentry_key")
 
-    ep = await ErrorTrackingConfig.find_one(ErrorTrackingConfig.project_id == url_project_id)
+    # The DSN now embeds ``numeric_dsn_id`` (an int) in the path
+    # segment because the Sentry SDK truncates non-numeric path
+    # values (``projectId.match(/^\d+/)``). When the URL carries an
+    # integer we resolve via the indexed ``numeric_dsn_id`` field;
+    # otherwise we fall back to the legacy ObjectId lookup so old
+    # SDK initialisations and direct curl tests continue to work.
+    ep: ErrorTrackingConfig | None = None
+    if url_project_id.isdigit():
+        try:
+            numeric = int(url_project_id)
+        except ValueError:
+            numeric = None
+        if numeric is not None:
+            ep = await ErrorTrackingConfig.find_one(
+                ErrorTrackingConfig.numeric_dsn_id == numeric
+            )
+    if ep is None:
+        ep = await ErrorTrackingConfig.find_one(
+            ErrorTrackingConfig.project_id == url_project_id
+        )
     if ep is None:
         raise AuthError(
             "project_not_found",
