@@ -18,6 +18,14 @@ _winpty_datas = []
 _winpty_hidden = []
 if sys.platform == "win32":
     _winpty_datas, _winpty_binaries, _winpty_hidden = collect_all("winpty")
+    # ``collect_all`` discovers .py modules and ships .pyd files as
+    # binaries, but it does not add the .pyd's *Python module name* to
+    # the hidden-imports list. Without that, ``import winpty.winpty``
+    # at runtime fails with "No module named 'winpty.winpty'" even
+    # though the .pyd itself is sitting next to ``__init__.py`` in the
+    # bundle. Add it explicitly.
+    if "winpty.winpty" not in _winpty_hidden:
+        _winpty_hidden = list(_winpty_hidden) + ["winpty.winpty"]
 
 
 a = Analysis(
