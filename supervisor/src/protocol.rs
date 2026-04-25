@@ -160,6 +160,12 @@ pub enum AgentState {
     Crashed,
 }
 
+impl Default for AgentState {
+    fn default() -> Self {
+        AgentState::Stopped
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RestartResponse {
     pub restarted: bool,

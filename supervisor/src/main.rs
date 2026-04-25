@@ -12,6 +12,12 @@ use clap::Parser;
 use tracing::{error, info};
 
 mod config;
+mod log_capture;
+#[cfg(not(windows))]
+mod platform_posix;
+#[cfg(windows)]
+mod platform_windows;
+mod process;
 mod protocol;
 
 #[derive(Debug, Parser)]
