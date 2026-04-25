@@ -72,9 +72,19 @@ async def public_config() -> ORJSONResponse:
         #   {scheme}://{host}/api/{numeric_dsn_id}/envelope/
         # which the ingest router resolves back to the full
         # ErrorTrackingConfig via the indexed lookup.
+        # Lazy migration of legacy rows: assign numeric_dsn_id and
+        # auto-add the frontend origin to allowed_origins so a fresh
+        # ErrorTrackingConfig works without any manual configuration
+        # in single-origin deployments. Skipped when nothing changes.
+        dirty = False
         if not ep.numeric_dsn_id:
-            # Lazy assignment for legacy rows that predate the field.
             ep.ensure_numeric_dsn_id()
+            dirty = True
+        frontend_origin = (settings.FRONTEND_URL or "").rstrip("/")
+        if frontend_origin and frontend_origin not in ep.allowed_origins:
+            ep.allowed_origins = [*ep.allowed_origins, frontend_origin]
+            dirty = True
+        if dirty:
             await ep.save()
         dsn = origin.replace("://", f"://{public_key}@", 1) + f"/{ep.numeric_dsn_id}"
         break
