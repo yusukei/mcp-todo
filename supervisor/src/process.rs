@@ -41,7 +41,10 @@ use crate::log_capture::{spawn_capture, LogRing};
 use crate::protocol::{AgentState, LogStream, RestartResponse};
 
 #[cfg(windows)]
-use crate::platform_windows::{send_ctrl_break, JobHandle};
+use crate::platform_windows::{
+    resume_main_thread, send_ctrl_break, JobHandle, CREATE_NEW_PROCESS_GROUP,
+    CREATE_SUSPENDED,
+};
 #[cfg(not(windows))]
 use crate::platform_posix::JobHandle;
 
@@ -188,15 +191,15 @@ impl AgentManager {
             .stdin(Stdio::null())
             .kill_on_drop(true);
 
-        // On Windows, putting the child in its own process group lets
-        // ``GenerateConsoleCtrlEvent(CTRL_BREAK_EVENT, pid)`` target
-        // only the agent without also signalling the supervisor.
+        // On Windows: spawn ``CREATE_SUSPENDED`` so the child does
+        // nothing until we have bound it to the Job Object —
+        // otherwise the child can fork its own children (e.g.
+        // ``uv.exe`` -> ``python.exe``) before AssignProcessToJobObject
+        // runs, and those grandchildren escape the job. The
+        // ``CREATE_NEW_PROCESS_GROUP`` flag survives so
+        // ``CTRL_BREAK_EVENT`` only signals the agent.
         #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-            command.creation_flags(CREATE_NEW_PROCESS_GROUP);
-        }
+        command.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_SUSPENDED);
 
         self.status.mutate(|s| {
             s.state = AgentState::Starting;
@@ -207,11 +210,26 @@ impl AgentManager {
             .with_context(|| format!("failed to spawn agent: {}", self.cmd.program.display()))?;
         let pid = child.id();
 
-        // Bind to the Job Object. If the child has already exited
-        // (very short-lived test commands can race) the assign will
-        // fail; log and keep going — ``kill_on_drop`` is the fallback.
+        // Bind to the Job Object **before** the child runs any code.
+        // On Windows the spawn is suspended; on POSIX assign() is a
+        // no-op. If the child somehow has no PID (already gone) we
+        // log and rely on ``kill_on_drop`` as a last resort.
         if let Err(e) = self.job.assign(&mut child) {
             warn!(pid, error = %e, "AssignProcessToJobObject failed; child not job-bound");
+        }
+
+        // Now resume the primary thread (Windows only). Any
+        // descendants the child spawns from here on inherit the job
+        // membership.
+        #[cfg(windows)]
+        if let Some(p) = pid {
+            if let Err(e) = resume_main_thread(p) {
+                warn!(pid = p, error = %e, "ResumeThread failed; killing child");
+                let _ = child.start_kill();
+                return Err(e).with_context(|| {
+                    format!("resume primary thread of agent pid {p}")
+                });
+            }
         }
 
         if let Some(stdout) = child.stdout.take() {
@@ -277,6 +295,17 @@ impl AgentManager {
                 exit = child.wait() => {
                     let code = exit.ok().and_then(|s| s.code());
                     self.bump_crash(code);
+                    // Reap orphaned grandchildren. The Job Object kills
+                    // every process bound to it, so any descendants
+                    // that outlived the root agent (uv -> python is
+                    // the prime offender — uv exits but python keeps
+                    // running, then duplicate-connects to backend
+                    // until it gets evicted) die here. Without this
+                    // call, ``JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE``
+                    // only fires when the supervisor itself exits.
+                    if let Err(e) = self.job.terminate() {
+                        warn!(error = %e, "TerminateJobObject post-exit failed");
+                    }
                     if *self.stopping.lock() {
                         Action::Stopped
                     } else {
