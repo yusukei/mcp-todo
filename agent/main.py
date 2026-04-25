@@ -22,6 +22,7 @@ import shutil
 import signal
 import sys
 import time
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -1601,16 +1602,47 @@ class PtySession:
 
 
 class PtyManager:
-    """Multiplexes browser-driven PTY sessions over the agent WebSocket.
+    """Multiplexes long-lived PTY sessions over the agent WebSocket.
 
-    Each session is keyed by a browser-supplied ``session_id``. Output
-    is pushed back as ``terminal_output`` envelopes; the backend routes
-    bytes to the originating browser by ``session_id``.
+    Phase A: sessions persist across browser WS disconnects. The agent
+    reader loop pushes output to a per-session ``deque`` (the
+    "scrollback") and tries to forward each chunk to the backend; when
+    the WS is down the forward fails silently and the scrollback keeps
+    accumulating. On ``terminal_attach`` the agent dumps the scrollback
+    so a reconnecting browser can restore its screen.
+
+    Sessions only end on:
+      - explicit ``terminal_kill`` from a caller, or
+      - the underlying shell exiting (PTY EOF).
+
+    Browser disconnects send ``terminal_detach`` (or the legacy
+    ``terminal_close``, treated as the same), which is a no-op on the
+    agent — backend stops routing output to the disconnected browser
+    but the session keeps running.
+
+    The scrollback ring size defaults to 10 000 chunks, configurable
+    via the ``MCP_TERMINAL_SCROLLBACK`` env var.
     """
+
+    SCROLLBACK_DEFAULT = 10_000
 
     def __init__(self) -> None:
         self._sessions: dict[str, PtySession] = {}
         self._reader_tasks: dict[str, asyncio.Task] = {}
+        self._scrollback: dict[str, deque] = {}
+        self._meta: dict[str, dict] = {}
+        try:
+            self._scrollback_max = int(
+                os.environ.get(
+                    "MCP_TERMINAL_SCROLLBACK", self.SCROLLBACK_DEFAULT
+                )
+            )
+        except ValueError:
+            self._scrollback_max = self.SCROLLBACK_DEFAULT
+        if self._scrollback_max < 100:
+            self._scrollback_max = 100
+
+    # ── Handlers ────────────────────────────────────────────────
 
     async def handle_terminal_create(self, msg: dict, send) -> None:
         request_id = msg.get("request_id")
@@ -1651,13 +1683,104 @@ class PtyManager:
             )
             return
 
+        now = time.time()
         self._sessions[session_id] = session
-        task = asyncio.create_task(self._reader_loop(session_id, session, send))
+        self._scrollback[session_id] = deque(maxlen=self._scrollback_max)
+        self._meta[session_id] = {
+            "started_at": now,
+            "last_activity": now,
+            "cmdline": shell,
+            "exited": False,
+        }
+        task = asyncio.create_task(
+            self._reader_loop(session_id, session, send)
+        )
         self._reader_tasks[session_id] = task
 
         await self._send_envelope(
             send, "terminal_create_result", request_id,
             {"success": True, "session_id": session_id, "shell": shell},
+        )
+
+    async def handle_terminal_attach(self, msg: dict, send) -> None:
+        """Replay the session's scrollback so a reconnecting browser
+        can restore its screen. The session must already exist —
+        ``terminal_create`` is the only way to bring one into being.
+        """
+        request_id = msg.get("request_id")
+        payload = msg.get("payload") or {}
+        session_id = payload.get("session_id")
+        if not session_id or session_id not in self._sessions:
+            await self._send_envelope(
+                send, "terminal_attach_result", request_id,
+                {"success": False, "error": "session not found"},
+            )
+            return
+        meta = self._meta.get(session_id, {})
+        scrollback = list(self._scrollback.get(session_id, ()))
+        await self._send_envelope(
+            send, "terminal_attach_result", request_id,
+            {
+                "success": True,
+                "session_id": session_id,
+                "scrollback": scrollback,
+                "started_at": meta.get("started_at"),
+                "last_activity": meta.get("last_activity"),
+                "cmdline": meta.get("cmdline"),
+                "exited": meta.get("exited", False),
+            },
+        )
+
+    async def handle_terminal_detach(self, msg: dict) -> None:
+        """No-op on the agent — the session keeps running and the
+        scrollback keeps filling. Backend stops routing live output
+        to the disconnected browser, which is sufficient.
+        """
+        payload = msg.get("payload") or {}
+        session_id = payload.get("session_id")
+        logger.debug(
+            "terminal_detach: session_id=%s (no-op on agent — "
+            "session persists)", session_id,
+        )
+
+    async def handle_terminal_close(self, msg: dict) -> None:
+        # Phase A repurposes the legacy close to a detach: pre-Phase A
+        # backends sent terminal_close on browser disconnect expecting
+        # session termination; the new contract is that disconnect
+        # never kills a session — only an explicit terminal_kill does.
+        await self.handle_terminal_detach(msg)
+
+    async def handle_terminal_kill(self, msg: dict, send) -> None:
+        request_id = msg.get("request_id")
+        payload = msg.get("payload") or {}
+        session_id = payload.get("session_id")
+        if not session_id or session_id not in self._sessions:
+            await self._send_envelope(
+                send, "terminal_kill_result", request_id,
+                {"success": False, "error": "session not found"},
+            )
+            return
+        await self._kill_session(session_id, send)
+        await self._send_envelope(
+            send, "terminal_kill_result", request_id,
+            {"success": True, "session_id": session_id},
+        )
+
+    async def handle_terminal_list(self, msg: dict, send) -> None:
+        request_id = msg.get("request_id")
+        sessions = []
+        for sid, sess in list(self._sessions.items()):
+            meta = self._meta.get(sid, {})
+            sessions.append({
+                "session_id": sid,
+                "started_at": meta.get("started_at"),
+                "last_activity": meta.get("last_activity"),
+                "cmdline": meta.get("cmdline"),
+                "alive": bool(sess.alive) and not meta.get("exited", False),
+            })
+        await self._send_envelope(
+            send, "terminal_list_result", request_id,
+            {"sessions": sessions},
         )
 
     async def handle_terminal_input(self, msg: dict) -> None:
@@ -1667,6 +1790,9 @@ class PtyManager:
         session = self._sessions.get(session_id) if session_id else None
         if session and session.alive:
             await session.write(data)
+            meta = self._meta.get(session_id)
+            if meta:
+                meta["last_activity"] = time.time()
 
     async def handle_terminal_resize(self, msg: dict) -> None:
         payload = msg.get("payload") or {}
@@ -1677,51 +1803,109 @@ class PtyManager:
         if session:
             await session.resize(cols, rows)
 
-    async def handle_terminal_close(self, msg: dict) -> None:
-        payload = msg.get("payload") or {}
-        session_id = payload.get("session_id")
-        if not session_id:
-            return
-        task = self._reader_tasks.get(session_id)
+    # ── Internal ────────────────────────────────────────────────
+
+    async def _kill_session(self, session_id: str, send) -> None:
+        task = self._reader_tasks.pop(session_id, None)
+        session = self._sessions.pop(session_id, None)
         if task and not task.done():
             task.cancel()
             try:
                 await task
             except (asyncio.CancelledError, Exception):
                 pass
+        exit_code = -1
+        if session:
+            try:
+                exit_code = await session.terminate()
+            except Exception:
+                logger.exception(
+                    "PTY terminate failed for %s", session_id,
+                )
+        meta = self._meta.pop(session_id, None)
+        self._scrollback.pop(session_id, None)
+        if meta is not None:
+            meta["exited"] = True
+        try:
+            await self._send_envelope(
+                send, "terminal_exit", None,
+                {"session_id": session_id, "exit_code": exit_code},
+            )
+        except Exception:
+            logger.exception(
+                "Failed to send terminal_exit for %s", session_id,
+            )
 
-    async def _reader_loop(self, session_id: str, session: PtySession, send) -> None:
+    async def _reader_loop(
+        self, session_id: str, session: PtySession, send,
+    ) -> None:
         try:
             while session.alive:
                 data = await session.read()
                 if data is None:
                     break
                 text = data.decode("utf-8", errors="replace")
-                await self._send_envelope(
-                    send, "terminal_output", None,
-                    {"session_id": session_id, "data": text},
-                )
+                buf = self._scrollback.get(session_id)
+                if buf is not None:
+                    buf.append(text)
+                meta = self._meta.get(session_id)
+                if meta:
+                    meta["last_activity"] = time.time()
+                # Forward live output. If the agent's WS to backend
+                # is currently down, the send fails — we swallow it
+                # (the scrollback already has the chunk, so the next
+                # ``terminal_attach`` will replay it). The reader
+                # keeps running and the session stays alive.
+                try:
+                    await self._send_envelope(
+                        send, "terminal_output", None,
+                        {"session_id": session_id, "data": text},
+                    )
+                except Exception as e:
+                    logger.debug(
+                        "terminal_output forward failed for %s "
+                        "(buffered to scrollback): %s",
+                        session_id, e,
+                    )
         except asyncio.CancelledError:
+            # External cancellation (terminal_kill). The kill path
+            # handles cleanup + the terminal_exit broadcast.
             raise
         except Exception:
             logger.exception("PTY reader loop crashed for %s", session_id)
         finally:
-            self._sessions.pop(session_id, None)
+            # Reach this branch when the shell exits naturally
+            # (PTY EOF). Clean up state and broadcast terminal_exit.
+            # NB: if the loop was cancelled by terminal_kill,
+            # _kill_session has already popped these and emitted the
+            # exit envelope, so the .pop() below is a no-op.
             self._reader_tasks.pop(session_id, None)
-            try:
-                exit_code = await session.terminate()
-            except Exception:
-                logger.exception("PTY terminate failed for %s", session_id)
-                exit_code = -1
-            try:
-                await self._send_envelope(
-                    send, "terminal_exit", None,
-                    {"session_id": session_id, "exit_code": exit_code},
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to send terminal_exit for %s", session_id,
-                )
+            sess = self._sessions.pop(session_id, None)
+            exit_code = -1
+            if sess is not None and sess.alive:
+                try:
+                    exit_code = await sess.terminate()
+                except Exception:
+                    logger.exception(
+                        "PTY terminate failed for %s", session_id,
+                    )
+            meta = self._meta.pop(session_id, None)
+            self._scrollback.pop(session_id, None)
+            if meta is not None:
+                meta["exited"] = True
+                try:
+                    await self._send_envelope(
+                        send, "terminal_exit", None,
+                        {
+                            "session_id": session_id,
+                            "exit_code": exit_code,
+                        },
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to send terminal_exit for %s",
+                        session_id,
+                    )
 
     @staticmethod
     async def _send_envelope(
@@ -1733,9 +1917,12 @@ class PtyManager:
         await send(json.dumps(envelope))
 
     def cancel_all(self) -> None:
-        for task in list(self._reader_tasks.values()):
-            if not task.done():
-                task.cancel()
+        # Phase A: WS disconnect no longer kills sessions. The reader
+        # loops keep running; their forward-to-backend send() will
+        # silently fail while the WS is down (output is buffered to
+        # scrollback) and resume forwarding after the agent reconnects.
+        # Sessions only end on terminal_kill or shell exit.
+        return
 
 
 # ── Agent ────────────────────────────────────────────────────
@@ -2046,6 +2233,28 @@ class WorkspaceAgent:
             )
             return
 
+        if msg_type == "terminal_attach":
+            self._spawn_task(
+                self._pty_manager.handle_terminal_attach(msg, self._safe_send)
+            )
+            return
+
+        if msg_type == "terminal_detach":
+            self._spawn_task(self._pty_manager.handle_terminal_detach(msg))
+            return
+
+        if msg_type == "terminal_kill":
+            self._spawn_task(
+                self._pty_manager.handle_terminal_kill(msg, self._safe_send)
+            )
+            return
+
+        if msg_type == "terminal_list":
+            self._spawn_task(
+                self._pty_manager.handle_terminal_list(msg, self._safe_send)
+            )
+            return
+
         if msg_type == "terminal_input":
             self._spawn_task(self._pty_manager.handle_terminal_input(msg))
             return
@@ -2055,6 +2264,9 @@ class WorkspaceAgent:
             return
 
         if msg_type == "terminal_close":
+            # Legacy alias — Phase A repurposed terminal_close to mean
+            # detach, not kill. Older backends still send this on
+            # browser disconnect; new ones send terminal_detach.
             self._spawn_task(self._pty_manager.handle_terminal_close(msg))
             return
 
