@@ -1,6 +1,5 @@
 from .allowed_email import AllowedEmail
 from .bookmark import Bookmark, BookmarkCollection, BookmarkMetadata, ClipStatus
-from .chat import ChatMessage, ChatSession, MessageRole, MessageStatus, SessionStatus, ToolCallData
 from .docsite import DocPage, DocSite, DocSiteSection
 from .document import DocumentCategory, DocumentVersion, ProjectDocument
 from .error_tracker import (
@@ -54,12 +53,6 @@ __all__ = [
     "RemoteAgent",
     "RemoteExecLog",
     "AgentRelease",
-    "ChatSession",
-    "ChatMessage",
-    "MessageRole",
-    "MessageStatus",
-    "SessionStatus",
-    "ToolCallData",
     "ProjectSecret",
     "SecretAccessLog",
     # Error tracker (T1)

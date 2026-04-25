@@ -12,7 +12,6 @@
 export { api } from './client'
 export { projectsApi } from './projects'
 export { tasksApi } from './tasks'
-export { chatApi } from './chat'
 export { knowledgeApi } from './knowledge'
 export { bookmarksApi, bookmarkCollectionsApi } from './bookmarks'
 export { secretsApi } from './secrets'

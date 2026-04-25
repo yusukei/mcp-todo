@@ -18,12 +18,12 @@ _client: motor.motor_asyncio.AsyncIOMotorClient | None = None
 
 async def connect() -> None:
     global _client
-    from ..models import AgentRelease, AllowedEmail, Bookmark, BookmarkCollection, ChatMessage, ChatSession, DocPage, DocSite, DocumentVersion, ErrorAuditLog, ErrorIssue, ErrorTrackingConfig, ErrorRelease, Knowledge, McpApiFeedback, McpApiKey, McpToolCallEvent, McpToolUsageBucket, Project, ProjectDocument, ProjectSecret, RemoteAgent, RemoteExecLog, SecretAccessLog, Task, User
+    from ..models import AgentRelease, AllowedEmail, Bookmark, BookmarkCollection, DocPage, DocSite, DocumentVersion, ErrorAuditLog, ErrorIssue, ErrorTrackingConfig, ErrorRelease, Knowledge, McpApiFeedback, McpApiKey, McpToolCallEvent, McpToolUsageBucket, Project, ProjectDocument, ProjectSecret, RemoteAgent, RemoteExecLog, SecretAccessLog, Task, User
 
     _client = motor.motor_asyncio.AsyncIOMotorClient(settings.MONGO_URI)
     await init_beanie(
         database=_client[settings.MONGO_DBNAME],
-        document_models=[User, AllowedEmail, Project, Task, McpApiKey, McpToolUsageBucket, McpToolCallEvent, McpApiFeedback, Knowledge, ProjectDocument, DocumentVersion, DocSite, DocPage, Bookmark, BookmarkCollection, RemoteAgent, RemoteExecLog, AgentRelease, ChatSession, ChatMessage, ProjectSecret, SecretAccessLog, ErrorTrackingConfig, ErrorIssue, ErrorRelease, ErrorAuditLog],
+        document_models=[User, AllowedEmail, Project, Task, McpApiKey, McpToolUsageBucket, McpToolCallEvent, McpApiFeedback, Knowledge, ProjectDocument, DocumentVersion, DocSite, DocPage, Bookmark, BookmarkCollection, RemoteAgent, RemoteExecLog, AgentRelease, ProjectSecret, SecretAccessLog, ErrorTrackingConfig, ErrorIssue, ErrorRelease, ErrorAuditLog],
     )
     logger.info("MongoDB connected: %s / %s", _mask_uri(settings.MONGO_URI), settings.MONGO_DBNAME)
 

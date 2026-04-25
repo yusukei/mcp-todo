@@ -5,7 +5,8 @@ frame and then multiplexes:
 - request/response for remote execution (routed by ``request_id`` via
   ``agent_manager.resolve_request``)
 - agent_info updates and update_available push
-- chat event forwarding to ``services.chat_events``
+- terminal_output / terminal_exit forwarding to
+  ``services.terminal_router`` (Web Terminal session push)
 
 Routing by ``request_id`` is the single source of truth for "is this an
 RPC response". With the envelope redesign (2026-04-08), inner result
@@ -32,22 +33,6 @@ from ._releases_util import maybe_push_update
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# Module-level anchor for chat_event background tasks. ``asyncio``
-# only holds a weak reference to a Task returned by
-# ``asyncio.ensure_future`` / ``create_task``; if nothing else
-# references it, the task can be garbage-collected mid-run and its
-# callbacks silently dropped. Storing them here prevents that.
-# Tasks self-remove via ``add_done_callback``.
-_chat_event_tasks: set[asyncio.Task] = set()
-
-
-def _spawn_chat_event(coro) -> None:
-    """Schedule a chat_event handler as an anchored background task."""
-    task = asyncio.create_task(coro)
-    _chat_event_tasks.add(task)
-    task.add_done_callback(_chat_event_tasks.discard)
-
 
 async def _safe_close(ws: WebSocket, *, code: int, reason: str) -> None:
     """Best-effort ``ws.close`` that logs — never silently swallows — failures.
@@ -162,10 +147,10 @@ async def agent_websocket(ws: WebSocket):
             request_id = msg.get("request_id")
 
             # If this message correlates to a pending RPC request, resolve
-            # the Future and stop. Server-pushed messages (chat_event /
-            # chat_complete / chat_error) may also carry a request_id but
-            # have no pending Future, so ``resolve_request`` returns False
-            # and we fall through to the type-based dispatch below.
+            # the Future and stop. Server-pushed messages (terminal_output
+            # / terminal_exit) may also carry a request_id but have no
+            # pending Future, so ``resolve_request`` returns False and we
+            # fall through to the type-based dispatch below.
             if request_id is not None and agent_manager.resolve_request(msg):
                 continue
 
@@ -191,10 +176,6 @@ async def agent_websocket(ws: WebSocket):
                 await agent_manager.refresh_agent_registration(agent_id)
                 agent.last_seen_at = datetime.now(UTC)
                 await agent.save()
-
-            elif msg_type in ("chat_event", "chat_complete", "chat_error"):
-                from .....services.chat_events import handle_chat_event
-                _spawn_chat_event(handle_chat_event(msg))
 
             elif msg_type in ("terminal_output", "terminal_exit"):
                 from .....services.terminal_router import terminal_router

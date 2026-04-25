@@ -2,7 +2,7 @@
 """MCP Todo — Remote Terminal Agent.
 
 Connects to the central server via WebSocket and handles remote
-command execution, file operations, and Claude Code chat sessions.
+command execution, file operations, and Web Terminal PTY sessions.
 
 Usage:
     python main.py --url wss://example.com/api/v1/workspaces/agent/ws --token ta_xxx
@@ -45,8 +45,6 @@ MAX_FILE_BYTES = 5 * 1024 * 1024  # 5 MB
 MAX_DIR_ENTRIES = 1000
 MAX_GLOB_RESULTS = 1000
 MAX_GREP_RESULTS_DEFAULT = 200
-CHAT_TIMEOUT = 30 * 60  # 30 minutes max per chat message
-
 # ripgrep is REQUIRED for handle_grep. Detected at startup and resolved
 # to an absolute path so subprocess invocation does not depend on the
 # agent process's CWD. If ripgrep is missing, handle_grep returns an
@@ -1408,28 +1406,6 @@ _RESPONSE_TYPE_FOR = {
 }
 
 
-# ── ChatManager ─────────────────────────────────────────────
-
-# Tools claude must NOT use inside a Web Chat session.
-#
-# Rationale: the Web Chat runs `claude -p` with --permission-mode=
-# bypassPermissions so tool calls are auto-approved. Without further
-# restriction the spawned claude process could read/write/execute
-# anywhere on the agent host. We disable every claude built-in that
-# touches the local filesystem or runs arbitrary shell commands so the
-# session can only reach files via mcp-todo's `remote_*` tools, where
-# the workspace boundary is enforced server-side by the agent itself.
-#
-# Kept on purpose:
-#   - Task / TaskOutput / TaskStop  (subagent dispatch — inherits this list)
-#   - WebFetch / WebSearch          (external HTTP only)
-#   - TodoWrite / AskUserQuestion   (no FS / no exec)
-#   - mcp__* tools                  (boundary enforced agent-side)
-CHAT_DISALLOWED_TOOLS = (
-    "Read Write Edit NotebookEdit Bash Glob Grep LSP EnterWorktree"
-)
-
-
 class PtySession:
     """Cross-platform PTY session for the Web Terminal feature.
 
@@ -1746,214 +1722,6 @@ class PtyManager:
                 task.cancel()
 
 
-class ChatManager:
-    """Manages Claude Code chat sessions via stream-json CLI."""
-
-    def __init__(self) -> None:
-        # session_id → (process, request_id, task)
-        self._active: dict[str, tuple[asyncio.subprocess.Process, str, asyncio.Task]] = {}
-
-    def _find_claude(self) -> str:
-        """Find the claude CLI executable."""
-        claude = shutil.which("claude")
-        if claude:
-            return claude
-        candidates = [
-            Path.home() / ".claude" / "local" / "claude",
-            Path.home() / ".local" / "bin" / "claude",
-            Path("/usr/local/bin/claude"),
-        ]
-        if IS_WINDOWS:
-            candidates = [
-                Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "claude" / "claude.exe",
-                Path(os.environ.get("APPDATA", "")) / "npm" / "claude.cmd",
-            ]
-        for p in candidates:
-            if p.exists():
-                return str(p)
-        return "claude"
-
-    def _build_command(self, content: str, claude_session_id: str | None = None, model: str = "") -> list[str]:
-        cmd = [
-            self._find_claude(), "-p", content,
-            "--output-format", "stream-json",
-            "--verbose",
-            "--permission-mode", "bypassPermissions",
-            "--disallowed-tools", CHAT_DISALLOWED_TOOLS,
-        ]
-        if claude_session_id:
-            cmd.extend(["--resume", claude_session_id])
-        if model:
-            cmd.extend(["--model", model])
-        return cmd
-
-    async def handle_chat_message(self, msg: dict, send_fn) -> None:
-        """Spawn claude CLI and stream events back via send_fn."""
-        request_id = msg.get("request_id", "")
-        session_id = msg.get("session_id", "")
-        content = msg.get("content", "")
-        claude_session_id = msg.get("claude_session_id")
-        working_dir = msg.get("working_dir", "")
-        model = msg.get("model", "")
-
-        cmd = self._build_command(content, claude_session_id, model)
-        cwd = working_dir if working_dir and os.path.isdir(working_dir) else None
-
-        logger.info("Chat start: session=%s, cwd=%s, resume=%s", session_id, cwd, claude_session_id)
-
-        proc = None
-        try:
-            kwargs = {
-                "stdout": asyncio.subprocess.PIPE,
-                "stderr": asyncio.subprocess.PIPE,
-                "cwd": cwd,
-            }
-            if not IS_WINDOWS:
-                kwargs["preexec_fn"] = os.setsid
-
-            proc = await asyncio.create_subprocess_exec(*cmd, **kwargs)
-            # Track with current task for cancellation
-            current_task = asyncio.current_task()
-            self._active[session_id] = (proc, request_id, current_task)
-
-            new_session_id = None
-            cost_usd = None
-            duration_ms = None
-
-            while True:
-                try:
-                    line = await asyncio.wait_for(proc.stdout.readline(), timeout=CHAT_TIMEOUT)
-                except asyncio.TimeoutError:
-                    logger.warning("Chat timeout: session=%s after %ds", session_id, CHAT_TIMEOUT)
-                    _kill_process(proc)
-                    await send_fn(json.dumps({
-                        "type": "chat_error",
-                        "request_id": request_id,
-                        "session_id": session_id,
-                        "error": f"Chat timed out after {CHAT_TIMEOUT // 60} minutes",
-                    }))
-                    return
-
-                if not line:
-                    break
-                text = line.decode("utf-8", errors="replace").strip()
-                if not text:
-                    continue
-                try:
-                    event = json.loads(text)
-                except json.JSONDecodeError:
-                    # stream-json from claude should always be valid
-                    # JSON-per-line. A malformed line means the CLI is
-                    # wedged or a future version changed the contract —
-                    # both are operator-visible bugs, not noise to drop
-                    # on the floor. CLAUDE.md "No error hiding".
-                    logger.warning(
-                        "Chat: dropped non-JSON line from claude (session=%s): %r",
-                        session_id, text[:200],
-                    )
-                    continue
-
-                if event.get("type") == "result":
-                    new_session_id = event.get("session_id", new_session_id)
-                    cost_usd = event.get("total_cost_usd", event.get("cost_usd", cost_usd))
-                    duration_ms = event.get("duration_ms", duration_ms)
-                    if event.get("subtype") == "error":
-                        await send_fn(json.dumps({
-                            "type": "chat_error",
-                            "request_id": request_id,
-                            "session_id": session_id,
-                            "error": event.get("error", "Claude returned an error"),
-                        }))
-                        return
-
-                await send_fn(json.dumps({
-                    "type": "chat_event",
-                    "request_id": request_id,
-                    "session_id": session_id,
-                    "event": event,
-                }))
-
-            await proc.wait()
-
-            if proc.returncode == 0:
-                await send_fn(json.dumps({
-                    "type": "chat_complete",
-                    "request_id": request_id,
-                    "session_id": session_id,
-                    "claude_session_id": new_session_id,
-                    "cost_usd": cost_usd,
-                    "duration_ms": duration_ms,
-                }))
-                logger.info("Chat complete: session=%s, claude=%s", session_id, new_session_id)
-            else:
-                stderr_bytes = await proc.stderr.read()
-                error = stderr_bytes.decode("utf-8", errors="replace").strip()
-                await send_fn(json.dumps({
-                    "type": "chat_error",
-                    "request_id": request_id,
-                    "session_id": session_id,
-                    "error": error or f"claude exited with code {proc.returncode}",
-                }))
-                logger.error("Chat error: session=%s, code=%d", session_id, proc.returncode)
-
-        except asyncio.CancelledError:
-            logger.info("Chat cancelled: session=%s", session_id)
-            if proc and proc.returncode is None:
-                _kill_process(proc)
-            raise
-        except Exception:
-            # Boundary: chat task is a background task spawned by the
-            # WS dispatcher. We log the full traceback here because
-            # nothing upstream will — then make a best-effort to tell
-            # the client before giving up.
-            logger.exception("Chat exception: session=%s", session_id)
-            try:
-                await send_fn(json.dumps({
-                    "type": "chat_error",
-                    "request_id": request_id,
-                    "session_id": session_id,
-                    "error": "internal error (see agent logs)",
-                }))
-            except Exception:
-                # The WS is already dead — the client cannot be told.
-                # Surface the send failure with full traceback so the
-                # operator can correlate it with the parent exception
-                # instead of losing it to a bare ``pass``.
-                logger.exception(
-                    "Chat: failed to notify client of chat error (session=%s)",
-                    session_id,
-                )
-        finally:
-            self._active.pop(session_id, None)
-            # Ensure process is dead
-            if proc and proc.returncode is None:
-                _kill_process(proc)
-
-    async def handle_cancel(self, msg: dict) -> None:
-        """Cancel an active chat session."""
-        session_id = msg.get("session_id", "")
-        entry = self._active.get(session_id)
-        if not entry:
-            logger.warning("Cancel: no active session %s", session_id)
-            return
-
-        proc, request_id, task = entry
-        logger.info("Cancelling chat: session=%s, pid=%s", session_id, proc.pid)
-        _kill_process(proc)
-        task.cancel()
-
-    def cancel_all(self) -> None:
-        """Cancel all active chat sessions (called on disconnect)."""
-        for session_id, (proc, _, task) in list(self._active.items()):
-            logger.info("Cleanup: killing chat session=%s, pid=%s", session_id, proc.pid)
-            _kill_process(proc)
-            task.cancel()
-        self._active.clear()
-
-    def get_active_sessions(self) -> list[str]:
-        return list(self._active.keys())
-
-
 # ── Agent ────────────────────────────────────────────────────
 
 
@@ -1964,7 +1732,6 @@ class WorkspaceAgent:
         self._ws = None
         self._running = True
         self._agent_id: str | None = None
-        self._chat_manager = ChatManager()
         self._pty_manager = PtyManager()
         self._send_lock = asyncio.Lock()
         self._background_tasks: set[asyncio.Task] = set()
@@ -2235,9 +2002,8 @@ class WorkspaceAgent:
                 # (clean close, ConnectionClosed, or other exception) so
                 # operators have a per-session record for triage.
                 self._log_connection_summary(ws)
-                # Cleanup on disconnect: kill all chat processes
+                # Cleanup on disconnect: tear down active PTY sessions
                 self._ws = None
-                self._chat_manager.cancel_all()
                 self._pty_manager.cancel_all()
                 # Cancel background tasks
                 for task in list(self._background_tasks):
@@ -2246,17 +2012,6 @@ class WorkspaceAgent:
 
     async def _handle_message(self, msg: dict) -> None:
         msg_type = msg.get("type")
-
-        # Chat messages: fire-and-forget (long-running, streaming)
-        if msg_type == "chat_message":
-            self._spawn_task(
-                self._chat_manager.handle_chat_message(msg, self._safe_send)
-            )
-            return
-
-        if msg_type == "chat_cancel":
-            await self._chat_manager.handle_cancel(msg)
-            return
 
         if msg_type == "terminal_create":
             self._spawn_task(
@@ -2453,7 +2208,6 @@ class WorkspaceAgent:
 
     async def shutdown(self) -> None:
         self._running = False
-        self._chat_manager.cancel_all()
         self._pty_manager.cancel_all()
         if self._ws:
             try:

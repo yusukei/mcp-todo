@@ -165,13 +165,6 @@ async def lifespan(app: FastAPI):
     from .services.agent_manager import agent_manager as _agent_mgr_startup
     await _agent_mgr_startup.start()
 
-    # Same pattern for the chat connection manager: its background
-    # subscriber turns Redis pub/sub messages into local WebSocket
-    # fan-out so a chat_event published by worker A reaches every
-    # browser regardless of which worker holds the WebSocket.
-    from .services.chat_manager import chat_manager as _chat_mgr_startup
-    await _chat_mgr_startup.start()
-
     # Warn about default DB passwords
     if "changeme" in settings.MONGO_URI.lower():
         logger.warning("MONGO_URI contains default password 'changeme' — change it for production")
@@ -199,14 +192,6 @@ async def lifespan(app: FastAPI):
     # be cleared across multiple workers/replicas without a race, so
     # there is nothing to reset at startup.
     _is_testing = os.environ.get("TESTING") == "1"
-    # ``recover_stale_sessions`` is API-side state recovery (chat
-    # sessions that were busy when the API worker crashed), so it
-    # runs with ENABLE_API. The indexer sidecar does not need it.
-    if not _is_testing and settings.ENABLE_API:
-        from .services.chat_events import recover_stale_sessions
-        recovered_sessions = await recover_stale_sessions()
-        if recovered_sessions:
-            logger.info("Recovered %d stale busy chat sessions", recovered_sessions)
 
     # ── Search index initialization (registry-driven) ─────────
     #
@@ -317,11 +302,6 @@ async def lifespan(app: FastAPI):
     # AFTER the drain so any in-flight remote dispatch can still
     # publish its response to the bus.
     await _agent_mgr.stop()
-    # Stop the chat manager subscriber. Outstanding chat fan-outs
-    # at this point are best-effort; the subscriber loop will
-    # gracefully exit on its next get_message tick.
-    from .services.chat_manager import chat_manager as _chat_mgr
-    await _chat_mgr.stop()
     # Stop the index notification consumer on the indexer sidecar.
     # In single-process mode this is a no-op (start() was never
     # called when ENABLE_INDEXERS=True and the ``indexer_consumer``
@@ -404,7 +384,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 # does not accidentally answer HTTP API requests it cannot safely
 # serve (e.g. a write that would need to notify itself via Redis).
 if settings.ENABLE_API:
-    from .api.v1.endpoints import attachments, auth, backup, bookmark_assets, bookmarks, chat, docsites, documents, error_tracker as error_tracker_api, events, knowledge, mcp_keys, mcp_usage, projects, public_config, secrets, task_live, tasks, users, workspaces  # noqa: E402
+    from .api.v1.endpoints import attachments, auth, backup, bookmark_assets, bookmarks, docsites, documents, error_tracker as error_tracker_api, events, knowledge, mcp_keys, mcp_usage, projects, public_config, secrets, task_live, tasks, users, workspaces  # noqa: E402
 
     app.include_router(public_config.router, prefix="/api/v1")
     app.include_router(auth.router, prefix="/api/v1")
@@ -423,7 +403,6 @@ if settings.ENABLE_API:
     app.include_router(bookmarks.bm_router, prefix="/api/v1")
     app.include_router(bookmark_assets.router, prefix="/api/v1")
     app.include_router(workspaces.router, prefix="/api/v1")
-    app.include_router(chat.router, prefix="/api/v1")
     app.include_router(mcp_usage.router, prefix="/api/v1")
     app.include_router(secrets.router, prefix="/api/v1")
     app.include_router(error_tracker_api.router, prefix="/api/v1")
