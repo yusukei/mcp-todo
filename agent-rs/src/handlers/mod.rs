@@ -55,6 +55,11 @@ pub async fn dispatch(request_type: &str, payload: Value) -> Option<Value> {
         "write_file" => Some(fs_write::handle_write_file(payload).await),
         "list_dir" => Some(fs_read::handle_list_dir(payload).await),
         "stat" => Some(fs_read::handle_stat(payload).await),
+        "mkdir" => Some(fs_write::handle_mkdir(payload).await),
+        "delete" => Some(fs_write::handle_delete(payload).await),
+        "move" => Some(fs_write::handle_move(payload).await),
+        "copy" => Some(fs_write::handle_copy(payload).await),
+        "glob" => Some(fs_read::handle_glob(payload).await),
         _ => None,
     }
 }

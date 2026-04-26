@@ -10,7 +10,7 @@ use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use serde_json::{json, Value};
 use tracing::warn;
 
-use super::constants::{MAX_DIR_ENTRIES, MAX_FILE_BYTES};
+use super::constants::{MAX_DIR_ENTRIES, MAX_FILE_BYTES, MAX_GLOB_RESULTS};
 use super::error_payload;
 use crate::path_safety::{resolve_safe_path, PathSafetyError};
 
@@ -377,6 +377,122 @@ fn format_systemtime_iso8601(t: std::time::SystemTime) -> Option<String> {
 #[cfg(not(unix))]
 fn _unused_path_buf_marker(_p: PathBuf) {}
 
+// ── glob ─────────────────────────────────────────────────────────
+
+/// `glob` — find files matching a pathlib-style pattern under `base`.
+///
+/// `*` does **not** cross directory boundaries (so `*.py` only returns
+/// files in `base`, not nested); `**` matches any depth (so
+/// `**/*.py` recurses). Files only — directories are skipped to mirror
+/// the Claude Code Glob tool.
+pub async fn handle_glob(payload: Value) -> Value {
+    let pattern = payload
+        .get("pattern")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let path_input = payload.get("path").and_then(Value::as_str).unwrap_or(".");
+    let cwd_input = payload.get("cwd").and_then(Value::as_str);
+
+    if pattern.is_empty() {
+        return error_payload("pattern is required");
+    }
+    let base = match resolve_safe_path(path_input, cwd_input) {
+        Ok(p) => p,
+        Err(e) => return error_payload(format_path_error(e)),
+    };
+    let base_for_blocking = base.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        glob_blocking(&base_for_blocking, &pattern)
+    })
+    .await;
+    match result {
+        Ok(v) => v,
+        Err(e) => error_payload(format!("glob task panicked: {e}")),
+    }
+}
+
+fn glob_blocking(base: &Path, pattern: &str) -> Value {
+    if !base.is_dir() {
+        return error_payload(format!("Not a directory: {}", base.display()));
+    }
+    let pat = match glob::Pattern::new(pattern) {
+        Ok(p) => p,
+        Err(e) => return error_payload(format!("Invalid glob pattern: {e}")),
+    };
+    // pathlib `*` doesn't cross `/`, so cap walk depth by the pattern's
+    // segment count unless `**` is present (which matches any depth).
+    let max_depth = if pattern.contains("**") {
+        usize::MAX
+    } else {
+        // Each `/` adds one nesting level; the leaf itself is one more.
+        pattern.matches('/').count() + 1
+    };
+    let walker = walkdir::WalkDir::new(base)
+        .follow_links(false)
+        .max_depth(max_depth);
+    let opts = glob::MatchOptions {
+        case_sensitive: !cfg!(windows),
+        require_literal_separator: true,
+        require_literal_leading_dot: false,
+    };
+    let mut results: Vec<Value> = Vec::new();
+    let mut truncated = false;
+    for entry in walker {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        if entry.depth() == 0 {
+            continue; // skip base itself
+        }
+        let rel = match entry.path().strip_prefix(base) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        // Normalize Windows `\` → `/` so the user's pattern (which
+        // uses pathlib semantics) matches consistently.
+        let rel_str = rel.to_string_lossy().replace('\\', "/");
+        if !pat.matches_with(&rel_str, opts) {
+            continue;
+        }
+        let meta = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        if !meta.is_file() {
+            continue;
+        }
+        if results.len() >= MAX_GLOB_RESULTS {
+            truncated = true;
+            break;
+        }
+        let mtime = meta
+            .modified()
+            .ok()
+            .and_then(format_systemtime_iso8601)
+            .unwrap_or_default();
+        results.push(json!({
+            "path": entry.path().to_string_lossy(),
+            "size": meta.len(),
+            "mtime": mtime,
+        }));
+    }
+    // mtime descending — newest first (matches Python).
+    results.sort_by(|a, b| {
+        b["mtime"]
+            .as_str()
+            .unwrap_or("")
+            .cmp(a["mtime"].as_str().unwrap_or(""))
+    });
+    json!({
+        "matches": results,
+        "count": results.len(),
+        "base": base.to_string_lossy(),
+        "truncated": truncated,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -612,6 +728,147 @@ mod tests {
         let sub = d.path().join("sub");
         fs::create_dir(&sub).unwrap();
         let v = handle_stat(json!({"path": "../foo", "cwd": sub.to_string_lossy()})).await;
+        assert!(v["error"]
+            .as_str()
+            .unwrap_or("")
+            .to_lowercase()
+            .contains("traversal"));
+    }
+
+    // ── glob ─────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn glob_star_matches_only_top_level() {
+        let d = tmp();
+        fs::write(d.path().join("a.py"), "x").unwrap();
+        fs::write(d.path().join("b.py"), "x").unwrap();
+        fs::write(d.path().join("c.txt"), "x").unwrap();
+        fs::create_dir(d.path().join("sub")).unwrap();
+        fs::write(d.path().join("sub").join("nested.py"), "x").unwrap();
+        let v = handle_glob(json!({
+            "pattern": "*.py",
+            "path": ".",
+            "cwd": cwd_str(&d),
+        }))
+        .await;
+        assert_eq!(v["count"], 2);
+        let names: Vec<&str> = v["matches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["path"].as_str().unwrap())
+            .collect();
+        // a.py and b.py present, nested.py absent
+        assert!(names.iter().any(|p| p.ends_with("a.py")));
+        assert!(names.iter().any(|p| p.ends_with("b.py")));
+        assert!(!names.iter().any(|p| p.ends_with("nested.py")));
+    }
+
+    #[tokio::test]
+    async fn glob_double_star_recursive() {
+        let d = tmp();
+        fs::write(d.path().join("a.py"), "x").unwrap();
+        fs::create_dir(d.path().join("sub")).unwrap();
+        fs::write(d.path().join("sub").join("b.py"), "x").unwrap();
+        fs::create_dir(d.path().join("sub").join("nest")).unwrap();
+        fs::write(d.path().join("sub").join("nest").join("c.py"), "x").unwrap();
+        let v = handle_glob(json!({
+            "pattern": "**/*.py",
+            "path": ".",
+            "cwd": cwd_str(&d),
+        }))
+        .await;
+        // Behavior of pathlib's `**/*.py` and the glob crate's
+        // `**/*.py` is "any level under base, at least one segment
+        // deep". So a.py at the root may or may not match. We assert
+        // that the deeply-nested ones DO match.
+        let count = v["count"].as_u64().unwrap();
+        assert!(count >= 2, "expected ≥2 matches, got {count}: {v:?}");
+        let names: Vec<&str> = v["matches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["path"].as_str().unwrap())
+            .collect();
+        assert!(names.iter().any(|p| p.ends_with("b.py")));
+        assert!(names.iter().any(|p| p.ends_with("c.py")));
+    }
+
+    #[tokio::test]
+    async fn glob_subdir_pattern() {
+        let d = tmp();
+        fs::create_dir(d.path().join("src")).unwrap();
+        fs::write(d.path().join("src").join("main.rs"), "x").unwrap();
+        fs::write(d.path().join("src").join("lib.rs"), "x").unwrap();
+        fs::write(d.path().join("other.rs"), "x").unwrap();
+        let v = handle_glob(json!({
+            "pattern": "src/*.rs",
+            "path": ".",
+            "cwd": cwd_str(&d),
+        }))
+        .await;
+        assert_eq!(v["count"], 2);
+    }
+
+    #[tokio::test]
+    async fn glob_directories_excluded() {
+        let d = tmp();
+        fs::create_dir(d.path().join("matchme_dir")).unwrap();
+        fs::write(d.path().join("matchme_file"), "x").unwrap();
+        let v = handle_glob(json!({
+            "pattern": "matchme_*",
+            "path": ".",
+            "cwd": cwd_str(&d),
+        }))
+        .await;
+        // Only matchme_file (file). matchme_dir is filtered out.
+        assert_eq!(v["count"], 1);
+        let p = v["matches"][0]["path"].as_str().unwrap();
+        assert!(p.ends_with("matchme_file"), "got {p}");
+    }
+
+    #[tokio::test]
+    async fn glob_mtime_descending() {
+        let d = tmp();
+        fs::write(d.path().join("old.txt"), "x").unwrap();
+        // Sleep so mtime resolution is enough to distinguish (1s on
+        // many FAT/ext4 setups). Tokio's sleep is fine here.
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        fs::write(d.path().join("new.txt"), "x").unwrap();
+        let v = handle_glob(json!({
+            "pattern": "*.txt",
+            "path": ".",
+            "cwd": cwd_str(&d),
+        }))
+        .await;
+        assert_eq!(v["count"], 2);
+        let first = v["matches"][0]["path"].as_str().unwrap();
+        assert!(first.ends_with("new.txt"), "newest first: {first}");
+    }
+
+    #[tokio::test]
+    async fn glob_pattern_required() {
+        let d = tmp();
+        let v = handle_glob(json!({
+            "pattern": "",
+            "path": ".",
+            "cwd": cwd_str(&d),
+        }))
+        .await;
+        assert!(v["error"].as_str().unwrap_or("").contains("required"));
+    }
+
+    #[tokio::test]
+    async fn glob_traversal_rejected() {
+        let d = tmp();
+        let sub = d.path().join("sub");
+        fs::create_dir(&sub).unwrap();
+        let v = handle_glob(json!({
+            "pattern": "*.txt",
+            "path": "..",
+            "cwd": sub.to_string_lossy(),
+        }))
+        .await;
         assert!(v["error"]
             .as_str()
             .unwrap_or("")

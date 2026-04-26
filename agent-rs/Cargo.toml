@@ -40,6 +40,12 @@ rand = "0.8"
 dunce = "1"
 # Binary file content is wire-encoded as base64 (read_file `encoding=binary|base64`).
 base64 = "0.22"
+# pathlib-compatible glob patterns (`*`, `?`, `**`, `[...]`) — used by the
+# `glob` handler. Matches Python's `pathlib.Path.glob` semantics where
+# `*` does not cross directory boundaries and `**` matches any depth.
+glob = "0.3"
+# Recursive directory walk used by `glob` and (later) `tree`/`grep`.
+walkdir = "2"
 
 # POSIX-only: send SIGKILL to the *process group* on exec timeout,
 # matching Python's `os.killpg(os.getpgid(pid), SIGKILL)` so the
