@@ -68,7 +68,7 @@ export default function BackupRestoreTab() {
         <button
           onClick={handleExport}
           disabled={exporting}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-2 text-sm bg-accent-500 text-gray-100 rounded-lg hover:bg-accent-600 disabled:opacity-50"
         >
           <Download className="w-4 h-4" />
           {exporting ? 'バックアップ中...' : 'バックアップ作成'}

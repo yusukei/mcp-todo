@@ -202,7 +202,7 @@ export default function TaskLinksSection({ task, projectId, onTaskClick }: Props
                 setShowPicker(true)
                 setTimeout(() => pickerInputRef.current?.focus(), 0)
               }}
-              className="flex items-center gap-1 text-xs text-terracotta-600 dark:text-terracotta-400 hover:text-terracotta-800 dark:hover:text-terracotta-300 transition-colors"
+              className="flex items-center gap-1 text-xs text-accent-600 dark:text-accent-400 hover:text-accent-800 dark:hover:text-accent-300 transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
               依存を追加
@@ -245,7 +245,7 @@ export default function TaskLinksSection({ task, projectId, onTaskClick }: Props
                     key={t.id}
                     onClick={() => linkMut.mutate(t.id)}
                     disabled={linkMut.isPending}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-terracotta-50 dark:hover:bg-terracotta-900/30 text-left disabled:opacity-50"
+                    className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-accent-50 dark:hover:bg-accent-900/30 text-left disabled:opacity-50"
                   >
                     <span
                       className={clsx(

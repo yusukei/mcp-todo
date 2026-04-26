@@ -190,7 +190,7 @@ export default function ProjectSecretsTab({ projectId, isOwner }: Props) {
           {isOwner && (
             <button
               onClick={openCreate}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-accent-500 text-gray-100 rounded-lg hover:bg-accent-600 transition-colors"
             >
               <Plus className="w-4 h-4" />
               Add
@@ -257,7 +257,7 @@ export default function ProjectSecretsTab({ projectId, isOwner }: Props) {
                     <>
                       <button
                         onClick={() => openEdit(s)}
-                        className="p-1.5 rounded text-gray-400 hover:text-terracotta-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        className="p-1.5 rounded text-gray-400 hover:text-accent-500 hover:bg-gray-100 dark:hover:bg-gray-700"
                         title="Edit"
                       >
                         <Pencil className="w-4 h-4" />
@@ -335,7 +335,7 @@ export default function ProjectSecretsTab({ projectId, isOwner }: Props) {
               <button
                 onClick={handleSubmit}
                 disabled={createMutation.isPending || updateMutation.isPending}
-                className="px-4 py-2 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50"
+                className="px-4 py-2 text-sm bg-accent-500 text-gray-100 rounded-lg hover:bg-accent-600 disabled:opacity-50"
               >
                 {editKey ? 'Update' : 'Create'}
               </button>

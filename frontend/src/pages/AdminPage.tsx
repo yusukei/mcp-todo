@@ -48,7 +48,7 @@ export default function AdminPage() {
                 onClick={() => setTab(t.id)}
                 className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors text-left ${
                   tab === t.id
-                    ? 'bg-terracotta-50 dark:bg-terracotta-900/30 text-terracotta-700 dark:text-terracotta-300 font-medium'
+                    ? 'bg-accent-50 dark:bg-accent-900/30 text-accent-700 dark:text-accent-300 font-medium'
                     : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                 }`}
               >

@@ -66,7 +66,7 @@ function ToastItem({ toast }: { toast: ToastMessage }) {
     setTimeout(() => removeToast(toast.id), 200)
   }, [toast.id])
 
-  const bgColor = toast.type === 'success' ? 'bg-emerald-600' : toast.type === 'info' ? 'bg-terracotta-500' : 'bg-crimson'
+  const bgColor = toast.type === 'success' ? 'bg-emerald-600' : toast.type === 'info' ? 'bg-accent-500' : 'bg-crimson'
   const Icon = toast.type === 'success' ? CheckCircle : toast.type === 'info' ? Info : AlertCircle
 
   return (

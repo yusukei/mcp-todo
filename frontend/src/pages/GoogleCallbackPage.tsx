@@ -50,7 +50,7 @@ export default function GoogleCallbackPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
       <div className="text-center">
-        <div className="w-8 h-8 border-4 border-terracotta-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+        <div className="w-8 h-8 border-4 border-accent-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
         <p className="text-gray-600 dark:text-gray-400 text-sm">Googleでログイン中...</p>
       </div>
     </div>

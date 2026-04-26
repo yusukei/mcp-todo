@@ -78,7 +78,7 @@ export default function ProjectsTab() {
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-200">プロジェクト管理</h2>
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-accent-500 text-gray-100 rounded-lg hover:bg-accent-600"
         >
           <Plus className="w-4 h-4" />プロジェクト追加
         </button>
@@ -115,7 +115,7 @@ export default function ProjectsTab() {
             <button
               onClick={() => create.mutate()}
               disabled={!name || create.isPending}
-              className="px-3 py-1.5 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50"
+              className="px-3 py-1.5 text-sm bg-accent-500 text-gray-100 rounded-lg hover:bg-accent-600 disabled:opacity-50"
             >
               {create.isPending ? '作成中...' : '作成'}
             </button>
@@ -150,7 +150,7 @@ export default function ProjectsTab() {
                           if (e.key === 'Escape') setRenamingId(null)
                         }}
                         maxLength={255}
-                        className="font-medium text-sm text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 border border-terracotta-400 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-focus"
+                        className="font-medium text-sm text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 border border-accent-400 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-focus"
                       />
                       <button onClick={() => confirmRename(p.id, p.name)} disabled={rename.isPending} className="p-0.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded" title="確定">
                         <Check className="w-4 h-4" />
@@ -165,7 +165,7 @@ export default function ProjectsTab() {
                       <span className="font-medium text-gray-800 dark:text-gray-200">{p.name}</span>
                       <button
                         onClick={() => startRename(p)}
-                        className="p-0.5 text-gray-300 dark:text-gray-600 opacity-0 group-hover:opacity-100 hover:text-terracotta-500 dark:hover:text-terracotta-400 transition-opacity rounded"
+                        className="p-0.5 text-gray-300 dark:text-gray-600 opacity-0 group-hover:opacity-100 hover:text-accent-500 dark:hover:text-accent-400 transition-opacity rounded"
                         title="リネーム"
                       >
                         <Pencil className="w-3.5 h-3.5" />

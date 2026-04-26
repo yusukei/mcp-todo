@@ -198,7 +198,7 @@ export default function ProjectSettingsPage() {
                         if (e.key === 'Escape') setIsRenaming(false)
                       }}
                       maxLength={255}
-                      className="bg-white dark:bg-gray-700 border border-terracotta-400 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-focus text-gray-900 dark:text-gray-100"
+                      className="bg-white dark:bg-gray-700 border border-accent-400 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-focus text-gray-900 dark:text-gray-100"
                     />
                     <button onClick={confirmRename} disabled={renameMutation.isPending} className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded">
                       <Check className="w-4 h-4" />
@@ -214,7 +214,7 @@ export default function ProjectSettingsPage() {
               {!isRenaming && isOwnerOrAdmin && (
                 <button
                   onClick={startRename}
-                  className="p-2 text-gray-400 hover:text-terracotta-500 dark:hover:text-terracotta-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                  className="p-2 text-gray-400 hover:text-accent-500 dark:hover:text-accent-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                 >
                   <Pencil className="w-4 h-4" />
                 </button>
@@ -270,7 +270,7 @@ export default function ProjectSettingsPage() {
         {/* Remote agent binding */}
         <section className="space-y-4">
           <div className="flex items-center gap-2">
-            <Server className="w-4 h-4 text-terracotta-600 dark:text-terracotta-400" />
+            <Server className="w-4 h-4 text-accent-600 dark:text-accent-400" />
             <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">リモートエージェント</h2>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -333,7 +333,7 @@ export default function ProjectSettingsPage() {
                   <button
                     onClick={handleSaveRemote}
                     disabled={setRemoteMutation.isPending}
-                    className="px-3 py-1.5 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50"
+                    className="px-3 py-1.5 text-sm bg-accent-500 text-gray-100 rounded-lg hover:bg-accent-600 disabled:opacity-50"
                   >
                     {setRemoteMutation.isPending ? '保存中...' : '保存'}
                   </button>
@@ -371,7 +371,7 @@ export default function ProjectSettingsPage() {
                   <div className="flex items-center gap-1 flex-shrink-0 ml-4">
                     <button
                       onClick={startEditRemote}
-                      className="p-2 rounded-lg text-gray-400 hover:text-terracotta-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      className="p-2 rounded-lg text-gray-400 hover:text-accent-500 hover:bg-gray-100 dark:hover:bg-gray-700"
                       title="編集"
                     >
                       <Pencil className="w-4 h-4" />
@@ -395,7 +395,7 @@ export default function ProjectSettingsPage() {
                   <button
                     onClick={startEditRemote}
                     disabled={agents.length === 0}
-                    className="px-3 py-1.5 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-3 py-1.5 text-sm bg-accent-500 text-gray-100 rounded-lg hover:bg-accent-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     title={agents.length === 0 ? 'エージェントが登録されていません' : ''}
                   >
                     設定

@@ -64,7 +64,7 @@ export default function TaskSubtaskSection({ task, projectId, onTaskClick }: Pro
               setShowSubtaskForm(true)
               setTimeout(() => subtaskInputRef.current?.focus(), 0)
             }}
-            className="flex items-center gap-1 text-xs text-terracotta-600 dark:text-terracotta-400 hover:text-terracotta-800 dark:hover:text-terracotta-300 transition-colors"
+            className="flex items-center gap-1 text-xs text-accent-600 dark:text-accent-400 hover:text-accent-800 dark:hover:text-accent-300 transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             サブタスク追加
@@ -91,7 +91,7 @@ export default function TaskSubtaskSection({ task, projectId, onTaskClick }: Pro
           <button
             onClick={handleCreateSubtask}
             disabled={!subtaskTitle.trim() || createSubtask.isPending}
-            className="px-3 py-2 text-sm text-white bg-terracotta-600 rounded-lg hover:bg-terracotta-600 disabled:opacity-40 flex-shrink-0"
+            className="px-3 py-2 text-sm text-white bg-accent-600 rounded-lg hover:bg-accent-600 disabled:opacity-40 flex-shrink-0"
           >
             追加
           </button>

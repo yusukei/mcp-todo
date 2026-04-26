@@ -21,7 +21,7 @@ export default function SettingsPage() {
                 {user?.picture_url ? (
                   <img src={user.picture_url} alt="" className="w-10 h-10 rounded-full" />
                 ) : (
-                  <div className="w-10 h-10 rounded-full bg-terracotta-100 dark:bg-terracotta-900 flex items-center justify-center text-terracotta-600 dark:text-terracotta-300 font-bold text-lg">
+                  <div className="w-10 h-10 rounded-full bg-accent-100 dark:bg-accent-900 flex items-center justify-center text-accent-600 dark:text-accent-300 font-bold text-lg">
                     {user?.name?.[0]?.toUpperCase() ?? '?'}
                   </div>
                 )}

@@ -95,7 +95,7 @@ export default function PasskeysTab() {
         <button
           onClick={handleRegister}
           disabled={registering}
-          className="flex items-center gap-1.5 bg-terracotta-500 text-gray-100 px-4 py-2 rounded-lg hover:bg-terracotta-600 disabled:opacity-50 text-sm font-medium"
+          className="flex items-center gap-1.5 bg-accent-500 text-gray-100 px-4 py-2 rounded-lg hover:bg-accent-600 disabled:opacity-50 text-sm font-medium"
         >
           <Plus className="w-4 h-4" />
           {registering ? '登録中...' : 'パスキーを登録'}
@@ -112,7 +112,7 @@ export default function PasskeysTab() {
           {credentials.map((cred) => (
             <li key={cred.credential_id} className="flex items-center justify-between py-3">
               <div className="flex items-center gap-3">
-                <Fingerprint className="w-5 h-5 text-terracotta-500" />
+                <Fingerprint className="w-5 h-5 text-accent-500" />
                 <div>
                   <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{cred.name}</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">

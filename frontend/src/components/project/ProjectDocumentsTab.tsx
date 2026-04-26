@@ -285,7 +285,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
           <div className="flex items-center gap-1">
             <button
               onClick={() => selectMode ? exitSelectMode() : setSelectMode(true)}
-              className={`p-1.5 rounded-md transition-colors ${selectMode ? 'bg-terracotta-100 dark:bg-terracotta-900/50 text-terracotta-600 dark:text-terracotta-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300'}`}
+              className={`p-1.5 rounded-md transition-colors ${selectMode ? 'bg-accent-100 dark:bg-accent-900/50 text-accent-600 dark:text-accent-400' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300'}`}
               title={selectMode ? '選択モード終了' : 'エクスポート用に選択'}
             >
               <CheckSquare className="w-3.5 h-3.5" />
@@ -308,7 +308,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
             />
             <button
               onClick={() => { setCreating(true); setMobileShowDetail(true) }}
-              className="flex items-center gap-1 px-2 py-1 text-xs bg-terracotta-500 text-gray-100 rounded-md hover:bg-terracotta-600"
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-accent-500 text-gray-100 rounded-md hover:bg-accent-600"
             >
               <Plus className="w-3.5 h-3.5" /> 追加
             </button>
@@ -317,8 +317,8 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
 
         {/* Export bar */}
         {selectMode && (
-          <div className="flex items-center gap-2 mb-2 p-2 bg-terracotta-50 dark:bg-terracotta-950/40 border border-terracotta-200 dark:border-terracotta-800 rounded-md text-xs">
-            <span className="font-medium text-terracotta-700 dark:text-terracotta-300">
+          <div className="flex items-center gap-2 mb-2 p-2 bg-accent-50 dark:bg-accent-950/40 border border-accent-200 dark:border-accent-800 rounded-md text-xs">
+            <span className="font-medium text-accent-700 dark:text-accent-300">
               {checkedIds.size > 0 ? `${checkedIds.size}件選択` : 'エクスポート'}
             </span>
             <div className="flex items-center gap-1 ml-auto">
@@ -332,7 +332,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
               <button
                 onClick={() => handleExport('pdf')}
                 disabled={exporting || checkedIds.size === 0}
-                className="flex items-center gap-1 px-2 py-1 bg-terracotta-500 text-gray-100 rounded hover:bg-terracotta-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex items-center gap-1 px-2 py-1 bg-accent-500 text-gray-100 rounded hover:bg-accent-600 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <FileDown className="w-3.5 h-3.5" /> {exporting ? '...' : 'PDF'}
               </button>
@@ -391,7 +391,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
                   type="checkbox"
                   checked={checkedIds.size === items.length}
                   onChange={toggleAll}
-                  className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-terracotta-600 focus:ring-focus"
+                  className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-accent-600 focus:ring-focus"
                 />
                 すべて選択
               </label>
@@ -418,7 +418,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
               </SortableContext>
               <DragOverlay dropAnimation={null}>
                 {activeDragDoc ? (
-                  <div className="bg-gray-100 dark:bg-gray-800 shadow-lg rounded-md border border-terracotta-300 dark:border-terracotta-600 px-3 py-2 opacity-90 text-sm">
+                  <div className="bg-gray-100 dark:bg-gray-800 shadow-lg rounded-md border border-accent-300 dark:border-accent-600 px-3 py-2 opacity-90 text-sm">
                     {activeDragDoc.title}
                   </div>
                 ) : null}
@@ -577,9 +577,9 @@ function SortableDocumentItem({
         isDragging ? 'opacity-30' : ''
       } ${
         isSelected
-          ? 'bg-terracotta-100 dark:bg-terracotta-900/40 text-terracotta-700 dark:text-terracotta-300'
+          ? 'bg-accent-100 dark:bg-accent-900/40 text-accent-700 dark:text-accent-300'
           : isChecked
-            ? 'bg-terracotta-50 dark:bg-terracotta-950/30'
+            ? 'bg-accent-50 dark:bg-accent-950/30'
             : 'hover:bg-gray-100 dark:hover:bg-gray-800'
       }`}
     >
@@ -598,7 +598,7 @@ function SortableDocumentItem({
           checked={isChecked}
           onChange={() => onToggleCheck(doc.id)}
           onClick={(e) => e.stopPropagation()}
-          className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-terracotta-600 focus:ring-focus flex-shrink-0 cursor-pointer"
+          className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-accent-600 focus:ring-focus flex-shrink-0 cursor-pointer"
         />
       )}
       <button
@@ -676,7 +676,7 @@ function DocumentHistory({ projectId, documentId }: { projectId: string; documen
                     </span>
                     <span className="text-xs text-gray-400 dark:text-gray-500">by {v.changed_by}</span>
                     {v.task_id && (
-                      <span className="text-xs text-terracotta-500 dark:text-terracotta-400">
+                      <span className="text-xs text-accent-500 dark:text-accent-400">
                         task: {v.task_id.slice(-6)}
                       </span>
                     )}
@@ -751,7 +751,7 @@ function DocumentForm({
         <button
           onClick={onSubmit}
           disabled={!form.title.trim() || loading}
-          className="px-4 py-2 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50"
+          className="px-4 py-2 text-sm bg-accent-500 text-gray-100 rounded-lg hover:bg-accent-600 disabled:opacity-50"
         >
           {loading ? '処理中...' : submitLabel}
         </button>

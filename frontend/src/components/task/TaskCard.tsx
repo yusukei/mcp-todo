@@ -27,11 +27,11 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive, sele
       aria-label={task.title}
       tabIndex={0}
       className={clsx(
-        'relative bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 cursor-pointer hover:shadow-sm hover:border-terracotta-300 dark:hover:border-terracotta-600 transition-all group/card',
+        'relative bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 cursor-pointer hover:shadow-sm hover:border-accent-300 dark:hover:border-accent-600 transition-all group/card',
         task.archived && 'opacity-60',
         isBlocked && 'opacity-70',
         isOverdue && 'border-l-4 border-l-red-500 dark:border-l-red-400',
-        selectMode && isSelected && 'ring-2 ring-terracotta-400 dark:ring-terracotta-500',
+        selectMode && isSelected && 'ring-2 ring-accent-400 dark:ring-accent-500',
       )}
     >
       <button
@@ -61,7 +61,7 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive, sele
               type="checkbox"
               checked={isSelected ?? false}
               onChange={() => onToggleSelect?.()}
-              className="rounded border-gray-300 dark:border-gray-600 text-terracotta-600 focus:ring-focus w-4 h-4"
+              className="rounded border-gray-300 dark:border-gray-600 text-accent-600 focus:ring-focus w-4 h-4"
             />
           </label>
         )}
@@ -101,7 +101,7 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive, sele
           </span>
         )}
         {task.tags?.map((tag: string) => (
-          <span key={tag} className="text-xs bg-terracotta-50 dark:bg-terracotta-900/40 text-terracotta-600 dark:text-terracotta-400 px-2 py-0.5 rounded-full">
+          <span key={tag} className="text-xs bg-accent-50 dark:bg-accent-900/40 text-accent-600 dark:text-accent-400 px-2 py-0.5 rounded-full">
             {tag}
           </span>
         ))}
@@ -125,7 +125,7 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive, sele
             className={clsx(
               'ml-auto p-0.5 rounded transition-colors',
               task.archived
-                ? 'text-terracotta-500 dark:text-terracotta-400 hover:bg-terracotta-50 dark:hover:bg-terracotta-900/30'
+                ? 'text-accent-500 dark:text-accent-400 hover:bg-accent-50 dark:hover:bg-accent-900/30'
                 : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700',
             )}
             title={task.archived ? 'アーカイブ解除' : 'アーカイブ'}

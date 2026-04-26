@@ -495,7 +495,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
           <div className="px-6 pt-3 pb-0">
             <button
               onClick={() => onNavigateTask?.(parentTask.id)}
-              className="flex items-center gap-1.5 text-xs text-terracotta-600 dark:text-terracotta-400 hover:text-terracotta-800 dark:hover:text-terracotta-300 transition-colors"
+              className="flex items-center gap-1.5 text-xs text-accent-600 dark:text-accent-400 hover:text-accent-800 dark:hover:text-accent-300 transition-colors"
             >
               <ChevronUp className="w-3.5 h-3.5" />
               <span>親タスク: {parentTask.title}</span>
@@ -516,8 +516,8 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
                   className={clsx(
                     'px-3 py-1 text-sm rounded-full border transition-colors',
                     task.status === opt.value
-                      ? 'bg-terracotta-500 text-gray-100 border-terracotta-600'
-                      : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-terracotta-400 dark:hover:border-terracotta-500'
+                      ? 'bg-accent-500 text-gray-100 border-accent-600'
+                      : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-accent-400 dark:hover:border-accent-500'
                   )}
                 >
                   {opt.label}
@@ -587,8 +587,8 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
                     task.task_type === opt.value
                       ? opt.value === 'decision'
                         ? 'bg-violet-600 text-white border-violet-600'
-                        : 'bg-terracotta-500 text-gray-100 border-terracotta-600'
-                      : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-terracotta-400 dark:hover:border-terracotta-500'
+                        : 'bg-accent-500 text-gray-100 border-accent-600'
+                      : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-accent-400 dark:hover:border-accent-500'
                   )}
                 >
                   {opt.label}
@@ -639,7 +639,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
                   </button>
                   <button
                     onClick={saveDescription}
-                    className="px-3 py-1 text-sm text-white bg-terracotta-600 rounded-lg hover:bg-terracotta-600"
+                    className="px-3 py-1 text-sm text-white bg-accent-600 rounded-lg hover:bg-accent-600"
                   >
                     保存
                   </button>
@@ -696,7 +696,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
                   </button>
                   <button
                     onClick={saveTags}
-                    className="px-3 py-1 text-sm text-white bg-terracotta-600 rounded-lg hover:bg-terracotta-600"
+                    className="px-3 py-1 text-sm text-white bg-accent-600 rounded-lg hover:bg-accent-600"
                   >
                     保存
                   </button>
@@ -705,7 +705,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
             ) : task.tags?.length > 0 ? (
               <div className="flex flex-wrap gap-2 cursor-pointer" onClick={startEditTags}>
                 {task.tags.map((tag: string) => (
-                  <span key={tag} className="text-xs bg-terracotta-50 dark:bg-terracotta-900/40 text-terracotta-600 dark:text-terracotta-400 px-2 py-1 rounded-full">
+                  <span key={tag} className="text-xs bg-accent-50 dark:bg-accent-900/40 text-accent-600 dark:text-accent-400 px-2 py-1 rounded-full">
                     {tag}
                   </span>
                 ))}
@@ -805,7 +805,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploadAttachment.isPending}
-                className="flex items-center gap-1 text-xs text-terracotta-600 dark:text-terracotta-400 hover:text-terracotta-800 dark:hover:text-terracotta-300 transition-colors disabled:opacity-40"
+                className="flex items-center gap-1 text-xs text-accent-600 dark:text-accent-400 hover:text-accent-800 dark:hover:text-accent-300 transition-colors disabled:opacity-40"
               >
                 <ImagePlus className="w-3.5 h-3.5" />
                 {uploadAttachment.isPending ? 'アップロード中...' : '画像を追加'}

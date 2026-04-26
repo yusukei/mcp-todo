@@ -559,7 +559,7 @@ function TimelineToolbar({
           type="checkbox"
           checked={highlightCritical}
           onChange={(e) => onHighlightCriticalChange?.(e.target.checked)}
-          className="rounded border-gray-300 dark:border-gray-600 text-terracotta-600 focus:ring-focus w-3.5 h-3.5"
+          className="rounded border-gray-300 dark:border-gray-600 text-accent-600 focus:ring-focus w-3.5 h-3.5"
         />
         <span className="text-xs">クリティカルパス強調</span>
       </label>

@@ -36,7 +36,7 @@ function SortableProjectItem({ project, closeSidebar, isAdmin, isActive }: {
   }
 
   return (
-    <div ref={setNodeRef} style={style} className={`group/project flex items-center rounded-lg ${isActive ? 'bg-terracotta-50 dark:bg-terracotta-900/30' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+    <div ref={setNodeRef} style={style} className={`group/project flex items-center rounded-lg ${isActive ? 'bg-accent-50 dark:bg-accent-900/30' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
       {isAdmin && (
         <button
           {...attributes}
@@ -50,7 +50,7 @@ function SortableProjectItem({ project, closeSidebar, isAdmin, isActive }: {
       <Link
         to={`/projects/${project.id}`}
         onClick={closeSidebar}
-        className={`flex-1 flex items-center gap-2 px-2 py-2 text-sm min-w-0 ${isActive ? 'text-terracotta-700 dark:text-terracotta-300 font-medium' : 'text-gray-600 dark:text-gray-300'}`}
+        className={`flex-1 flex items-center gap-2 px-2 py-2 text-sm min-w-0 ${isActive ? 'text-accent-700 dark:text-accent-300 font-medium' : 'text-gray-600 dark:text-gray-300'}`}
       >
         <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: project.color ?? undefined }} />
         <span className="truncate">{project.name}</span>
@@ -130,7 +130,7 @@ export default function Layout() {
     <>
       <div className="h-14 px-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
-          <CheckSquare className="w-5 h-5 text-terracotta-600 dark:text-terracotta-400" />
+          <CheckSquare className="w-5 h-5 text-accent-600 dark:text-accent-400" />
           <span className="font-serif font-medium text-gray-900 dark:text-gray-100">MCP Todo</span>
         </div>
         <button
@@ -270,7 +270,7 @@ export default function Layout() {
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2">
-            <CheckSquare className="w-4 h-4 text-terracotta-600 dark:text-terracotta-400" />
+            <CheckSquare className="w-4 h-4 text-accent-600 dark:text-accent-400" />
             <span className="font-serif font-medium text-sm text-gray-900 dark:text-gray-100">MCP Todo</span>
           </div>
         </div>

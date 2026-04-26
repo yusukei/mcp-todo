@@ -91,7 +91,7 @@ function TreeNode({ section, siteId, activePath, activeNodeKey, nodeKey, onSelec
         onClick={handleClick}
         className={`w-full flex items-center gap-1 px-2 py-1.5 text-left text-sm rounded-md transition-colors ${
           isActive
-            ? 'bg-terracotta-50 text-terracotta-700 dark:bg-terracotta-900/30 dark:text-terracotta-300 font-medium'
+            ? 'bg-accent-50 text-accent-700 dark:bg-accent-900/30 dark:text-accent-300 font-medium'
             : section.path
               ? 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'
               : 'text-gray-500 dark:text-gray-400 font-semibold text-xs uppercase tracking-wide'
@@ -166,7 +166,7 @@ function useDocSiteLink(siteId: string, pagePath: string | undefined) {
     ({ href, children: linkChildren }: { href?: string; children?: React.ReactNode }) => {
       if (!href) return <span>{linkChildren}</span>
 
-      const linkClass = 'text-terracotta-600 hover:text-terracotta-800 dark:text-terracotta-400 dark:hover:text-terracotta-300 underline'
+      const linkClass = 'text-accent-600 hover:text-accent-800 dark:text-accent-400 dark:hover:text-accent-300 underline'
 
       // External links (http, https, mailto, tel, etc.) → new tab
       if (isExternalHref(href)) {
@@ -356,7 +356,7 @@ export default function DocSiteViewerPage() {
               <ArrowLeft className="w-4 h-4" />
             </Link>
             <div className="flex items-center gap-1.5 min-w-0">
-              <Library className="w-4 h-4 text-terracotta-500 dark:text-terracotta-400 flex-shrink-0" />
+              <Library className="w-4 h-4 text-accent-500 dark:text-accent-400 flex-shrink-0" />
               <span className="font-semibold text-sm text-gray-800 dark:text-gray-100 truncate">{site.name}</span>
             </div>
           </div>
@@ -432,7 +432,7 @@ export default function DocSiteViewerPage() {
                 href={site.source_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1 text-sm text-terracotta-500 hover:text-terracotta-600 mt-2"
+                className="flex items-center gap-1 text-sm text-accent-500 hover:text-accent-600 mt-2"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
                 元のサイト

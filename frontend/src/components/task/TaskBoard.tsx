@@ -66,7 +66,7 @@ function DroppableColumn({
       ref={setNodeRef}
       className={`flex-1 min-w-[240px] max-w-[600px] flex flex-col rounded-xl transition-all duration-200 ${
         isOver
-          ? 'ring-2 ring-terracotta-400 dark:ring-terracotta-500 bg-terracotta-50/50 dark:bg-terracotta-900/20'
+          ? 'ring-2 ring-accent-400 dark:ring-accent-500 bg-accent-50/50 dark:bg-accent-900/20'
           : ''
       }`}
     >

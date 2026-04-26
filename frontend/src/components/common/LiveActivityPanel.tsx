@@ -60,7 +60,7 @@ export default function LiveActivityPanel() {
         className={clsx(
           'fixed bottom-4 right-4 z-30 flex items-center gap-2 px-3 py-2 rounded-full shadow-whisper transition-all',
           count > 0
-            ? 'bg-terracotta-600 text-white hover:bg-terracotta-700'
+            ? 'bg-accent-600 text-white hover:bg-accent-700'
             : 'bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600',
         )}
       >
@@ -79,7 +79,7 @@ export default function LiveActivityPanel() {
         >
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-2">
-              <Activity className="w-4 h-4 text-terracotta-600 dark:text-terracotta-400" />
+              <Activity className="w-4 h-4 text-accent-600 dark:text-accent-400" />
               <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">
                 ライブアクティビティ
               </h3>
@@ -117,7 +117,7 @@ export default function LiveActivityPanel() {
                         </span>
                       </div>
                       {t.active_form && (
-                        <p className="text-xs text-terracotta-600 dark:text-terracotta-400 truncate">
+                        <p className="text-xs text-accent-600 dark:text-accent-400 truncate">
                           {t.active_form}
                         </p>
                       )}

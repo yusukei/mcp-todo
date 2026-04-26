@@ -119,7 +119,7 @@ function FileViewer({
             href={rawUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 text-xs text-terracotta-600 dark:text-terracotta-400 hover:underline"
+            className="flex items-center gap-1 text-xs text-accent-600 dark:text-accent-400 hover:underline"
           >
             <ExternalLink className="w-3 h-3" />
             ブラウザで開く
@@ -144,7 +144,7 @@ function FileViewer({
           href={rawUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1 text-xs text-terracotta-600 dark:text-terracotta-400 hover:underline"
+          className="flex items-center gap-1 text-xs text-accent-600 dark:text-accent-400 hover:underline"
         >
           <ExternalLink className="w-3 h-3" />
           ダウンロード / ブラウザで開く
@@ -275,7 +275,7 @@ export default function ProjectFileBrowserTab({ projectId }: { projectId: string
           onClick={() => setActiveTab('files')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
             activeTab === 'files'
-              ? 'bg-white dark:bg-gray-700 text-terracotta-600 dark:text-terracotta-400 shadow-sm'
+              ? 'bg-white dark:bg-gray-700 text-accent-600 dark:text-accent-400 shadow-sm'
               : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
           }`}
         >
@@ -286,7 +286,7 @@ export default function ProjectFileBrowserTab({ projectId }: { projectId: string
           onClick={() => setActiveTab('git')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
             activeTab === 'git'
-              ? 'bg-white dark:bg-gray-700 text-terracotta-600 dark:text-terracotta-400 shadow-sm'
+              ? 'bg-white dark:bg-gray-700 text-accent-600 dark:text-accent-400 shadow-sm'
               : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
           }`}
         >
@@ -380,7 +380,7 @@ export default function ProjectFileBrowserTab({ projectId }: { projectId: string
                             onClick={() => handleEntryClick(entry)}
                             className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm transition-colors text-left ${
                               isSelected
-                                ? 'bg-terracotta-50 dark:bg-terracotta-900/30 text-terracotta-700 dark:text-terracotta-300'
+                                ? 'bg-accent-50 dark:bg-accent-900/30 text-accent-700 dark:text-accent-300'
                                 : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'
                             }`}
                           >
@@ -439,7 +439,7 @@ export default function ProjectFileBrowserTab({ projectId }: { projectId: string
                     onClick={() => setSelectedGitFile(null)}
                     className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors ${
                       selectedGitFile === null
-                        ? 'bg-terracotta-50 dark:bg-terracotta-900/30 text-terracotta-700 dark:text-terracotta-300'
+                        ? 'bg-accent-50 dark:bg-accent-900/30 text-accent-700 dark:text-accent-300'
                         : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'
                     }`}
                   >
@@ -452,7 +452,7 @@ export default function ProjectFileBrowserTab({ projectId }: { projectId: string
                       onClick={() => setSelectedGitFile(f.path)}
                       className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors ${
                         selectedGitFile === f.path
-                          ? 'bg-terracotta-50 dark:bg-terracotta-900/30 text-terracotta-700 dark:text-terracotta-300'
+                          ? 'bg-accent-50 dark:bg-accent-900/30 text-accent-700 dark:text-accent-300'
                           : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'
                       }`}
                     >

@@ -142,7 +142,7 @@ export default function BookmarkCreateModal({ projectId, collections, onClose, o
             <button
               type="submit"
               disabled={createMutation.isPending || !url.trim()}
-              className="flex items-center gap-1 px-4 py-2 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50"
+              className="flex items-center gap-1 px-4 py-2 text-sm bg-accent-500 text-gray-100 rounded-lg hover:bg-accent-600 disabled:opacity-50"
             >
               {createMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
               追加

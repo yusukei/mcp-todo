@@ -198,7 +198,7 @@ export default function KnowledgePage() {
       <div className="p-3 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5">
-            <BookOpen className="w-4 h-4 text-terracotta-600 dark:text-terracotta-400" />
+            <BookOpen className="w-4 h-4 text-accent-600 dark:text-accent-400" />
             <h2 className="text-sm font-bold text-gray-700 dark:text-gray-200">ナレッジベース</h2>
           </div>
           <div className="flex items-center gap-1">
@@ -220,7 +220,7 @@ export default function KnowledgePage() {
             />
             <button
               onClick={() => { setCreating(true); setMobileShowDetail(true) }}
-              className="flex items-center gap-1 px-2 py-1 text-xs bg-terracotta-500 text-gray-100 rounded-md hover:bg-terracotta-600"
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-accent-500 text-gray-100 rounded-md hover:bg-accent-600"
             >
               <Plus className="w-3.5 h-3.5" /> 追加
             </button>
@@ -280,7 +280,7 @@ export default function KnowledgePage() {
                 onClick={() => selectKnowledge(k.id)}
                 className={`w-full text-left px-3 py-2 mx-1 my-0.5 rounded-md text-sm transition-colors ${
                   k.id === selectedId
-                    ? 'bg-terracotta-100 dark:bg-terracotta-900/40 text-terracotta-700 dark:text-terracotta-300'
+                    ? 'bg-accent-100 dark:bg-accent-900/40 text-accent-700 dark:text-accent-300'
                     : 'hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
                 style={{ width: 'calc(100% - 0.5rem)' }}
@@ -399,7 +399,7 @@ export default function KnowledgePage() {
               </div>
 
               {selected.source && (
-                <div className="flex items-center gap-1 text-sm text-terracotta-600 dark:text-terracotta-400 mb-4">
+                <div className="flex items-center gap-1 text-sm text-accent-600 dark:text-accent-400 mb-4">
                   <ExternalLink className="w-3.5 h-3.5" />
                   <span className="truncate">{selected.source}</span>
                 </div>
@@ -505,7 +505,7 @@ function KnowledgeForm({
         <button
           onClick={onSubmit}
           disabled={!form.title.trim() || loading}
-          className="px-4 py-2 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50"
+          className="px-4 py-2 text-sm bg-accent-500 text-gray-100 rounded-lg hover:bg-accent-600 disabled:opacity-50"
         >
           {loading ? '処理中...' : submitLabel}
         </button>

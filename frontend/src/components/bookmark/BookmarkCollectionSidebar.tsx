@@ -84,9 +84,9 @@ export default function BookmarkCollectionSidebar({
   const itemClass = (active: boolean, isDragOver = false) =>
     `flex items-center gap-2 px-3 py-2 text-sm rounded-lg cursor-pointer transition-colors ${
       isDragOver
-        ? 'bg-terracotta-100 dark:bg-terracotta-800/40 ring-2 ring-terracotta-400 text-terracotta-700 dark:text-terracotta-300'
+        ? 'bg-accent-100 dark:bg-accent-800/40 ring-2 ring-accent-400 text-accent-700 dark:text-accent-300'
         : active
-        ? 'bg-terracotta-50 dark:bg-terracotta-900/30 text-terracotta-700 dark:text-terracotta-300 font-medium'
+        ? 'bg-accent-50 dark:bg-accent-900/30 text-accent-700 dark:text-accent-300 font-medium'
         : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
     }`
 
@@ -174,7 +174,7 @@ export default function BookmarkCollectionSidebar({
             <button
               type="submit"
               disabled={!newName.trim() || createMutation.isPending}
-              className="p-1 text-terracotta-600 dark:text-terracotta-400 disabled:opacity-50"
+              className="p-1 text-accent-600 dark:text-accent-400 disabled:opacity-50"
             >
               {createMutation.isPending ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -196,7 +196,7 @@ export default function BookmarkCollectionSidebar({
         ) : (
           <button
             onClick={() => setShowAdd(true)}
-            className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-terracotta-600 dark:hover:text-terracotta-400 w-full rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+            className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-accent-600 dark:hover:text-accent-400 w-full rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
           >
             <FolderPlus className="w-3.5 h-3.5" />
             コレクション追加

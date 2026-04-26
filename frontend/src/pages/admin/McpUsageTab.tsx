@@ -114,7 +114,7 @@ export default function McpUsageTab() {
           onClick={() => setSubTab('usage')}
           className={`flex items-center gap-1.5 px-1 pb-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
             subTab === 'usage'
-              ? 'border-terracotta-600 dark:border-terracotta-400 text-terracotta-600 dark:text-terracotta-400'
+              ? 'border-accent-600 dark:border-accent-400 text-accent-600 dark:text-accent-400'
               : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
           }`}
         >
@@ -125,7 +125,7 @@ export default function McpUsageTab() {
           onClick={() => setSubTab('feedback')}
           className={`flex items-center gap-1.5 px-1 pb-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
             subTab === 'feedback'
-              ? 'border-terracotta-600 dark:border-terracotta-400 text-terracotta-600 dark:text-terracotta-400'
+              ? 'border-accent-600 dark:border-accent-400 text-accent-600 dark:text-accent-400'
               : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
           }`}
         >
@@ -146,7 +146,7 @@ export default function McpUsageTab() {
               onClick={() => setDays(o.days)}
               className={`px-2.5 py-1 rounded border ${
                 days === o.days
-                  ? 'bg-terracotta-500 text-gray-100 border-terracotta-600'
+                  ? 'bg-accent-500 text-gray-100 border-accent-600'
                   : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
               }`}
             >

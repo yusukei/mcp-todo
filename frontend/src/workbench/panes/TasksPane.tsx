@@ -481,7 +481,7 @@ export default function TasksPane({
           <button
             type="button"
             onClick={() => setShowCreateModal(true)}
-            className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded bg-terracotta-500 text-white hover:bg-terracotta-600 text-xs"
+            className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded bg-accent-500 text-white hover:bg-accent-600 text-xs"
             title="タスク追加"
             aria-label="タスク追加"
           >

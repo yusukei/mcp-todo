@@ -153,7 +153,7 @@ export default function TaskCreateModal({ projectId, onClose }: Props) {
             <button
               type="submit"
               disabled={!title.trim() || create.isPending}
-              className="px-4 py-2 text-sm text-white bg-terracotta-600 rounded-lg hover:bg-terracotta-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 text-sm text-white bg-accent-600 rounded-lg hover:bg-accent-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {create.isPending ? '作成中...' : '作成'}
             </button>

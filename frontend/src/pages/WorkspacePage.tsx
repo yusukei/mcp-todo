@@ -80,7 +80,7 @@ export default function WorkspacePage() {
       <div className="w-64 flex-shrink-0 bg-gray-100 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
           <div className="flex items-center gap-2">
-            <Server className="w-4 h-4 text-terracotta-600 dark:text-terracotta-400" />
+            <Server className="w-4 h-4 text-accent-600 dark:text-accent-400" />
             <h2 className="font-semibold text-sm text-gray-800 dark:text-gray-100">Agents</h2>
           </div>
           <div className="flex items-center gap-1">
@@ -93,7 +93,7 @@ export default function WorkspacePage() {
             </button>
             <button
               onClick={() => setShowRegister(true)}
-              className="p-1.5 rounded-lg text-terracotta-600 dark:text-terracotta-400 hover:bg-terracotta-50 dark:hover:bg-terracotta-900/30"
+              className="p-1.5 rounded-lg text-accent-600 dark:text-accent-400 hover:bg-accent-50 dark:hover:bg-accent-900/30"
               title="Agent 登録"
             >
               <Plus className="w-4 h-4" />
@@ -109,7 +109,7 @@ export default function WorkspacePage() {
               <div
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors mb-1 ${
                   !selectedAgent
-                    ? 'bg-terracotta-50 dark:bg-terracotta-900/30 border border-terracotta-200 dark:border-terracotta-800'
+                    ? 'bg-accent-50 dark:bg-accent-900/30 border border-accent-200 dark:border-accent-800'
                     : 'hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent'
                 }`}
                 onClick={() => setSelectedAgent(null)}
@@ -200,7 +200,7 @@ export default function WorkspacePage() {
                       </div>
                       <Link
                         to={`/projects/${p.id}/settings`}
-                        className="flex items-center gap-1 px-2 py-1 text-xs text-terracotta-600 dark:text-terracotta-400 hover:bg-terracotta-50 dark:hover:bg-terracotta-900/30 rounded-lg ml-4 flex-shrink-0"
+                        className="flex items-center gap-1 px-2 py-1 text-xs text-accent-600 dark:text-accent-400 hover:bg-accent-50 dark:hover:bg-accent-900/30 rounded-lg ml-4 flex-shrink-0"
                         title="プロジェクト設定で編集"
                       >
                         設定を開く

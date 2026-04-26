@@ -95,7 +95,7 @@ export default function ProjectMembersTab({ project }: { project: Project }) {
         {isOwnerOrAdmin && !showSearch && (
           <button
             onClick={() => setShowSearch(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-terracotta-500 text-gray-100 text-sm font-medium rounded-lg hover:bg-terracotta-600"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-500 text-gray-100 text-sm font-medium rounded-lg hover:bg-accent-600"
           >
             <UserPlus className="w-4 h-4" />
             メンバー追加
@@ -105,7 +105,7 @@ export default function ProjectMembersTab({ project }: { project: Project }) {
 
       {/* Add member search */}
       {showSearch && isOwnerOrAdmin && (
-        <div className="border border-terracotta-200 dark:border-terracotta-800 bg-terracotta-50 dark:bg-terracotta-900/20 rounded-xl p-4 space-y-3">
+        <div className="border border-accent-200 dark:border-accent-800 bg-accent-50 dark:bg-accent-900/20 rounded-xl p-4 space-y-3">
           <div className="flex items-center gap-2">
             <Search className="w-4 h-4 text-gray-400" />
             <input
@@ -144,7 +144,7 @@ export default function ProjectMembersTab({ project }: { project: Project }) {
                     <button
                       onClick={() => addMember.mutate({ userId: u.id, role: 'member' })}
                       disabled={addMember.isPending}
-                      className="px-3 py-1 text-xs bg-terracotta-500 text-gray-100 rounded-md hover:bg-terracotta-600 disabled:opacity-50"
+                      className="px-3 py-1 text-xs bg-accent-500 text-gray-100 rounded-md hover:bg-accent-600 disabled:opacity-50"
                     >
                       メンバー
                     </button>

@@ -102,7 +102,7 @@ export default function MarkdownRenderer({ children, className, componentOverrid
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-terracotta-600 hover:text-terracotta-800 dark:text-terracotta-400 dark:hover:text-terracotta-300 underline"
+              className="text-accent-600 hover:text-accent-800 dark:text-accent-400 dark:hover:text-accent-300 underline"
             >
               {linkChildren}
             </a>

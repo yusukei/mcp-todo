@@ -64,7 +64,7 @@ export function TaskCommentInput({ task, projectId }: Props) {
         <button
           onClick={() => comment.trim() && addComment.mutate(comment.trim())}
           disabled={!comment.trim() || addComment.isPending}
-          className="self-end px-3 py-2 bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-40"
+          className="self-end px-3 py-2 bg-accent-500 text-gray-100 rounded-lg hover:bg-accent-600 disabled:opacity-40"
         >
           <Send className="w-4 h-4" />
         </button>

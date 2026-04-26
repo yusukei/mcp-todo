@@ -235,7 +235,7 @@ export default function McpFeedbackSection() {
                 onClick={() => setStatusFilter(s)}
                 className={`px-2.5 py-1 rounded border ${
                   statusFilter === s
-                    ? 'bg-terracotta-500 text-gray-100 border-terracotta-600'
+                    ? 'bg-accent-500 text-gray-100 border-accent-600'
                     : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
                 }`}
               >

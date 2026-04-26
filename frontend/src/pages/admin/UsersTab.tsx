@@ -68,7 +68,7 @@ export default function UsersTab() {
         <h2 className="text-base font-semibold text-gray-700 dark:text-gray-200">ユーザ管理</h2>
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-accent-500 text-gray-100 rounded-lg hover:bg-accent-600"
         >
           <Plus className="w-4 h-4" />ユーザ追加
         </button>
@@ -106,7 +106,7 @@ export default function UsersTab() {
             <button
               onClick={() => create.mutate()}
               disabled={!email || !name || create.isPending}
-              className="px-3 py-1.5 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50"
+              className="px-3 py-1.5 text-sm bg-accent-500 text-gray-100 rounded-lg hover:bg-accent-600 disabled:opacity-50"
             >
               {create.isPending ? '作成中...' : '作成'}
             </button>
@@ -135,7 +135,7 @@ export default function UsersTab() {
                 <td className="px-4 py-3 text-center">
                   <button
                     onClick={() => toggleAdmin.mutate(u)}
-                    className={`px-2 py-0.5 text-xs rounded-full font-medium ${u.is_admin ? 'bg-terracotta-100 dark:bg-terracotta-900/40 text-terracotta-700 dark:text-terracotta-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}
+                    className={`px-2 py-0.5 text-xs rounded-full font-medium ${u.is_admin ? 'bg-accent-100 dark:bg-accent-900/40 text-accent-700 dark:text-accent-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}
                   >
                     {u.is_admin ? '管理者' : '一般'}
                   </button>
@@ -152,7 +152,7 @@ export default function UsersTab() {
                   {u.auth_type === 'admin' && (
                     <button
                       onClick={() => { setResetTarget(u); setResetNewPassword('') }}
-                      className="text-gray-400 hover:text-terracotta-500 dark:text-gray-500 dark:hover:text-terracotta-400"
+                      className="text-gray-400 hover:text-accent-500 dark:text-gray-500 dark:hover:text-accent-400"
                       aria-label="パスワードリセット"
                       title="パスワードリセット"
                     >
@@ -204,7 +204,7 @@ export default function UsersTab() {
               <button
                 onClick={() => resetPassword.mutate({ user: resetTarget, newPassword: resetNewPassword })}
                 disabled={(resetNewPassword.length > 0 && resetNewPassword.length < 8) || resetPassword.isPending}
-                className="px-4 py-2 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50"
+                className="px-4 py-2 text-sm bg-accent-500 text-gray-100 rounded-lg hover:bg-accent-600 disabled:opacity-50"
               >
                 {resetPassword.isPending ? 'リセット中...' : 'リセット'}
               </button>
@@ -225,7 +225,7 @@ export default function UsersTab() {
               </code>
               <button
                 onClick={() => navigator.clipboard.writeText(resetResult.password)}
-                className="px-3 py-2 text-xs bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 shrink-0"
+                className="px-3 py-2 text-xs bg-accent-500 text-gray-100 rounded-lg hover:bg-accent-600 shrink-0"
               >
                 コピー
               </button>

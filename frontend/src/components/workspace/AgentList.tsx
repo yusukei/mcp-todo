@@ -46,7 +46,7 @@ export default function AgentList({ agents, selectedAgentId, onSelect, onDelete 
           key={agent.id}
           className={`group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
             selectedAgentId === agent.id
-              ? 'bg-terracotta-50 dark:bg-terracotta-900/30 border border-terracotta-200 dark:border-terracotta-800'
+              ? 'bg-accent-50 dark:bg-accent-900/30 border border-accent-200 dark:border-accent-800'
               : 'hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent'
           }`}
           onClick={() => agent.is_online && onSelect(agent)}

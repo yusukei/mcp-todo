@@ -80,7 +80,7 @@ export default function BinaryManagementTab() {
             onClick={() => setKind(k)}
             className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors ${
               kind === k
-                ? 'border-terracotta-600 dark:border-terracotta-400 text-terracotta-600 dark:text-terracotta-400'
+                ? 'border-accent-600 dark:border-accent-400 text-accent-600 dark:text-accent-400'
                 : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
             }`}
             aria-pressed={kind === k}
@@ -334,7 +334,7 @@ function UploadForm({ kind, onUploaded }: UploadFormProps) {
         <button
           onClick={() => upload.mutate()}
           disabled={!canSubmit}
-          className="flex items-center gap-1.5 px-4 py-2 text-sm bg-terracotta-500 text-gray-100 rounded-lg hover:bg-terracotta-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-1.5 px-4 py-2 text-sm bg-accent-500 text-gray-100 rounded-lg hover:bg-accent-600 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Upload className="w-4 h-4" />
           {upload.isPending ? 'アップロード中...' : 'アップロード'}
