@@ -78,7 +78,18 @@ nix = { version = "0.29", default-features = false, features = ["signal"] }
 tempfile = "3"
 
 [profile.release]
-strip = true
-lto = "thin"
+# `lto = "fat"` shrinks the binary noticeably (~10-15% in tests on the
+# supervisor crate) at the cost of slower link time. Worth it for a
+# release artifact that's downloaded by every agent on update.
+lto = "fat"
 codegen-units = 1
-opt-level = "z"
+# `opt-level = "s"` is the size/speed sweet spot for grep + reqwest +
+# tokio together — `"z"` shaved another ~3% but cost ~10% on grep
+# throughput in micro-bench. We pick speed.
+opt-level = "s"
+strip = "symbols"
+# `panic = "abort"` removes unwinding tables, another size win, and
+# means a panic kills the process immediately — supervisor will
+# respawn it. Acceptable since panics in Rust agent code are bugs we
+# want to fix, not paper over with catch_unwind.
+panic = "abort"

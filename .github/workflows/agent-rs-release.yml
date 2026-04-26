@@ -1,0 +1,169 @@
+name: agent-rs release
+
+# Cross-build mcp-workspace-agent-rs for the 5 supported targets and
+# upload each artifact to the AgentRelease API on tag push.
+#
+# Trigger:
+#   - tag push matching `agent-rs-v*`  (e.g. agent-rs-v0.6.0)
+#   - manual workflow_dispatch (useful for verifying the matrix builds
+#     before cutting a real release)
+#
+# Required repo secrets:
+#   - MCP_TODO_ADMIN_TOKEN: admin MCP API key with permission to call
+#     POST /api/v1/workspaces/releases
+#   - MCP_TODO_RELEASES_URL: full URL to the releases endpoint
+#     (e.g. https://todo.vtech-studios.com/api/v1/workspaces/releases)
+
+on:
+  push:
+    tags:
+      - "agent-rs-v*"
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: "Upload to AgentRelease API after build (true/false)"
+        required: false
+        default: "false"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows x64 — primary production target today.
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            os_label: win32
+            arch: x64
+            bin: mcp-workspace-agent-rs.exe
+            cross: false
+          # Linux x64, statically linked via musl so the binary runs
+          # on any glibc version.
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+            os_label: linux
+            arch: x64
+            bin: mcp-workspace-agent-rs
+            cross: false
+          # Linux arm64 (e.g. Graviton, Raspberry Pi) — needs cross
+          # because ubuntu-latest is x64.
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-latest
+            os_label: linux
+            arch: arm64
+            bin: mcp-workspace-agent-rs
+            cross: true
+          # macOS x64 (Intel) — `macos-13` is the last x86_64 runner.
+          - target: x86_64-apple-darwin
+            runner: macos-13
+            os_label: darwin
+            arch: x64
+            bin: mcp-workspace-agent-rs
+            cross: false
+          # macOS arm64 (Apple Silicon) — macos-latest is now arm64
+          # by default on GitHub-hosted runners (Aug 2024+).
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            os_label: darwin
+            arch: arm64
+            bin: mcp-workspace-agent-rs
+            cross: false
+
+    defaults:
+      run:
+        working-directory: agent-rs
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent-rs -> target
+          key: ${{ matrix.target }}
+
+      - name: Install musl-tools (Linux native musl)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Install cross (linux-arm64)
+        if: matrix.cross
+        run: cargo install cross --locked --version 0.2.5
+
+      - name: Build (cross)
+        if: matrix.cross
+        run: cross build --release --target ${{ matrix.target }} --locked
+
+      - name: Build (native)
+        if: ${{ !matrix.cross }}
+        run: cargo build --release --target ${{ matrix.target }} --locked
+
+      - name: Strip binary (POSIX)
+        if: matrix.os_label != 'win32' && !matrix.cross
+        run: strip target/${{ matrix.target }}/release/${{ matrix.bin }}
+
+      - name: Compute SHA-256
+        id: sha
+        shell: bash
+        run: |
+          path="target/${{ matrix.target }}/release/${{ matrix.bin }}"
+          if command -v sha256sum >/dev/null; then
+            sum=$(sha256sum "$path" | cut -d' ' -f1)
+          else
+            sum=$(shasum -a 256 "$path" | cut -d' ' -f1)
+          fi
+          echo "sha256=$sum" >> "$GITHUB_OUTPUT"
+          echo "size=$(wc -c < "$path")" >> "$GITHUB_OUTPUT"
+          echo "Built ${{ matrix.bin }} for ${{ matrix.target }}: $sum ($(wc -c < "$path") bytes)"
+
+      - name: Upload to artifacts (always)
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-rs-${{ matrix.target }}
+          path: agent-rs/target/${{ matrix.target }}/release/${{ matrix.bin }}
+          retention-days: 14
+
+      - name: Read agent version from Cargo.toml
+        id: ver
+        shell: bash
+        run: |
+          v=$(grep '^version' Cargo.toml | head -n1 | sed -E 's/version *= *"([^"]+)".*/\1/')
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Cargo.toml version: $v"
+
+      - name: Upload to AgentRelease API
+        if: |
+          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/agent-rs-v'))
+          || (github.event_name == 'workflow_dispatch' && github.event.inputs.upload == 'true')
+        env:
+          ADMIN_TOKEN: ${{ secrets.MCP_TODO_ADMIN_TOKEN }}
+          RELEASES_URL: ${{ secrets.MCP_TODO_RELEASES_URL }}
+        shell: bash
+        run: |
+          if [ -z "$ADMIN_TOKEN" ] || [ -z "$RELEASES_URL" ]; then
+            echo "::error::MCP_TODO_ADMIN_TOKEN or MCP_TODO_RELEASES_URL secret missing"
+            exit 1
+          fi
+          curl --fail --silent --show-error \
+            -X POST "$RELEASES_URL" \
+            -H "Authorization: Bearer $ADMIN_TOKEN" \
+            -F "version=${{ steps.ver.outputs.version }}" \
+            -F "os_type=${{ matrix.os_label }}" \
+            -F "arch=${{ matrix.arch }}" \
+            -F "sha256=${{ steps.sha.outputs.sha256 }}" \
+            -F "channel=beta" \
+            -F "file=@target/${{ matrix.target }}/release/${{ matrix.bin }}"
+          echo "Uploaded ${{ matrix.bin }} (${{ matrix.os_label }}/${{ matrix.arch }})"
