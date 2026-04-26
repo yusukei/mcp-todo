@@ -1,0 +1,6 @@
+{
+  "description": "read_file rejects missing cwd",
+  "handler": "read_file",
+  "input": { "path": "anything.txt", "cwd_omit": true },
+  "expect": { "error": "{{any:string}}" }
+}

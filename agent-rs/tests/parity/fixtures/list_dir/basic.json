@@ -1,0 +1,14 @@
+{
+  "description": "list_dir reports entries with type/size/modified",
+  "handler": "list_dir",
+  "setup": [
+    { "kind": "write", "path": "a.txt", "content": "a" },
+    { "kind": "write", "path": "b.txt", "content": "bb" },
+    { "kind": "mkdir", "path": "subdir" }
+  ],
+  "input": { "path": "." },
+  "expect": {
+    "entries": "{{any}}",
+    "path": "{{any:string}}"
+  }
+}

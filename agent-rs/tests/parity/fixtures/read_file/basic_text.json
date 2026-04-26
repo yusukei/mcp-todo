@@ -1,0 +1,17 @@
+{
+  "description": "read_file returns the full text content with metadata",
+  "handler": "read_file",
+  "setup": [
+    { "kind": "write", "path": "hello.txt", "content": "hello world\n" }
+  ],
+  "input": { "path": "hello.txt" },
+  "expect": {
+    "content": "hello world\n",
+    "is_binary": false,
+    "size": 12,
+    "encoding": "utf-8",
+    "total_lines": 1,
+    "truncated": false,
+    "path": "{{path:hello.txt}}"
+  }
+}

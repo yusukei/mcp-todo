@@ -1,0 +1,10 @@
+{
+  "description": "write_file creates a new file and reports byte count",
+  "handler": "write_file",
+  "input": { "path": "out.txt", "content": "hello" },
+  "expect": {
+    "success": true,
+    "bytes_written": 5,
+    "path": "{{path:out.txt}}"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "description": "read_file honours 1-based offset + limit",
+  "handler": "read_file",
+  "setup": [
+    { "kind": "write", "path": "multi.txt", "content": "l1\nl2\nl3\nl4\nl5\n" }
+  ],
+  "input": { "path": "multi.txt", "offset": 2, "limit": 2 },
+  "expect": {
+    "content": "l2\nl3\n",
+    "offset": 2,
+    "limit": 2,
+    "total_lines": 5,
+    "truncated": true,
+    "is_binary": false,
+    "encoding": "utf-8"
+  }
+}

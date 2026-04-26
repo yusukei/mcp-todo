@@ -1,0 +1,9 @@
+{
+  "description": "write_file rejects path traversal",
+  "handler": "write_file",
+  "input": { "path": "../escape.txt", "content": "x" },
+  "expect": {
+    "success": false,
+    "error": "{{any:string}}"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "description": "stat reports existing file metadata",
+  "handler": "stat",
+  "setup": [
+    { "kind": "write", "path": "s.txt", "content": "1234" }
+  ],
+  "input": { "path": "s.txt" },
+  "expect": {
+    "exists": true,
+    "type": "file",
+    "size": 4,
+    "mtime": "{{any:string}}",
+    "mode": "{{any:string}}",
+    "path": "{{path:s.txt}}"
+  }
+}
