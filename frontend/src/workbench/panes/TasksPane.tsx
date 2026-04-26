@@ -386,7 +386,7 @@ export default function TasksPane({
   return (
     <div ref={containerRef} className="h-full flex flex-col">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-700 bg-gray-800/50 text-xs flex-wrap">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-line-1 bg-gray-800/50 text-xs flex-wrap">
         <ViewModeSwitch
           mode={userView}
           effective={effectiveView}

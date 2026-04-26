@@ -93,7 +93,7 @@ export default function Layout() {
       <main className="flex flex-1 flex-col overflow-hidden">
         {/* Mobile header with hamburger. Desktop hides this strip
             because the brand mark lives inside the sidebar. */}
-        <div className="flex items-center gap-2 border-b border-gray-700/40 bg-gray-950 px-4 py-3 md:hidden">
+        <div className="flex items-center gap-2 border-b border-line-2 bg-gray-950 px-4 py-3 md:hidden">
           <button
             onClick={() => setMobileOpen(true)}
             className="rounded-md p-1 text-gray-100 hover:bg-gray-700/60"

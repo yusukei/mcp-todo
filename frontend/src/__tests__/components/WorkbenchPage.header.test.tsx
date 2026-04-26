@@ -1,10 +1,10 @@
 /**
- * WorkbenchPage primary-tabgroup invariants (H1-H6, Phase 3 rewrite).
+ * WorkbenchPage primary-tabgroup invariants (H3-H6, P0-2 update).
  *
- * Phase 3 deleted the dedicated header strip and folded its actions
- * into the primary TabGroup:
- *   * H1 — `projects` link is in the breadcrumb above the tab strip.
- *   * H2 — project name is shown next to the breadcrumb.
+ * P0-2 撤去前の H1 (breadcrumb projects link) / H2 (project name) は
+ * 設計プロト指示で削除済み。プロジェクトコンテキストはサイドバー
+ * (active project highlight + collapsed rail dot) で surfaced する。
+ *
  *   * H3 — Layout presets live inside the ⋮ menu.
  *   * H4 — Copy URL is a small icon button (aria-label) at the right
  *          edge of the tab strip on the primary group only.
@@ -79,35 +79,18 @@ beforeEach(() => {
   window.sessionStorage.setItem('workbench:clientId', 'test-tab')
 })
 
-// ── H1: breadcrumb projects link ────────────────────────────────
+// ── H1, H2 (breadcrumb) は P0-2 で撤去。設計プロト変更指示
+//    (chat1.md「上部の Project · mcp-todo / Workbench / Layout / URL の
+//    部分は削除してください」) を尊重し、関連テストは廃止。
 
-describe('Workbench / Header — H1: ← projects link', () => {
-  it('navigates to /projects when clicked', async () => {
-    const user = userEvent.setup()
-    renderPage()
-    // Wait for the project to load so the breadcrumb is rendered.
-    await waitFor(() => {
-      expect(screen.queryByText(/My Test Project/i)).not.toBeNull()
-    })
-    const back = screen.getByRole('link', { name: /^projects$/i })
-    expect(back.getAttribute('href')).toBe('/projects')
-    await user.click(back)
-    await waitFor(() => {
-      expect(screen.getByTestId('projects-list')).toBeInTheDocument()
-    })
+// ── Helper: WorkbenchPage が project を取得し終わるまで待つ ──
+async function waitForReady() {
+  // ペインが mount されると ProbePane が複数描画される。最低 1 つ
+  // 出現するのを project query 完了の代理シグナルにする。
+  await waitFor(() => {
+    expect(screen.queryAllByTestId('probe').length).toBeGreaterThan(0)
   })
-})
-
-// ── H2: project name shown in the breadcrumb ────────────────────
-
-describe('Workbench / Header — H2: project name displayed', () => {
-  it('shows the project name from the project query', async () => {
-    renderPage()
-    await waitFor(() => {
-      expect(screen.queryByText(/My Test Project/i)).not.toBeNull()
-    })
-  })
-})
+}
 
 // ── H3: Layout presets via the ⋮ menu ───────────────────────────
 
@@ -115,9 +98,7 @@ describe('Workbench / Header — H3: Layout preset menu lists 5 presets', () => 
   it('opens the ⋮ menu with the preset entries when clicked', async () => {
     const user = userEvent.setup()
     renderPage()
-    await waitFor(() => {
-      expect(screen.queryByText(/My Test Project/i)).not.toBeNull()
-    })
+    await waitForReady()
     // Phase 3: presets live inside the primary TabGroup's ⋮ menu.
     const menuBtn = await screen.findByRole('button', { name: /pane menu/i })
     await user.click(menuBtn)
@@ -144,9 +125,7 @@ describe('Workbench / Header — H4: Copy URL button', () => {
       value: { writeText },
     })
     renderPage()
-    await waitFor(() => {
-      expect(screen.queryByText(/My Test Project/i)).not.toBeNull()
-    })
+    await waitForReady()
     const copyBtn = await screen.findByRole('button', { name: /URL をコピー/i })
     await user.click(copyBtn)
     expect(writeText).toHaveBeenCalledTimes(1)
@@ -160,9 +139,7 @@ describe('Workbench / Header — H5: Reset button opens confirm modal', () => {
   it('shows a "Replace current layout?" modal when clicked', async () => {
     const user = userEvent.setup()
     renderPage()
-    await waitFor(() => {
-      expect(screen.queryByText(/My Test Project/i)).not.toBeNull()
-    })
+    await waitForReady()
     await user.click(await screen.findByRole('button', { name: /pane menu/i }))
     const resetItem = await screen.findByRole('button', {
       name: /Reset layout/i,
@@ -178,9 +155,7 @@ describe('Workbench / Header — H6: confirm modal ESC / Enter', () => {
   it('closes on ESC, confirms on Enter', async () => {
     const user = userEvent.setup()
     renderPage()
-    await waitFor(() => {
-      expect(screen.queryByText(/My Test Project/i)).not.toBeNull()
-    })
+    await waitForReady()
     const openModal = async () => {
       await user.click(await screen.findByRole('button', { name: /pane menu/i }))
       await user.click(

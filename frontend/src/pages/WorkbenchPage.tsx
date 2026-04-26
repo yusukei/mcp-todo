@@ -45,6 +45,8 @@ import {
 } from '../workbench/urlContract'
 import { showInfoToast, showSuccessToast } from '../components/common/Toast'
 import TaskDetail from '../components/task/TaskDetail'
+import { projectsApi } from '../api/projects'
+import { Sparkle } from 'lucide-react'
 import {
   dfsPanes,
   findGroupIdOf,
@@ -594,7 +596,7 @@ export default function WorkbenchPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-900">
+    <div className="relative flex flex-col h-full bg-gray-900">
       {/* Phase 3: top header strip removed. Project breadcrumb and
           page-level actions live inside the primary TabGroup. */}
       <div className="flex-1 min-h-0">
@@ -622,6 +624,12 @@ export default function WorkbenchPage() {
           />
         </WorkbenchEventProvider>
       </div>
+
+      {/* P0-1: 「AI が n 件作業中」FAB — 設計プロト variant-b.jsx の
+          position:absolute; bottom:18; right:22。pulse は status-dot
+          .in_progress クラスで取得。stats:today を所有するクエリは
+          SidebarFull と共有 (React Query キャッシュ済み)。 */}
+      <ActiveAiPill projectId={projectId} />
 
       {confirmReset && (
         <ResetConfirmModal
@@ -707,7 +715,7 @@ function ResetConfirmModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="bg-gray-800 border border-gray-700/40 rounded-lg shadow-xl p-5 max-w-md w-full mx-4">
+      <div className="bg-gray-800 border border-line-2 rounded-lg shadow-xl p-5 max-w-md w-full mx-4">
         <h2 className="font-serif text-base font-semibold text-gray-50">
           Replace current layout?
         </h2>
@@ -721,7 +729,7 @@ function ResetConfirmModal({
           <button
             type="button"
             onClick={onCancel}
-            className="px-3 py-1.5 text-xs rounded border border-gray-700/40 text-gray-100 hover:bg-gray-700/60"
+            className="px-3 py-1.5 text-xs rounded border border-line-2 text-gray-100 hover:bg-gray-700/60"
           >
             Cancel
           </button>
@@ -735,6 +743,37 @@ function ResetConfirmModal({
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── ActiveAiPill (P0-1 FAB) ───────────────────────────────────
+//
+// 設計プロト variant-b.jsx:50-53 の右下 FAB。
+//   position:absolute; bottom:18; right:22;
+//   padding: 8px 14px; borderRadius: 999;
+//   background: var(--terra-glow); border: 1px solid var(--terra-2);
+//   backdropFilter: blur(8px);
+// 進行中タスク数 (stats.in_progress) > 0 のときだけ表示。
+function ActiveAiPill({ projectId }: { projectId: string }) {
+  const { data: stats } = useQuery({
+    queryKey: ['stats:today', projectId],
+    queryFn: () => projectsApi.statsToday(projectId),
+    enabled: !!projectId,
+    staleTime: 30_000,
+  })
+  if (!stats?.in_progress) return null
+  return (
+    <div
+      className="pointer-events-none absolute bottom-[18px] right-[22px] z-30 flex items-center gap-2 rounded-full border border-accent-500 bg-accent-500/[0.18] px-3.5 py-2 text-[12px] text-accent-300 backdrop-blur-md shadow-whisper"
+      role="status"
+      aria-live="polite"
+    >
+      <span aria-hidden className="status-dot in_progress" />
+      <span className="font-medium">
+        AI が {stats.in_progress} 件作業中
+      </span>
+      <Sparkle className="h-3 w-3 opacity-80" />
     </div>
   )
 }

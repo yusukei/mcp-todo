@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
   Plus,
   X,
@@ -28,8 +27,10 @@ import { registerTabStrip } from './WorkbenchLayout'
 interface Props {
   group: TabsNode
   projectId: string
-  /** Phase 3: project name shown in the breadcrumb on the primary
-   *  TabGroup (so the rail-collapsed sidebar still surfaces context). */
+  /** P0-2: project name no longer rendered in the strip (breadcrumb
+   *  removed). The prop is retained so WorkbenchLayout can keep
+   *  passing it without churn — surfaced again only if a future
+   *  redesign re-introduces a breadcrumb in some other location. */
   projectName: string
   totalGroups: number
   reducedMotion: boolean
@@ -65,7 +66,7 @@ const SELECTABLE_TYPES: PaneType[] = [
 export default function TabGroup({
   group,
   projectId,
-  projectName,
+  projectName: _projectName,
   totalGroups,
   reducedMotion,
   isPrimary,
@@ -182,25 +183,15 @@ export default function TabGroup({
       ref={setDropRef}
       className="relative flex flex-col h-full min-h-0 bg-gray-900"
     >
-      {/* Phase 3: project breadcrumb shown only on the primary tab
-          group, so the SidebarRail / mobile state still surface
-          context. Hidden on inner splits. */}
-      {isPrimary && (
-        <div className="flex items-center gap-2 border-b border-gray-700/40 bg-gray-950 px-4 py-1.5 text-[11px] text-gray-300">
-          <Link to="/projects" className="hover:text-gray-100">
-            projects
-          </Link>
-          <span aria-hidden className="text-gray-500">
-            /
-          </span>
-          <span className="truncate font-medium text-gray-100" title={projectName}>
-            {projectName}
-          </span>
-        </div>
-      )}
+      {/* P0-2: 設計プロト (chat1.md) で「上部の Project · mcp-todo /
+          Workbench / Layout / URL の部分は削除して」と明示指示済み。
+          breadcrumb 帯は撤去 — variant-b.jsx の VariantB は最上段が
+          PaneTabs だけ。プロジェクトコンテキストは SidebarFull の
+          ハイライト + （collapsed 時の）SidebarRail のドット強調で
+          surfaced されている。 */}
 
       {/* Tab strip */}
-      <div className="flex items-stretch h-9 bg-gray-800 border-b border-gray-700/40">
+      <div className="flex items-stretch h-9 bg-gray-800 border-b border-line-1">
         <div
           ref={stripRef}
           className="relative flex flex-1 min-w-0 overflow-x-auto"
@@ -256,7 +247,7 @@ export default function TabGroup({
             <div
               role="menu"
               aria-label="Add tab type"
-              className="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-gray-700/40 bg-gray-800 text-gray-100 shadow-lg text-xs"
+              className="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-line-2 bg-gray-800 text-gray-100 shadow-lg text-xs"
             >
               {SELECTABLE_TYPES.map((t) => (
                 <button
@@ -306,7 +297,7 @@ export default function TabGroup({
           </button>
           {menuOpen && (
             <div
-              className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-gray-700/40 bg-gray-800 text-gray-100 shadow-lg text-xs"
+              className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-line-2 bg-gray-800 text-gray-100 shadow-lg text-xs"
             >
               {/* Phase 3: page-level actions on the primary group only.
                   Layout preset / Reset are gated this way so secondary
@@ -344,7 +335,7 @@ export default function TabGroup({
                       onResetLayout()
                     }}
                   />
-                  <div className="border-t border-gray-700/40 my-1" />
+                  <div className="border-t border-line-2 my-1" />
                   <div className="px-3 pt-1 pb-1 text-[10px] uppercase tracking-wider text-gray-300">
                     Pane
                   </div>
@@ -370,7 +361,7 @@ export default function TabGroup({
                   onSplit(group.id, 'vertical')
                 }}
               />
-              <div className="border-t border-gray-700/40 my-1" />
+              <div className="border-t border-line-2 my-1" />
               <MenuItem
                 icon={<Trash2 className="w-3.5 h-3.5 text-status-cancel" />}
                 label="Close group"
@@ -491,7 +482,7 @@ function DraggableTab({
           // ``#fc618d`` mirrors ``theme.colors.accent.500``.
           boxShadow: isActive ? 'inset 0 2px 0 0 #fc618d' : undefined,
         }}
-        className={`group relative flex items-center gap-1.5 px-3 text-xs border-r border-gray-700/40 max-w-[14rem] flex-shrink-0 select-none cursor-grab active:cursor-grabbing ${
+        className={`group relative flex items-center gap-1.5 px-3 text-xs border-r border-line-2 max-w-[14rem] flex-shrink-0 select-none cursor-grab active:cursor-grabbing ${
           isActive
             ? 'bg-gray-900 text-gray-50 font-medium'
             : 'text-gray-300 hover:bg-gray-700/60 hover:text-gray-50'

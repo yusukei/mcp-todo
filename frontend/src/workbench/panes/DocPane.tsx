@@ -81,7 +81,7 @@ export default function DocPane({
   if (!config.docId) {
     return (
       <div className="h-full flex flex-col">
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-700 text-xs text-gray-300">
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-line-1 text-xs text-gray-300">
           <FileText className="w-3.5 h-3.5" />
           Doc — pick a document below
         </div>
@@ -150,7 +150,7 @@ export default function DocPane({
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-700 text-xs">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-line-1 text-xs">
         <div className="flex items-center gap-2 min-w-0">
           <FileText className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />
           <span className="truncate text-gray-50 font-serif">

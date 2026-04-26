@@ -38,7 +38,7 @@ export default function SidebarRail({ onExpand }: Props) {
 
   return (
     <aside
-      className="flex h-full w-14 flex-shrink-0 flex-col items-center border-r border-gray-700/40 bg-gray-950 py-3 text-gray-100"
+      className="flex h-full w-14 flex-shrink-0 flex-col items-center border-r border-line-2 bg-gray-950 py-3 text-gray-100"
       aria-label="サイドバー (折りたたみ)"
     >
       {/* Brand mark — clicking expands back to full. */}
@@ -67,7 +67,7 @@ export default function SidebarRail({ onExpand }: Props) {
               className={[
                 'flex h-8 w-8 items-center justify-center rounded-md',
                 isActive
-                  ? 'border border-gray-700/60 bg-gray-700'
+                  ? 'border border-line-3 bg-gray-700'
                   : 'hover:bg-gray-700/60',
               ].join(' ')}
             >
@@ -165,8 +165,8 @@ function RailIconLink({
         'flex h-7 w-7 items-center justify-center rounded-md',
         highlighted
           ? accent
-            ? 'border border-gray-700/60 bg-gray-700 text-accent-400'
-            : 'border border-gray-700/60 bg-gray-700 text-gray-50'
+            ? 'border border-line-3 bg-gray-700 text-accent-400'
+            : 'border border-line-3 bg-gray-700 text-gray-50'
           : 'text-gray-300 hover:bg-gray-700/60 hover:text-gray-50',
       ].join(' ')}
       aria-label={title}

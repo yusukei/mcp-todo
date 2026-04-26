@@ -155,7 +155,7 @@ export default function FileBrowserPane({
   return (
     <div className="h-full flex flex-col">
       {/* Breadcrumb header */}
-      <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-700 text-xs overflow-x-auto">
+      <div className="flex items-center gap-1 px-3 py-2 border-b border-line-1 text-xs overflow-x-auto">
         <button
           type="button"
           onClick={() => navigateTo('.')}

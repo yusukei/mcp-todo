@@ -44,7 +44,6 @@ import {
   LogOut,
   Settings,
   Shield,
-  Sparkle,
   UserCog,
   X,
 } from 'lucide-react'
@@ -146,9 +145,9 @@ export default function SidebarFull({ onCloseMobile, onCollapse }: Props) {
   const closeMobile = onCloseMobile ?? (() => {})
 
   return (
-    <aside className="flex h-full w-[260px] flex-shrink-0 flex-col border-r border-gray-700/40 bg-gray-950 text-gray-100">
+    <aside className="flex h-full w-[260px] flex-shrink-0 flex-col border-r border-line-2 bg-gray-950 text-gray-100">
       {/* ── Header: brand + collapse / mobile close ─────────── */}
-      <div className="flex items-start gap-2 border-b border-gray-700/40 px-5 py-5">
+      <div className="flex items-start gap-2 border-b border-line-2 px-5 py-5">
         <div className="flex-1">
           <Link
             to="/projects"
@@ -295,7 +294,7 @@ export default function SidebarFull({ onCloseMobile, onCollapse }: Props) {
       </nav>
 
       {/* ── User footer ─────────────────────────────────────── */}
-      <div className="flex items-center gap-2 border-t border-gray-700/40 px-3 py-3">
+      <div className="flex items-center gap-2 border-t border-line-2 px-3 py-3">
         <div className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-500 text-[11px] font-semibold text-white">
           {(user?.name ?? '?').charAt(0).toUpperCase()}
         </div>
@@ -322,16 +321,10 @@ export default function SidebarFull({ onCloseMobile, onCollapse }: Props) {
         </button>
       </div>
 
-      {/* AI が n 件作業中 indicator (Phase 2 hook — Phase 4 wires the
-          real count from active_form-bearing tasks). */}
-      {!!stats?.in_progress && (
-        <div className="border-t border-gray-700/40 bg-accent-500/[0.18] px-4 py-2 text-[11px] text-accent-400">
-          <span className="mr-1.5 inline-flex items-center gap-1.5">
-            <Sparkle className="h-3 w-3" />
-            AI が {stats.in_progress} 件作業中
-          </span>
-        </div>
-      )}
+      {/* P0-1: 「AI が n 件作業中」は Workbench メイン領域の右下 FAB
+          (WorkbenchPage の <ActiveAiPill/>) に移設したのでここでは
+          表示しない。設計プロト variant-b.jsx の position:absolute;
+          bottom:18; right:22 と整合。 */}
     </aside>
   )
 }

@@ -5,15 +5,14 @@
 @layer base {
   html {
     @apply bg-gray-50 dark:bg-gray-900;
-    font-feature-settings: "kern" 1, "liga" 1;
+    /* Phase 1+P0-5: Noto Sans JP の詰め (palt) と kern/liga を有効化。
+       Fraunces の見出しは <h*> ではなく font-serif クラスで明示的に
+       opt-in するので、ここではグローバルな serif 上書きは行わない。
+       (古いコードでは h1-h3 を Georgia に強制していたが、Fraunces を
+       潰して editorial 感が壊れていたので削除。) */
+    font-feature-settings: "kern" 1, "liga" 1, "palt" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-  }
-
-  /* Serif headings for editorial feel */
-  h1, h2, h3 {
-    font-family: Georgia, Cambria, 'Times New Roman', Times, serif;
-    font-weight: 500;
   }
 
   /* Phase 1: pink selection (was warm terracotta tint) */

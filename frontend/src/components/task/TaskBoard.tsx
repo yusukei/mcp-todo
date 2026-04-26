@@ -40,11 +40,21 @@ interface Props {
   onExitSelectMode: () => void
 }
 
+// P0-3: 列ヘッダの色帯を撤去し、設計プロト workbench-parts.jsx:120-135
+// の「status-dot + serif label + mono count + 右の +」フラットな表現に。
+// dotClass は constants/task.ts の PRIORITY_DOT_COLORS と対をなす status
+// 用クラスマップ。在 index.css の .status-dot.* を活用する。
+const STATUS_DOT_CLASS: Record<string, string> = {
+  todo: 'status-dot todo',
+  in_progress: 'status-dot in_progress',
+  on_hold: 'status-dot on_hold',
+  done: 'status-dot done',
+  cancelled: 'status-dot cancelled',
+}
+
 function DroppableColumn({
   columnKey,
   label,
-  color,
-  colorDark,
   count,
   isOver,
   taskIds,
@@ -52,8 +62,10 @@ function DroppableColumn({
 }: {
   columnKey: string
   label: string
-  color: string
-  colorDark: string
+  /** color/colorDark は P0-3 で未使用 (旧 タイント帯)。後方互換のため
+   *  シグネチャは残すが受け取らない。 */
+  color?: string
+  colorDark?: string
   count: number
   isOver: boolean
   taskIds: string[]
@@ -64,20 +76,23 @@ function DroppableColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`flex-1 min-w-[240px] max-w-[600px] flex flex-col rounded-very transition-all duration-200 ${
+      className={`flex-1 min-w-[260px] max-w-[600px] flex flex-col transition-all duration-200 ${
         isOver
-          ? 'ring-2 ring-accent-500 bg-accent-900/20'
+          ? 'rounded-very ring-2 ring-accent-500 bg-accent-900/20'
           : ''
       }`}
     >
-      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-comfortable mb-2 ${color} ${colorDark}`}>
-        <span className="text-sm font-semibold text-gray-50 font-serif tracking-tight">{label}</span>
-        <span className="text-xs text-gray-200 bg-gray-900/60 px-1.5 py-0.5 rounded-full font-mono">
-          {count}
+      {/* 列ヘッダ: 色帯なし、フラット。padding は設計の '8px 4px 12px'
+          に合わせ、status-dot + serif label + mono count を横並び。 */}
+      <div className="flex items-center gap-2 px-1 pt-2 pb-3">
+        <span className={STATUS_DOT_CLASS[columnKey] ?? 'status-dot todo'} aria-hidden />
+        <span className="font-serif text-[12px] font-semibold tracking-tight text-gray-50">
+          {label}
         </span>
+        <span className="font-mono text-[11px] text-gray-300">{count}</span>
       </div>
       <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
-        <div className="flex-1 space-y-1.5 overflow-y-auto pr-1 min-h-[60px]">
+        <div className="flex-1 space-y-2 overflow-y-auto pr-1 min-h-[60px]">
           {children}
         </div>
       </SortableContext>
