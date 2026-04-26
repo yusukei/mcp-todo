@@ -15,6 +15,7 @@ mod client;
 mod handlers;
 mod path_safety;
 mod proto;
+mod self_update;
 mod version;
 
 #[derive(Debug, Parser)]
@@ -52,6 +53,10 @@ fn run() -> Result<()> {
     init_tracing();
     init_crypto_provider();
 
+    // Sweep stale `.new` / `.old.*` left over from a previous update.
+    // Best-effort — failures here must never block startup.
+    let _removed = self_update::cleanup_old_files(None);
+
     let cli = Cli::parse();
     let (url, token) = resolve_config(&cli).context("resolve config")?;
 
@@ -66,10 +71,15 @@ fn run() -> Result<()> {
 
 async fn async_main(url: String, token: String) -> Result<()> {
     let client = client::Client::new(url, token);
+    let update_shutdown = client.shutdown_signal();
     tokio::select! {
         res = client.run() => res,
         _ = shutdown_signal() => {
             info!("shutdown signal received; exiting");
+            Ok(())
+        }
+        _ = update_shutdown.notified() => {
+            info!("self-update shutdown signal received; exiting so replacement can take over");
             Ok(())
         }
     }

@@ -36,6 +36,7 @@ use tracing::{debug, info, warn};
 
 use crate::handlers;
 use crate::proto::{Incoming, Outgoing, RequestEnvelope, Response};
+use crate::self_update;
 use crate::version;
 
 const RECONNECT_INITIAL_MS: u64 = 1_000;
@@ -48,11 +49,24 @@ const OUT_CHANNEL_CAPACITY: usize = 64;
 pub struct Client {
     url: String,
     token: String,
+    /// Trips when self-update succeeds, telling the parent runtime to
+    /// exit so the spawned replacement takes over.
+    shutdown_after_update: Arc<tokio::sync::Notify>,
 }
 
 impl Client {
     pub fn new(url: String, token: String) -> Self {
-        Self { url, token }
+        Self {
+            url,
+            token,
+            shutdown_after_update: Arc::new(tokio::sync::Notify::new()),
+        }
+    }
+
+    /// Returned to `main` so the parent task can `select!` on it
+    /// alongside the OS shutdown signal.
+    pub fn shutdown_signal(&self) -> Arc<tokio::sync::Notify> {
+        self.shutdown_after_update.clone()
     }
 
     /// Run forever: connect, serve, reconnect on disconnect.
@@ -157,7 +171,15 @@ impl Client {
                 msg = read.next() => {
                     match msg {
                         Some(Ok(Message::Text(s))) => {
-                            handle_text_frame(&agent_id, s.as_str(), out_tx.clone()).await;
+                            handle_text_frame(
+                                &agent_id,
+                                s.as_str(),
+                                out_tx.clone(),
+                                self.shutdown_after_update.clone(),
+                                self.token.clone(),
+                                self.url.clone(),
+                            )
+                            .await;
                         }
                         Some(Ok(Message::Binary(_))) => {
                             // Backend currently sends only text frames; log
@@ -194,7 +216,14 @@ impl Client {
     }
 }
 
-async fn handle_text_frame(agent_id: &str, raw: &str, out_tx: mpsc::Sender<Message>) {
+async fn handle_text_frame(
+    agent_id: &str,
+    raw: &str,
+    out_tx: mpsc::Sender<Message>,
+    shutdown_after_update: Arc<tokio::sync::Notify>,
+    token: String,
+    ws_url: String,
+) {
     // Try the typed envelope first (auth_*/pong/update_available/_).
     match serde_json::from_str::<Incoming>(raw) {
         Ok(Incoming::Pong) => {
@@ -208,13 +237,40 @@ async fn handle_text_frame(agent_id: &str, raw: &str, out_tx: mpsc::Sender<Messa
         Ok(Incoming::UpdateAvailable {
             version,
             download_url,
-            ..
+            sha256,
         }) => {
             info!(
                 ?version,
                 ?download_url,
-                "update_available received (self-update lands in agent-rs/07)"
+                "update_available received; starting self-update"
             );
+            let url_opt = download_url.and_then(|u| absolute_url(&u, &ws_url));
+            let (Some(url), Some(sha)) = (url_opt, sha256) else {
+                warn!("update_available missing download_url or sha256; ignoring");
+                return;
+            };
+            let token = token.clone();
+            tokio::spawn(async move {
+                let argv: Vec<String> = std::env::args().skip(1).collect();
+                match self_update::apply_update(
+                    &url,
+                    &sha,
+                    version.as_deref(),
+                    Some(&token),
+                    argv,
+                    None,
+                )
+                .await
+                {
+                    Ok(old) => {
+                        info!(old = %old.display(), "self-update applied; signalling shutdown");
+                        shutdown_after_update.notify_waiters();
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "self-update failed; staying on current version");
+                    }
+                }
+            });
             return;
         }
         Ok(Incoming::Other) => {
@@ -274,6 +330,33 @@ async fn handle_text_frame(agent_id: &str, raw: &str, out_tx: mpsc::Sender<Messa
             debug!(%request_type, "out channel closed; response dropped");
         }
     });
+}
+
+/// Convert an `update_available` `download_url` (which may be
+/// path-only, e.g. `/api/v1/.../download`) into an absolute HTTPS URL
+/// by borrowing the scheme/host of the WebSocket URL we're already
+/// connected to. Mirrors Python's `_absolute_download_url`.
+fn absolute_url(maybe_relative: &str, ws_url: &str) -> Option<String> {
+    if maybe_relative.starts_with("https://") || maybe_relative.starts_with("http://") {
+        return Some(maybe_relative.to_string());
+    }
+    let base = url::Url::parse(ws_url).ok()?;
+    let host = base.host_str()?;
+    let scheme = match base.scheme() {
+        "wss" => "https",
+        "ws" => "http",
+        other => other,
+    };
+    let port_part = match base.port() {
+        Some(p) => format!(":{p}"),
+        None => String::new(),
+    };
+    let path = if maybe_relative.starts_with('/') {
+        maybe_relative.to_string()
+    } else {
+        format!("/{maybe_relative}")
+    };
+    Some(format!("{scheme}://{host}{port_part}{path}"))
 }
 
 async fn sleep_with_jitter(ms: u64) {
