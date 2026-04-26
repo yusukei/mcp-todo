@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, ChevronDown, RefreshCcw } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Link2, RefreshCcw } from 'lucide-react'
 import { api } from '../api/client'
 import type { Project } from '../types'
 import WorkbenchLayout from '../workbench/WorkbenchLayout'
@@ -26,10 +26,19 @@ import {
   validateTree,
 } from '../workbench/treeUtils'
 import type { DropEdge } from '../workbench/treeUtils'
-import type { LayoutTree, PaneType } from '../workbench/types'
+import type { LayoutTree, Pane, PaneType } from '../workbench/types'
 import { KNOWN_PANE_TYPES } from '../workbench/paneRegistry'
 import { WorkbenchEventProvider, useWorkbenchEventBus } from '../workbench/eventBus'
 import { PRESETS, getPreset } from '../workbench/presets'
+import {
+  findFirstPaneOfType,
+  findFirstTabsNodeId,
+  parseUrlContract,
+  searchParamsEqual,
+  serialiseUrlContract,
+  type ViewName,
+} from '../workbench/urlContract'
+import { showInfoToast, showSuccessToast } from '../components/common/Toast'
 import TaskDetail from '../components/task/TaskDetail'
 import {
   dfsPanes,
@@ -62,6 +71,7 @@ function reducer(state: State, action: Action): State {
 
 export default function WorkbenchPage() {
   const { projectId } = useParams<{ projectId: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { data: project, isLoading } = useQuery<Project>({
     queryKey: ['project', projectId],
     queryFn: () =>
@@ -75,6 +85,11 @@ export default function WorkbenchPage() {
     localStamp: 0,
   }))
 
+  // Slide-over fallback for `?task=` when no task-detail pane exists
+  // in the layout (Decision D1). Lifted so the URL-hydrate effect
+  // can write to it; WorkbenchFallbacks subscribes to display.
+  const [taskFallbackId, setTaskFallbackId] = useState<string | null>(null)
+
   const saverRef = useRef(makeDebouncedSaver(300))
   // Keep a ref to the most recently dispatched stamp so cross-tab
   // updates compare against the freshest value without depending on
@@ -84,11 +99,86 @@ export default function WorkbenchPage() {
     localStampRef.current = state.localStamp
   }, [state.localStamp])
 
-  // Initial hydrate when projectId is known.
+  // Initial hydrate when projectId is known. Layered as:
+  //   localStorage layout → ?layout= preset (one-shot) → ?task= /
+  //   ?doc= / ?view= seed values → legacy ?view=docs/files/errors
+  //   compat (Decision D4).
+  // URL is the source of truth for paneConfig fields it covers
+  // (Plan v2.4 §5.5.4).
   useEffect(() => {
     if (!projectId) return
-    const tree = loadLayout(projectId, KNOWN_PANE_TYPES)
+    let tree = loadLayout(projectId, KNOWN_PANE_TYPES)
+    const url = parseUrlContract(searchParams)
+
+    // ?layout=<presetId> overrides the hydrated layout (one-shot,
+    // not persisted). Unknown id → console.warn + ignore.
+    if (url.layout) {
+      const preset = getPreset(url.layout)
+      if (preset) tree = preset.build()
+      else
+        // eslint-disable-next-line no-console
+        console.warn(`[Workbench] unknown ?layout= preset: ${url.layout}`)
+    }
+
+    // Legacy ?view=docs/files/errors → add the pane (Decision D4).
+    // Only if the layout doesn't already include one of that type
+    // (avoid duplicate after the first reload).
+    if (url.legacyViewToAdd) {
+      const existing = findFirstPaneOfType(tree, url.legacyViewToAdd)
+      if (!existing) {
+        const targetGroupId = findFirstTabsNodeId(tree)
+        if (targetGroupId) {
+          tree = addTab(tree, targetGroupId, makePane(url.legacyViewToAdd))
+          showInfoToast(
+            `URL の ?view=${url.legacyViewToAdd} は廃止されました。次回からは Layout メニューから pane を追加してください。`,
+          )
+        }
+      }
+    }
+
+    // ?view= → first tasks pane viewMode
+    if (url.view) {
+      const tasksPane = findFirstPaneOfType(tree, 'tasks')
+      if (tasksPane) {
+        tree = updatePaneConfig(tree, tasksPane.id, { viewMode: url.view })
+      }
+    }
+
+    // ?task= → first task-detail pane, or slide-over fallback
+    if (url.task) {
+      const detailPane = findFirstPaneOfType(tree, 'task-detail')
+      if (detailPane) {
+        tree = updatePaneConfig(tree, detailPane.id, { taskId: url.task })
+      } else {
+        setTaskFallbackId(url.task)
+      }
+    }
+
+    // ?doc= → first doc pane (no slide-over fallback for docs in
+    // Phase C2; the user can add a DocPane from + menu)
+    if (url.doc) {
+      const docPane = findFirstPaneOfType(tree, 'doc')
+      if (docPane) {
+        tree = updatePaneConfig(tree, docPane.id, { docId: url.doc })
+      }
+    }
+
+    if (url.hadUnknownValue) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[Workbench] URL contained unknown query value(s); using defaults',
+      )
+    }
+
     dispatch({ type: 'replace', tree, stamp: 0 })
+    // We deliberately do NOT depend on `searchParams` — this is a
+    // mount-time hydration. Subsequent URL changes from history pop
+    // are handled by re-running this effect via the projectId key
+    // (which doesn't change), so we'd need to add searchParams to
+    // deps for full back/forward support. That refinement is a
+    // polish item; the common deep-link flow (initial load) works
+    // with mount-only hydration.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
   // Persist layout changes (debounced).
@@ -114,6 +204,42 @@ export default function WorkbenchPage() {
       }
     })
   }, [projectId])
+
+  // State → URL writeback (Plan v2.4 §5.5.3 — selection = replace).
+  // Watches the layout for changes to the *first* pane of each
+  // synced type and mirrors its config to URL params. The
+  // `searchParamsEqual` guard short-circuits the effect when the URL
+  // already matches, preventing a re-render loop with the URL → state
+  // hydrate effect.
+  //
+  // This intentionally tracks the *first* pane (DFS order) rather
+  // than the focused one — focus tracking lives in the bus and would
+  // add render churn here. Plan §5.5.3 "focus 移動だけで URL は書き
+  // 換わらない" is satisfied because click-driven paneConfig changes
+  // surface here, but raw focus moves don't touch paneConfig.
+  useEffect(() => {
+    if (!projectId || state.localStamp === 0) return
+    const detailPane = findFirstPaneOfType(state.tree, 'task-detail')
+    const docPane = findFirstPaneOfType(state.tree, 'doc')
+    const tasksPane = findFirstPaneOfType(state.tree, 'tasks')
+    const desiredTask =
+      (detailPane?.paneConfig as { taskId?: string } | undefined)?.taskId ?? null
+    const desiredDoc =
+      (docPane?.paneConfig as { docId?: string } | undefined)?.docId ?? null
+    const rawView = (tasksPane?.paneConfig as { viewMode?: string } | undefined)?.viewMode
+    // Omit `?view=` when board (the implicit default) so common URLs
+    // stay clean — only deviations end up in the bar.
+    const desiredView: ViewName | null =
+      rawView === 'list' || rawView === 'timeline' ? rawView : null
+    const next = serialiseUrlContract(searchParams, {
+      task: desiredTask,
+      doc: desiredDoc,
+      view: desiredView,
+    })
+    if (!searchParamsEqual(searchParams, next)) {
+      setSearchParams(next, { replace: true })
+    }
+  }, [projectId, state.tree, state.localStamp, searchParams, setSearchParams])
 
   const updateTree = useCallback(
     (next: LayoutTree) => {
@@ -351,8 +477,24 @@ export default function WorkbenchPage() {
         />
         <button
           type="button"
-          onClick={() => setConfirmReset({ presetId: 'tasks-only' })}
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(window.location.href)
+              showSuccessToast('URL をクリップボードにコピーしました')
+            } catch {
+              showInfoToast('クリップボードへのアクセスに失敗しました')
+            }
+          }}
           className="ml-auto flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+          title="現在の Workbench 状態を含む URL をコピー (?task / ?doc / ?view 等)"
+        >
+          <Link2 className="w-3.5 h-3.5" />
+          Copy URL
+        </button>
+        <button
+          type="button"
+          onClick={() => setConfirmReset({ presetId: 'tasks-only' })}
+          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
           title="Reset layout (Cmd/Ctrl+Shift+R)"
         >
           <RefreshCcw className="w-3.5 h-3.5" />
@@ -374,7 +516,11 @@ export default function WorkbenchPage() {
             onSplitSizes={onSplitSizes}
             onMoveTab={onMoveTab}
           />
-          <WorkbenchFallbacks projectId={projectId} />
+          <WorkbenchFallbacks
+            projectId={projectId}
+            taskFallbackId={taskFallbackId}
+            setTaskFallbackId={setTaskFallbackId}
+          />
         </WorkbenchEventProvider>
       </div>
 
@@ -447,15 +593,24 @@ function PresetMenu({ onPick }: { onPick: (presetId: string) => void }) {
 // slide-over UI for those events. Lives inside WorkbenchEventProvider
 // so it can call `bus.setFallback(...)` from a useEffect.
 
-function WorkbenchFallbacks({ projectId }: { projectId: string }) {
+interface WorkbenchFallbacksProps {
+  projectId: string
+  taskFallbackId: string | null
+  setTaskFallbackId: (id: string | null) => void
+}
+
+function WorkbenchFallbacks({
+  projectId,
+  taskFallbackId,
+  setTaskFallbackId,
+}: WorkbenchFallbacksProps) {
   const bus = useWorkbenchEventBus()
-  const [taskFallbackId, setTaskFallbackId] = useState<string | null>(null)
 
   useEffect(() => {
     return bus.setFallback('open-task', ({ taskId }) => {
       setTaskFallbackId(taskId)
     })
-  }, [bus])
+  }, [bus, setTaskFallbackId])
 
   if (!taskFallbackId) return null
   return (
