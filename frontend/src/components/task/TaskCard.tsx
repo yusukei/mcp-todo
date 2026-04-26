@@ -28,7 +28,7 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive, sele
       aria-label={task.title}
       tabIndex={0}
       className={clsx(
-        'relative bg-gray-800 rounded-comfortable border border-gray-700 px-3 py-2 cursor-pointer hover:border-accent-500 hover:shadow-whisper transition-all group/card',
+        'relative bg-gray-700 rounded-comfortable border border-line-2 px-3 py-2 cursor-pointer hover:border-accent-500 hover:shadow-whisper transition-all group/card',
         task.archived && 'opacity-60',
         isBlocked && 'opacity-70',
         isOverdue && 'border-l-4 border-l-pri-urgent',

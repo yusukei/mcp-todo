@@ -5,23 +5,37 @@ export default {
   theme: {
     extend: {
       colors: {
-        // ── Phase 1 redesign: Monokai Pro (Filter Octagon) ─
-        // Tailwind's convention is preserved: gray-50 = lightest text
-        // tone, gray-950 = deepest void. Light-mode pages will look
-        // intentionally broken until Monokai Light is added in a later
-        // phase — see `UI 再設計仕様書 §6` for the explicit scope-out.
+        // ── Phase 1+R1 redesign: neutral charcoal (≠ Monokai purple)
+        // Latest design tokens (web-ide/project/tokens.css) — the user
+        // pulled the bg ramp away from Monokai's purple-grey toward a
+        // neutral dark grey reference (#3a3a3c family).
+        // ink-* (text) and Monokai semantic colours remain. Light-mode
+        // pages will look intentionally broken until Monokai Light is
+        // added in a later phase — see UI 再設計仕様書 §6.
         gray: {
-          50:  '#fcfcfa', // ink-1: primary text (Monokai foreground)
+          50:  '#fcfcfa', // ink-1: primary text (cream white)
           100: '#c1c0c0', // ink-2: secondary text
           200: '#939293', // ink-3: tertiary text / cool border
           300: '#727072', // ink-4: muted text
           400: '#5b595c', // ink-5: deep muted, hairline ridges
-          500: '#5f5d62', // bg-5: selected surface
-          600: '#46434a', // bg-4: hover surface
-          700: '#3d393e', // bg-3: card surface
-          800: '#353136', // bg-2: sidebar / panel
-          900: '#2a272b', // bg-1: page background
-          950: '#232125', // bg-0: outer void
+          500: '#5e5e60', // bg-5: selected surface
+          600: '#4c4c4e', // bg-4: hover surface
+          700: '#424244', // bg-3: card surface
+          800: '#3a3a3c', // bg-2: sidebar / panel
+          900: '#323234', // bg-1: page background
+          950: '#2a2a2c', // bg-0: outer void
+        },
+
+        // R1: translucent white borders that read as a halo against
+        // the dark surfaces, mirroring tokens.css `--line-1/2/3`. Use
+        // ``border-line-2`` etc. instead of ``border-gray-700`` for
+        // any divider that should *separate* without becoming a hard
+        // chrome line. Solid gray borders are still appropriate for
+        // emphasised affordances (e.g. selected state).
+        line: {
+          1: 'rgba(252, 252, 250, 0.06)',
+          2: 'rgba(252, 252, 250, 0.12)',
+          3: 'rgba(252, 252, 250, 0.20)',
         },
 
         // ── Phase 1: Monokai Pro accent (pink) ─────────────
