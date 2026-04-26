@@ -28,6 +28,7 @@ const TerminalPage = React.lazy(() => import('./pages/TerminalPage'))
 const BookmarksPage = React.lazy(() => import('./pages/BookmarksPage'))
 const GoogleCallbackPage = React.lazy(() => import('./pages/GoogleCallbackPage'))
 const AdminPage = React.lazy(() => import('./pages/AdminPage'))
+const UserDetailPage = React.lazy(() => import('./pages/admin/UserDetailPage'))
 const NotFoundPage = React.lazy(() => import('./pages/NotFoundPage'))
 
 // Phase 1.5: design-system preview. Enabled when either:
@@ -108,6 +109,14 @@ function AppRoutes() {
               element={
                 <AdminRoute>
                   {lazy(<AdminPage />)}
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="admin/users/:userId"
+              element={
+                <AdminRoute>
+                  {lazy(<UserDetailPage />)}
                 </AdminRoute>
               }
             />

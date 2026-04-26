@@ -164,7 +164,126 @@ async def get_user(user_id: str, _: User = Depends(get_admin_user)) -> dict:
     user = await User.get(user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return _user_dict(user)
+    # Phase 6.B-1: include the same extras the list endpoint surfaces
+    # so /admin/users/:id can render the 30-day stats without a second
+    # round-trip.
+    extras_map = await _enrich_users_admin_meta([user])
+    return _user_dict(user, extras=extras_map.get(str(user.id)))
+
+
+@router.get("/{user_id}/projects")
+async def list_user_projects(
+    user_id: str, _: User = Depends(get_admin_user)
+) -> list[dict]:
+    """Phase 6.B-2: projects the given user is a member of.
+
+    Used by the admin user-detail page. Returns id / name / color /
+    member role (the user's own membership row) plus member_count and
+    task_count for context.
+    """
+    valid_object_id(user_id)
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    projects = await Project.find({"members.user_id": user_id}).to_list()
+    out: list[dict] = []
+    for p in projects:
+        # The user appears in members exactly once (members are a set
+        # by user_id), so first match is fine.
+        my_role = next(
+            (m.role for m in p.members if m.user_id == user_id),
+            None,
+        )
+        out.append({
+            "id": str(p.id),
+            "name": p.name,
+            "color": p.color,
+            "role": my_role,
+            "member_count": len(p.members),
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        })
+    # Newest first — matches the convention of the projects list page.
+    out.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    return out
+
+
+@router.get("/{user_id}/ai_runs")
+async def list_user_ai_runs(
+    user_id: str,
+    days: int = Query(30, ge=1, le=90),
+    limit: int = Query(50, ge=1, le=200),
+    _: User = Depends(get_admin_user),
+) -> dict:
+    """Phase 6.B-3: recent MCP tool calls for a single user.
+
+    Resolves the user's API keys and aggregates ``McpToolUsageBucket``
+    over the last ``days`` days, grouped by tool name. We use the
+    bucket store (not ``McpToolCallEvent``) because:
+      * buckets retain 90 days vs events' 14 days,
+      * buckets are pre-aggregated (cheap to scan),
+      * the page wants "what the user has been doing" — counts per
+        tool, not individual call traces.
+
+    Returns: { total_calls, by_tool: [{tool_name, call_count}, ...],
+               since: ISO8601 }
+    """
+    valid_object_id(user_id)
+    user = await User.get(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # Find this user's API keys. Same filter-in-Python approach as
+    # _enrich_users_admin_meta — mongomock's DBRef path matching is
+    # unreliable.
+    user_id_str = str(user.id)
+    all_keys = await McpApiKey.find_all().to_list()
+    api_key_ids: list[str] = []
+    for k in all_keys:
+        owner_id = ""
+        cb = k.created_by
+        if hasattr(cb, "ref") and getattr(cb.ref, "id", None) is not None:
+            owner_id = str(cb.ref.id)
+        elif hasattr(cb, "id"):
+            owner_id = str(cb.id)
+        if owner_id == user_id_str:
+            api_key_ids.append(str(k.id))
+
+    since = datetime.now(UTC) - timedelta(days=days)
+    if not api_key_ids:
+        return {
+            "total_calls": 0,
+            "by_tool": [],
+            "since": since.isoformat(),
+            "days": days,
+        }
+
+    buckets = await McpToolUsageBucket.find(
+        {
+            "api_key_id": {"$in": api_key_ids},
+            "hour": {"$gte": since},
+        }
+    ).to_list()
+
+    # Aggregate by tool name in Python (mongomock-compatible).
+    by_tool: dict[str, int] = {}
+    total = 0
+    for b in buckets:
+        by_tool[b.tool_name] = by_tool.get(b.tool_name, 0) + b.call_count
+        total += b.call_count
+
+    rows = sorted(
+        ({"tool_name": k, "call_count": v} for k, v in by_tool.items()),
+        key=lambda r: r["call_count"],
+        reverse=True,
+    )[:limit]
+
+    return {
+        "total_calls": total,
+        "by_tool": rows,
+        "since": since.isoformat(),
+        "days": days,
+    }
 
 
 @router.patch("/{user_id}")
