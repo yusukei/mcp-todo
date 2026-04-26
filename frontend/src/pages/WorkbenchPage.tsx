@@ -328,16 +328,23 @@ export default function WorkbenchPage() {
   return (
     <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
       <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        {/* Header back: deep-link friendly fixed target (Decision §5.5.5).
+             We deliberately NOT use navigate(-1) — a deep-link
+             arrival (new tab on /projects/:id?task=...) has an empty
+             history stack. Hard-coding `/projects` always works. */}
         <Link
-          to={`/projects/${projectId}`}
+          to="/projects"
           className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          {projectName}
+          projects
         </Link>
         <span className="text-gray-400">/</span>
-        <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
-          Workbench
+        <span
+          className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate max-w-[16rem]"
+          title={projectName}
+        >
+          {projectName}
         </span>
         <PresetMenu
           onPick={(id) => setConfirmReset({ presetId: id })}
