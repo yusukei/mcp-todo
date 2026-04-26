@@ -15,6 +15,7 @@ mod client;
 mod handlers;
 mod path_safety;
 mod proto;
+mod pty;
 mod self_update;
 mod version;
 

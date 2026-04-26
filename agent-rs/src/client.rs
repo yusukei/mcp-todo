@@ -36,6 +36,7 @@ use tracing::{debug, info, warn};
 
 use crate::handlers;
 use crate::proto::{Incoming, Outgoing, RequestEnvelope, Response};
+use crate::pty;
 use crate::self_update;
 use crate::version;
 
@@ -301,6 +302,35 @@ async fn handle_text_frame(
         request_id = ?request_id,
         "dispatching handler RPC"
     );
+
+    // PTY messages need access to out_tx for `terminal_output` / `terminal_exit`
+    // server-push, so they go through a dedicated path that injects the
+    // sender. Returns None for fire-and-forget operations (input/resize/
+    // detach) — those don't get a response envelope.
+    if request_type.starts_with("terminal_") {
+        let out_tx_for_dispatch = out_tx.clone();
+        tokio::spawn(async move {
+            match pty::dispatch_terminal(&request_type, payload, out_tx_for_dispatch).await
+            {
+                Some((response_type, response_payload)) => {
+                    let envelope = Response {
+                        response_type: &response_type,
+                        request_id,
+                        payload: response_payload,
+                    };
+                    if let Ok(s) = serde_json::to_string(&envelope) {
+                        if out_tx.send(Message::Text(s.into())).await.is_err() {
+                            debug!(%request_type, "out channel closed; PTY response dropped");
+                        }
+                    }
+                }
+                None => {
+                    debug!(%request_type, "PTY op needs no response");
+                }
+            }
+        });
+        return;
+    }
 
     // Spawn the handler so a slow exec doesn't block the WS read loop —
     // each request runs concurrently and pipes its response back via

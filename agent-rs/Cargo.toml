@@ -66,6 +66,10 @@ ignore = "0.4"
 # Windows. `stream` enables `bytes_stream` for incremental SHA-256
 # during download (matches Python's chunked verify).
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+# Cross-platform PTY (Web Terminal). portable-pty (wezterm derivative)
+# wraps Unix `posix_openpt` and Windows ConPTY behind a single
+# `PtyPair` API, so we don't need pywinpty or a custom ConPTY shim.
+portable-pty = "0.8"
 
 # POSIX-only: send SIGKILL to the *process group* on exec timeout,
 # matching Python's `os.killpg(os.getpgid(pid), SIGKILL)` so the
