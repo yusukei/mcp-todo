@@ -43,6 +43,14 @@ interface Props {
     targetGroupId: string,
     drop: { kind: 'edge'; edge: DropEdge } | { kind: 'center'; index: number },
   ) => void
+  // Phase 3: page-level actions previously surfaced by the WorkbenchPage
+  // header. They now live on every TabGroup's ⋮ menu / right-rail icon.
+  // ``projectName`` lets TabGroup show a breadcrumb when the SidebarRail
+  // hides the project label.
+  projectName: string
+  onLoadPreset: (presetId: string) => void
+  onResetLayout: () => void
+  onCopyUrl: () => void
 }
 
 /**
@@ -69,6 +77,7 @@ interface DnDWrapperProps extends Props {
 function DnDWrapper({
   tree,
   projectId,
+  projectName,
   totalGroups,
   onActivateTab,
   onCloseTab,
@@ -78,6 +87,9 @@ function DnDWrapper({
   onCloseGroup,
   onSplitSizes,
   onMoveTab,
+  onLoadPreset,
+  onResetLayout,
+  onCopyUrl,
 }: DnDWrapperProps) {
   const sensors = useSensors(
     // 5px activation distance — clicks on tab headers (which are also
@@ -284,8 +296,10 @@ function DnDWrapper({
         <Renderer
           tree={tree}
           projectId={projectId}
+          projectName={projectName}
           totalGroups={totalGroups}
           reducedMotion={reducedMotion}
+          isPrimary={true}
           onActivateTab={onActivateTab}
           onCloseTab={onCloseTab}
           onAddTab={onAddTab}
@@ -293,11 +307,14 @@ function DnDWrapper({
           onSplit={onSplit}
           onCloseGroup={onCloseGroup}
           onSplitSizes={onSplitSizes}
+          onLoadPreset={onLoadPreset}
+          onResetLayout={onResetLayout}
+          onCopyUrl={onCopyUrl}
         />
       </DragStateContext.Provider>
       <DragOverlay dropAnimation={reducedMotion ? null : undefined}>
         {dragState.active ? (
-          <div className="px-3 py-1 text-xs rounded bg-blue-500 text-white shadow-lg pointer-events-none">
+          <div className="px-3 py-1 text-xs rounded bg-accent-500 text-white shadow-lg pointer-events-none">
             {dragLabelRef.current ?? 'Tab'}
           </div>
         ) : null}
@@ -309,8 +326,12 @@ function DnDWrapper({
 interface RendererProps {
   tree: LayoutTree
   projectId: string
+  projectName: string
   totalGroups: number
   reducedMotion: boolean
+  /** True only for the leftmost / topmost TabGroup so the page-level
+   *  actions (Layout / Reset / Copy URL / breadcrumb) appear once. */
+  isPrimary: boolean
   onActivateTab: (groupId: string, tabId: string) => void
   onCloseTab: (groupId: string, tabId: string) => void
   onAddTab: (groupId: string, paneType: PaneType) => void
@@ -318,13 +339,18 @@ interface RendererProps {
   onSplit: (groupId: string, orientation: 'horizontal' | 'vertical') => void
   onCloseGroup: (groupId: string) => void
   onSplitSizes: (splitId: string, sizes: number[]) => void
+  onLoadPreset: (presetId: string) => void
+  onResetLayout: () => void
+  onCopyUrl: () => void
 }
 
 function Renderer({
   tree,
   projectId,
+  projectName,
   totalGroups,
   reducedMotion,
+  isPrimary,
   onActivateTab,
   onCloseTab,
   onAddTab,
@@ -332,20 +358,28 @@ function Renderer({
   onSplit,
   onCloseGroup,
   onSplitSizes,
+  onLoadPreset,
+  onResetLayout,
+  onCopyUrl,
 }: RendererProps) {
   if (tree.kind === 'tabs') {
     return (
       <TabGroup
         group={tree}
         projectId={projectId}
+        projectName={projectName}
         totalGroups={totalGroups}
         reducedMotion={reducedMotion}
+        isPrimary={isPrimary}
         onActivateTab={onActivateTab}
         onCloseTab={onCloseTab}
         onAddTab={onAddTab}
         onConfigChange={onConfigChange}
         onSplit={onSplit}
         onCloseGroup={onCloseGroup}
+        onLoadPreset={onLoadPreset}
+        onResetLayout={onResetLayout}
+        onCopyUrl={onCopyUrl}
       />
     )
   }
@@ -371,10 +405,13 @@ function Renderer({
         <Fragment key={child.id}>
           {i > 0 && (
             <Separator
+              // Phase 1 / Phase 3: separators land on the warm bg-2
+              // hierarchy and turn pink (accent) on hover so resizes
+              // are obvious without a thick handle.
               className={
                 tree.orientation === 'horizontal'
-                  ? 'w-1 bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 transition-colors cursor-col-resize'
-                  : 'h-1 bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 transition-colors cursor-row-resize'
+                  ? 'w-1 bg-gray-700/40 hover:bg-accent-500 transition-colors cursor-col-resize'
+                  : 'h-1 bg-gray-700/40 hover:bg-accent-500 transition-colors cursor-row-resize'
               }
             />
           )}
@@ -382,8 +419,13 @@ function Renderer({
             <Renderer
               tree={child}
               projectId={projectId}
+              projectName={projectName}
               totalGroups={totalGroups}
               reducedMotion={reducedMotion}
+              // Only the very first child of the very first split owns
+              // the page-level actions; every other group renders the
+              // standard ⋮ menu without Layout / Reset / Copy URL.
+              isPrimary={isPrimary && i === 0}
               onActivateTab={onActivateTab}
               onCloseTab={onCloseTab}
               onAddTab={onAddTab}
@@ -391,6 +433,9 @@ function Renderer({
               onSplit={onSplit}
               onCloseGroup={onCloseGroup}
               onSplitSizes={onSplitSizes}
+              onLoadPreset={onLoadPreset}
+              onResetLayout={onResetLayout}
+              onCopyUrl={onCopyUrl}
             />
           </Panel>
         </Fragment>

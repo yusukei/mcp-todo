@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Plus,
   X,
@@ -6,11 +7,15 @@ import {
   SplitSquareVertical,
   SplitSquareHorizontal,
   Trash2,
+  Link2,
+  RefreshCcw,
+  Layers,
 } from 'lucide-react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import type { TabsNode, Pane, PaneType } from './types'
 import { MAX_TABS_PER_GROUP, MAX_TAB_GROUPS } from './types'
 import { isKeepAlivePane, PANE_TYPE_LABELS } from './paneRegistry'
+import { PRESETS } from './presets'
 import PaneFrame from './PaneFrame'
 import DropZoneOverlay from './DropZoneOverlay'
 import {
@@ -23,8 +28,15 @@ import { registerTabStrip } from './WorkbenchLayout'
 interface Props {
   group: TabsNode
   projectId: string
+  /** Phase 3: project name shown in the breadcrumb on the primary
+   *  TabGroup (so the rail-collapsed sidebar still surfaces context). */
+  projectName: string
   totalGroups: number
   reducedMotion: boolean
+  /** Phase 3: only the primary tab group exposes the page-level actions
+   *  (Layout preset / Reset / Copy URL) and the projects breadcrumb.
+   *  Splits beyond the first child render the plain group menu. */
+  isPrimary: boolean
 
   onActivateTab: (groupId: string, tabId: string) => void
   onCloseTab: (groupId: string, tabId: string) => void
@@ -35,6 +47,9 @@ interface Props {
   onConfigChange: (paneId: string, patch: Record<string, unknown>) => void
   onSplit: (groupId: string, orientation: 'horizontal' | 'vertical') => void
   onCloseGroup: (groupId: string) => void
+  onLoadPreset: (presetId: string) => void
+  onResetLayout: () => void
+  onCopyUrl: () => void
 }
 
 const SELECTABLE_TYPES: PaneType[] = [
@@ -50,14 +65,19 @@ const SELECTABLE_TYPES: PaneType[] = [
 export default function TabGroup({
   group,
   projectId,
+  projectName,
   totalGroups,
   reducedMotion,
+  isPrimary,
   onActivateTab,
   onCloseTab,
   onAddTab,
   onConfigChange,
   onSplit,
   onCloseGroup,
+  onLoadPreset,
+  onResetLayout,
+  onCopyUrl,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
@@ -160,10 +180,27 @@ export default function TabGroup({
   return (
     <div
       ref={setDropRef}
-      className="relative flex flex-col h-full min-h-0 bg-white dark:bg-gray-900"
+      className="relative flex flex-col h-full min-h-0 bg-gray-900"
     >
+      {/* Phase 3: project breadcrumb shown only on the primary tab
+          group, so the SidebarRail / mobile state still surface
+          context. Hidden on inner splits. */}
+      {isPrimary && (
+        <div className="flex items-center gap-2 border-b border-gray-700/40 bg-gray-950 px-4 py-1.5 text-[11px] text-gray-300">
+          <Link to="/projects" className="hover:text-gray-100">
+            projects
+          </Link>
+          <span aria-hidden className="text-gray-500">
+            /
+          </span>
+          <span className="truncate font-medium text-gray-100" title={projectName}>
+            {projectName}
+          </span>
+        </div>
+      )}
+
       {/* Tab strip */}
-      <div className="flex items-stretch h-9 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      <div className="flex items-stretch h-9 bg-gray-800 border-b border-gray-700/40">
         <div
           ref={stripRef}
           className="relative flex flex-1 min-w-0 overflow-x-auto"
@@ -208,7 +245,7 @@ export default function TabGroup({
             }
             aria-haspopup="menu"
             aria-expanded={addMenuOpen}
-            className="px-2 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-2 text-gray-300 hover:text-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
             title={
               canAddTab ? 'Add tab' : `Tab cap reached (${MAX_TABS_PER_GROUP})`
             }
@@ -219,7 +256,7 @@ export default function TabGroup({
             <div
               role="menu"
               aria-label="Add tab type"
-              className="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 shadow-lg text-xs"
+              className="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-gray-700/40 bg-gray-800 text-gray-100 shadow-lg text-xs"
             >
               {SELECTABLE_TYPES.map((t) => (
                 <button
@@ -230,7 +267,7 @@ export default function TabGroup({
                     setAddMenuOpen(false)
                     onAddTab(group.id, t)
                   }}
-                  className="w-full text-left px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="w-full text-left px-3 py-1.5 hover:bg-gray-700/60"
                 >
                   {PANE_TYPE_LABELS[t]}
                 </button>
@@ -238,6 +275,20 @@ export default function TabGroup({
             </div>
           )}
         </div>
+
+        {/* Phase 3: page-level Copy URL — primary group only so it
+            sits at the natural top-right corner of the workbench. */}
+        {isPrimary && (
+          <button
+            type="button"
+            onClick={onCopyUrl}
+            title="現在の Workbench 状態を含む URL をコピー (?task / ?doc / ?view 等)"
+            aria-label="URL をコピー"
+            className="px-2 text-gray-300 hover:text-gray-100"
+          >
+            <Link2 className="w-3.5 h-3.5" />
+          </button>
+        )}
 
         {/* Group menu — Split / Close. ``Change type`` was removed
             in favour of the + dropdown above (task 69edb607). */}
@@ -248,15 +299,57 @@ export default function TabGroup({
               setMenuOpen((v) => !v)
               setAddMenuOpen(false)
             }}
-            className="px-2 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
+            className="px-2 text-gray-300 hover:text-gray-100"
             aria-label="Pane menu"
           >
             <MoreVertical className="w-4 h-4" />
           </button>
           {menuOpen && (
             <div
-              className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 shadow-lg text-xs"
+              className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-gray-700/40 bg-gray-800 text-gray-100 shadow-lg text-xs"
             >
+              {/* Phase 3: page-level actions on the primary group only.
+                  Layout preset / Reset are gated this way so secondary
+                  splits keep a focused per-group menu. */}
+              {isPrimary && (
+                <>
+                  <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-gray-300">
+                    Layout
+                  </div>
+                  {PRESETS.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false)
+                        onLoadPreset(p.id)
+                      }}
+                      className="w-full text-left px-3 py-1.5 hover:bg-gray-700/60"
+                      title={p.description}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Layers className="w-3.5 h-3.5 text-gray-300" />
+                        <span className="font-medium text-gray-50">{p.label}</span>
+                      </div>
+                      <div className="text-[10px] text-gray-300 mt-0.5 ml-5">
+                        {p.description}
+                      </div>
+                    </button>
+                  ))}
+                  <MenuItem
+                    icon={<RefreshCcw className="w-3.5 h-3.5 text-gray-300" />}
+                    label="Reset layout (Cmd+Shift+R)"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      onResetLayout()
+                    }}
+                  />
+                  <div className="border-t border-gray-700/40 my-1" />
+                  <div className="px-3 pt-1 pb-1 text-[10px] uppercase tracking-wider text-gray-300">
+                    Pane
+                  </div>
+                </>
+              )}
               <MenuItem
                 icon={<SplitSquareVertical className="w-3.5 h-3.5" />}
                 label="Split right"
@@ -277,9 +370,9 @@ export default function TabGroup({
                   onSplit(group.id, 'vertical')
                 }}
               />
-              <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
+              <div className="border-t border-gray-700/40 my-1" />
               <MenuItem
-                icon={<Trash2 className="w-3.5 h-3.5 text-red-500" />}
+                icon={<Trash2 className="w-3.5 h-3.5 text-status-cancel" />}
                 label="Close group"
                 onClick={() => {
                   setMenuOpen(false)
@@ -390,11 +483,18 @@ function DraggableTab({
             onClose()
           }
         }}
-        style={draggingStyle}
-        className={`group flex items-center gap-1.5 px-3 text-xs border-r border-gray-200 dark:border-gray-700 max-w-[14rem] flex-shrink-0 select-none cursor-grab active:cursor-grabbing ${
+        style={{
+          ...draggingStyle,
+          // Active tab gets a 2px accent (pink) bar across the top, per
+          // the design spec (`UI 再設計仕様書 §4.3`). Inline so we don't
+          // grow the className blob with conditional pseudo-elements.
+          // ``#fc618d`` mirrors ``theme.colors.accent.500``.
+          boxShadow: isActive ? 'inset 0 2px 0 0 #fc618d' : undefined,
+        }}
+        className={`group relative flex items-center gap-1.5 px-3 text-xs border-r border-gray-700/40 max-w-[14rem] flex-shrink-0 select-none cursor-grab active:cursor-grabbing ${
           isActive
-            ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100'
-            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+            ? 'bg-gray-900 text-gray-50 font-medium'
+            : 'text-gray-300 hover:bg-gray-700/60 hover:text-gray-50'
         }`}
         title={PANE_TYPE_LABELS[tab.paneType]}
       >
@@ -420,7 +520,11 @@ function DraggableTab({
               onClose()
             }
           }}
-          className="opacity-0 group-hover:opacity-100 hover:bg-gray-300 dark:hover:bg-gray-600 rounded p-0.5"
+          className={`rounded p-0.5 transition-opacity ${
+            isActive
+              ? 'opacity-60 hover:opacity-100 hover:bg-gray-700/60'
+              : 'opacity-0 group-hover:opacity-60 hover:!opacity-100 hover:bg-gray-700/60'
+          }`}
           aria-label="Close tab"
         >
           <X className="w-3 h-3" />
@@ -435,7 +539,7 @@ function DraggableTab({
 function InsertIndicator() {
   return (
     <span
-      className="self-stretch w-0.5 bg-blue-500 dark:bg-blue-400 mx-0 flex-shrink-0"
+      className="self-stretch w-0.5 bg-accent-500 mx-0 flex-shrink-0"
       aria-hidden
     />
   )
@@ -458,7 +562,7 @@ function MenuItem({ icon, label, disabled, disabledHint, onClick }: MenuItemProp
       onClick={onClick}
       disabled={disabled}
       title={disabled ? disabledHint : undefined}
-      className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+      className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-700/60 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent text-gray-100"
     >
       {icon}
       <span>{label}</span>

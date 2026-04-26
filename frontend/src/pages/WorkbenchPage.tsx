@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ChevronDown, Link2, RefreshCcw } from 'lucide-react'
 import { api } from '../api/client'
 import type { Project } from '../types'
 import WorkbenchLayout from '../workbench/WorkbenchLayout'
@@ -35,7 +34,7 @@ import type { DropEdge } from '../workbench/treeUtils'
 import type { LayoutTree, Pane, PaneType } from '../workbench/types'
 import { KNOWN_PANE_TYPES } from '../workbench/paneRegistry'
 import { WorkbenchEventProvider, useWorkbenchEventBus } from '../workbench/eventBus'
-import { PRESETS, getPreset } from '../workbench/presets'
+import { getPreset } from '../workbench/presets'
 import {
   findFirstPaneOfType,
   findFirstTabsNodeId,
@@ -566,6 +565,27 @@ export default function WorkbenchPage() {
     [project, projectId],
   )
 
+  // Phase 3: page-level actions previously surfaced by the deleted
+  // header strip — now plumbed into TabGroup's primary ⋮ menu / icon.
+  // Declared *before* the early returns so the hook order stays stable
+  // across loading / loaded states (React's rules-of-hooks).
+  const onCopyUrl = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      showSuccessToast('URL をクリップボードにコピーしました')
+    } catch {
+      showInfoToast('クリップボードへのアクセスに失敗しました')
+    }
+  }, [])
+
+  const onResetLayout = useCallback(() => {
+    setConfirmReset({ presetId: 'tasks-only' })
+  }, [])
+
+  const onLoadPreset = useCallback((presetId: string) => {
+    setConfirmReset({ presetId })
+  }, [])
+
   if (!projectId) {
     return <div className="p-8 text-gray-400">Invalid project id.</div>
   }
@@ -574,60 +594,15 @@ export default function WorkbenchPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-        {/* Header back: deep-link friendly fixed target (Decision §5.5.5).
-             We deliberately NOT use navigate(-1) — a deep-link
-             arrival (new tab on /projects/:id?task=...) has an empty
-             history stack. Hard-coding `/projects` always works. */}
-        <Link
-          to="/projects"
-          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          projects
-        </Link>
-        <span className="text-gray-400">/</span>
-        <span
-          className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate max-w-[16rem]"
-          title={projectName}
-        >
-          {projectName}
-        </span>
-        <PresetMenu
-          onPick={(id) => setConfirmReset({ presetId: id })}
-        />
-        <button
-          type="button"
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(window.location.href)
-              showSuccessToast('URL をクリップボードにコピーしました')
-            } catch {
-              showInfoToast('クリップボードへのアクセスに失敗しました')
-            }
-          }}
-          className="ml-auto flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-          title="現在の Workbench 状態を含む URL をコピー (?task / ?doc / ?view 等)"
-        >
-          <Link2 className="w-3.5 h-3.5" />
-          Copy URL
-        </button>
-        <button
-          type="button"
-          onClick={() => setConfirmReset({ presetId: 'tasks-only' })}
-          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-          title="Reset layout (Cmd/Ctrl+Shift+R)"
-        >
-          <RefreshCcw className="w-3.5 h-3.5" />
-          Reset
-        </button>
-      </div>
+    <div className="flex flex-col h-full bg-gray-900">
+      {/* Phase 3: top header strip removed. Project breadcrumb and
+          page-level actions live inside the primary TabGroup. */}
       <div className="flex-1 min-h-0">
         <WorkbenchEventProvider tree={state.tree}>
           <WorkbenchLayout
             tree={state.tree}
             projectId={projectId}
+            projectName={projectName}
             onActivateTab={onActivateTab}
             onCloseTab={onCloseTab}
             onAddTab={onAddTab}
@@ -636,6 +611,9 @@ export default function WorkbenchPage() {
             onCloseGroup={onCloseGroup}
             onSplitSizes={onSplitSizes}
             onMoveTab={onMoveTab}
+            onLoadPreset={onLoadPreset}
+            onResetLayout={onResetLayout}
+            onCopyUrl={onCopyUrl}
           />
           <WorkbenchFallbacks
             projectId={projectId}
@@ -656,51 +634,6 @@ export default function WorkbenchPage() {
             setConfirmReset(null)
           }}
         />
-      )}
-    </div>
-  )
-}
-
-// ── Preset menu ────────────────────────────────────────────────
-
-function PresetMenu({ onPick }: { onPick: (presetId: string) => void }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 px-2 py-0.5 rounded border border-transparent hover:border-gray-200 dark:hover:border-gray-700"
-        title="Load a preset layout (replaces the current layout)"
-      >
-        Layout
-        <ChevronDown className="w-3 h-3" />
-      </button>
-      {open && (
-        <div
-          className="absolute left-0 top-full z-30 mt-1 w-64 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg text-xs"
-          onMouseLeave={() => setOpen(false)}
-        >
-          {PRESETS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => {
-                setOpen(false)
-                onPick(p.id)
-              }}
-              className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
-              title={p.description}
-            >
-              <div className="font-medium text-gray-800 dark:text-gray-200">
-                {p.label}
-              </div>
-              <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
-                {p.description}
-              </div>
-            </button>
-          ))}
-        </div>
       )}
     </div>
   )
@@ -773,12 +706,12 @@ function ResetConfirmModal({
   }, [onCancel, onConfirm])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-5 max-w-md w-full mx-4">
-        <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+      <div className="bg-gray-800 border border-gray-700/40 rounded-lg shadow-xl p-5 max-w-md w-full mx-4">
+        <h2 className="font-serif text-base font-semibold text-gray-50">
           Replace current layout?
         </h2>
-        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+        <p className="mt-2 text-sm text-gray-100">
           Loading <span className="font-medium">{presetLabel}</span> will
           discard your current Workbench arrangement (tab positions,
           splits, per-pane configs). Per-pane data on the server (tasks,
@@ -788,14 +721,14 @@ function ResetConfirmModal({
           <button
             type="button"
             onClick={onCancel}
-            className="px-3 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+            className="px-3 py-1.5 text-xs rounded border border-gray-700/40 text-gray-100 hover:bg-gray-700/60"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="px-3 py-1.5 text-xs rounded bg-blue-600 hover:bg-blue-700 text-white"
+            className="px-3 py-1.5 text-xs rounded bg-accent-500 hover:bg-accent-400 text-white"
             autoFocus
           >
             Replace layout

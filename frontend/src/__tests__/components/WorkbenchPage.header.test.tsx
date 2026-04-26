@@ -1,11 +1,16 @@
 /**
- * WorkbenchPage header invariants (H1-H6).
+ * WorkbenchPage primary-tabgroup invariants (H1-H6, Phase 3 rewrite).
  *
- * The header strip exposes navigation + layout controls (← projects,
- * project name, Layout preset menu, Copy URL, Reset). All of them
- * must be present and operate as specified — losing any one of them
- * was the kind of silent regression the TasksPane.create incident
- * exposed.
+ * Phase 3 deleted the dedicated header strip and folded its actions
+ * into the primary TabGroup:
+ *   * H1 — `projects` link is in the breadcrumb above the tab strip.
+ *   * H2 — project name is shown next to the breadcrumb.
+ *   * H3 — Layout presets live inside the ⋮ menu.
+ *   * H4 — Copy URL is a small icon button (aria-label) at the right
+ *          edge of the tab strip on the primary group only.
+ *   * H5 — Reset layout is a MenuItem inside the same ⋮ menu and
+ *          still triggers the "Replace current layout?" modal.
+ *   * H6 — modal ESC / Enter behaviour is unchanged.
  */
 import { describe, expect, it, vi, beforeAll, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
@@ -74,14 +79,17 @@ beforeEach(() => {
   window.sessionStorage.setItem('workbench:clientId', 'test-tab')
 })
 
+// ── H1: breadcrumb projects link ────────────────────────────────
+
 describe('Workbench / Header — H1: ← projects link', () => {
   it('navigates to /projects when clicked', async () => {
     const user = userEvent.setup()
     renderPage()
+    // Wait for the project to load so the breadcrumb is rendered.
     await waitFor(() => {
-      expect(screen.queryByText(/projects/i)).not.toBeNull()
+      expect(screen.queryByText(/My Test Project/i)).not.toBeNull()
     })
-    const back = screen.getByRole('link', { name: /projects/i })
+    const back = screen.getByRole('link', { name: /^projects$/i })
     expect(back.getAttribute('href')).toBe('/projects')
     await user.click(back)
     await waitFor(() => {
@@ -89,6 +97,8 @@ describe('Workbench / Header — H1: ← projects link', () => {
     })
   })
 })
+
+// ── H2: project name shown in the breadcrumb ────────────────────
 
 describe('Workbench / Header — H2: project name displayed', () => {
   it('shows the project name from the project query', async () => {
@@ -99,13 +109,18 @@ describe('Workbench / Header — H2: project name displayed', () => {
   })
 })
 
+// ── H3: Layout presets via the ⋮ menu ───────────────────────────
+
 describe('Workbench / Header — H3: Layout preset menu lists 5 presets', () => {
-  it('opens a dropdown with the preset entries when clicked', async () => {
+  it('opens the ⋮ menu with the preset entries when clicked', async () => {
     const user = userEvent.setup()
     renderPage()
-    const layoutBtn = await screen.findByRole('button', { name: /Layout/i })
-    await user.click(layoutBtn)
-    // Each preset has a label (Tasks only / Tasks + Detail / Tasks + Terminal / Tasks + Doc + Terminal / Doc + Files)
+    await waitFor(() => {
+      expect(screen.queryByText(/My Test Project/i)).not.toBeNull()
+    })
+    // Phase 3: presets live inside the primary TabGroup's ⋮ menu.
+    const menuBtn = await screen.findByRole('button', { name: /pane menu/i })
+    await user.click(menuBtn)
     const labels = [
       /Tasks only/i,
       /Tasks \+ Detail/i,
@@ -118,6 +133,8 @@ describe('Workbench / Header — H3: Layout preset menu lists 5 presets', () => 
   })
 })
 
+// ── H4: Copy URL icon ───────────────────────────────────────────
+
 describe('Workbench / Header — H4: Copy URL button', () => {
   it('calls navigator.clipboard.writeText with the current URL', async () => {
     const user = userEvent.setup()
@@ -127,33 +144,55 @@ describe('Workbench / Header — H4: Copy URL button', () => {
       value: { writeText },
     })
     renderPage()
-    const copyBtn = await screen.findByRole('button', { name: /Copy URL/i })
+    await waitFor(() => {
+      expect(screen.queryByText(/My Test Project/i)).not.toBeNull()
+    })
+    const copyBtn = await screen.findByRole('button', { name: /URL をコピー/i })
     await user.click(copyBtn)
     expect(writeText).toHaveBeenCalledTimes(1)
     expect(writeText.mock.calls[0][0]).toMatch(/^http/)
   })
 })
 
+// ── H5: Reset layout opens the confirm modal ────────────────────
+
 describe('Workbench / Header — H5: Reset button opens confirm modal', () => {
   it('shows a "Replace current layout?" modal when clicked', async () => {
     const user = userEvent.setup()
     renderPage()
-    const resetBtn = await screen.findByRole('button', { name: /Reset/i })
-    await user.click(resetBtn)
+    await waitFor(() => {
+      expect(screen.queryByText(/My Test Project/i)).not.toBeNull()
+    })
+    await user.click(await screen.findByRole('button', { name: /pane menu/i }))
+    const resetItem = await screen.findByRole('button', {
+      name: /Reset layout/i,
+    })
+    await user.click(resetItem)
     expect(screen.getByText(/Replace current layout\?/i)).toBeInTheDocument()
   })
 })
+
+// ── H6: confirm modal ESC / Enter ───────────────────────────────
 
 describe('Workbench / Header — H6: confirm modal ESC / Enter', () => {
   it('closes on ESC, confirms on Enter', async () => {
     const user = userEvent.setup()
     renderPage()
-    await user.click(await screen.findByRole('button', { name: /Reset/i }))
+    await waitFor(() => {
+      expect(screen.queryByText(/My Test Project/i)).not.toBeNull()
+    })
+    const openModal = async () => {
+      await user.click(await screen.findByRole('button', { name: /pane menu/i }))
+      await user.click(
+        await screen.findByRole('button', { name: /Reset layout/i }),
+      )
+    }
+    await openModal()
     expect(screen.getByText(/Replace current layout\?/i)).toBeInTheDocument()
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(screen.queryByText(/Replace current layout\?/i)).toBeNull()
-    // Re-open and confirm via Enter.
-    await user.click(await screen.findByRole('button', { name: /Reset/i }))
+    // Re-open and confirm via Enter — should also dismiss the modal.
+    await openModal()
     fireEvent.keyDown(window, { key: 'Enter' })
     expect(screen.queryByText(/Replace current layout\?/i)).toBeNull()
   })
