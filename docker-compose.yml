@@ -113,6 +113,7 @@ services:
       - bookmark_assets:/app/bookmark_assets
       - bookmark_index:/app/search_index_bookmarks
       - agent_releases:/app/agent_releases
+      - supervisor_releases:/app/supervisor_releases
     depends_on:
       mongo:
         condition: service_healthy
@@ -308,6 +309,7 @@ volumes:
   bookmark_assets:
   bookmark_index:
   agent_releases:
+  supervisor_releases:
   backups:
 
 networks:

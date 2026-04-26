@@ -1,12 +1,13 @@
-﻿import { useState } from 'react'
-import { Users, Mail, FolderOpen, HardDrive, Activity } from 'lucide-react'
+import { useState } from 'react'
+import { Users, Mail, FolderOpen, HardDrive, Activity, Package } from 'lucide-react'
 import UsersTab from './admin/UsersTab'
 import AllowedEmailsTab from './admin/AllowedEmailsTab'
 import ProjectsTab from './admin/ProjectsTab'
 import BackupRestoreTab from './admin/BackupRestoreTab'
 import McpUsageTab from './admin/McpUsageTab'
+import BinaryManagementTab from './admin/BinaryManagementTab'
 
-type Tab = 'users' | 'emails' | 'projects' | 'backup' | 'mcp-usage'
+type Tab = 'users' | 'emails' | 'projects' | 'backup' | 'mcp-usage' | 'binaries'
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'users', label: 'ユーザ', icon: <Users className="w-4 h-4" /> },
@@ -14,6 +15,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'projects', label: 'プロジェクト', icon: <FolderOpen className="w-4 h-4" /> },
   { id: 'backup', label: 'バックアップ', icon: <HardDrive className="w-4 h-4" /> },
   { id: 'mcp-usage', label: 'MCP 使用状況', icon: <Activity className="w-4 h-4" /> },
+  { id: 'binaries', label: 'バイナリ管理', icon: <Package className="w-4 h-4" /> },
 ]
 
 export default function AdminPage() {
@@ -46,6 +48,7 @@ export default function AdminPage() {
           {tab === 'projects' && <ProjectsTab />}
           {tab === 'backup' && <BackupRestoreTab />}
           {tab === 'mcp-usage' && <McpUsageTab />}
+          {tab === 'binaries' && <BinaryManagementTab />}
         </div>
       </div>
     </div>

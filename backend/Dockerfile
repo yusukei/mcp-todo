@@ -58,8 +58,8 @@ ENV PATH="/app/.venv/bin:$PATH" TZ=Asia/Tokyo \
     PLAYWRIGHT_BROWSERS_PATH=/app/.playwright
 RUN playwright install-deps chromium && rm -rf /var/lib/apt/lists/*
 COPY app/ ./app/
-RUN mkdir -p /app/search_index /app/docsite_assets /app/search_index_docsites /app/bookmark_assets /app/search_index_bookmarks /app/agent_releases && \
-    chown app:app /app/search_index /app/docsite_assets /app/search_index_docsites /app/bookmark_assets /app/search_index_bookmarks /app/agent_releases
+RUN mkdir -p /app/search_index /app/docsite_assets /app/search_index_docsites /app/bookmark_assets /app/search_index_bookmarks /app/agent_releases /app/supervisor_releases && \
+    chown app:app /app/search_index /app/docsite_assets /app/search_index_docsites /app/bookmark_assets /app/search_index_bookmarks /app/agent_releases /app/supervisor_releases
 USER app
 EXPOSE 8000
 # ── Deployment topologies ───────────────────────────────────

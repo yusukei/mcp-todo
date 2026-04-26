@@ -144,3 +144,31 @@ class AgentRelease(Document):
         indexes = [
             [("os_type", 1), ("channel", 1), ("created_at", -1)],
         ]
+
+
+class SupervisorRelease(Document):
+    """A published Rust supervisor binary release.
+
+    Independent collection from AgentRelease so an admin can publish
+    supervisor and agent binaries on different release cadences.
+    Storage lives under ``settings.SUPERVISOR_RELEASES_DIR`` and the
+    same on-disk layout (``{os_type}/{channel}/{arch}/...``) is used
+    so existing ops scripts can be templated.
+    """
+
+    version: str  # semver string e.g. "0.1.0"
+    os_type: str  # "win32" | "linux" | "darwin"
+    arch: str = "x64"
+    channel: str = "stable"  # "stable" | "beta" | "canary"
+    storage_path: str  # Path under settings.SUPERVISOR_RELEASES_DIR
+    sha256: str  # lowercase hex
+    size_bytes: int
+    release_notes: str = ""
+    uploaded_by: str  # User ID
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    class Settings:
+        name = "supervisor_releases"
+        indexes = [
+            [("os_type", 1), ("channel", 1), ("created_at", -1)],
+        ]

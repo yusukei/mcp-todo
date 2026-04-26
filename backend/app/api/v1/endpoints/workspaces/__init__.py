@@ -10,6 +10,7 @@ URL layout:
 - ``/api/v1/workspaces/agents/...``       — remote agent CRUD + rotate-token + check-update
 - ``/api/v1/workspaces/supervisors/...``  — Rust supervisor CRUD + rotate-token (Phase Y)
 - ``/api/v1/workspaces/releases/...``     — agent release upload / list / download
+- ``/api/v1/workspaces/supervisor-releases/...`` — supervisor release upload / list / download
 - ``/api/v1/workspaces/agent/ws``         — agent WebSocket
 - ``/api/v1/workspaces/supervisor/ws``    — Rust supervisor WebSocket (Phase Y)
 """
@@ -27,6 +28,7 @@ from ._releases_util import (
 from .agents import router as _agents_router
 from .filebrowser import router as _filebrowser_router
 from .releases import router as _releases_router
+from .supervisor_releases import router as _supervisor_releases_router
 from .supervisor_ws import router as _supervisor_ws_router
 from .supervisors import router as _supervisors_router
 from .terminal import router as _terminal_router
@@ -39,6 +41,7 @@ router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 router.include_router(_agents_router)
 router.include_router(_supervisors_router)
 router.include_router(_releases_router)
+router.include_router(_supervisor_releases_router)
 router.include_router(_websocket_router)
 router.include_router(_supervisor_ws_router)
 router.include_router(_filebrowser_router)

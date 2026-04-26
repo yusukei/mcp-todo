@@ -111,6 +111,10 @@ class Settings(BaseSettings):
         return "/app/agent_releases"
 
     @property
+    def SUPERVISOR_RELEASES_DIR(self) -> str:
+        return "/app/supervisor_releases"
+
+    @property
     def UPLOADS_DIR(self) -> str:
         return "/app/uploads"
 
