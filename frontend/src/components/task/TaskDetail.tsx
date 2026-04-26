@@ -52,14 +52,23 @@ function DecisionContextSection({
     setDraftOptions(copy)
   }
 
+  // Phase 5: A recommended option's label (case-insensitive substring
+  // match) gets highlighted with the approved (green) ring. The author
+  // free-form text in `recommendation`, so we substring-match rather
+  // than insisting on exact equality.
+  const recommendedLabel = dc?.recommendation?.trim().toLowerCase() ?? ''
+  const isRecommended = (opt: { label: string }) =>
+    recommendedLabel.length > 0 &&
+    recommendedLabel.includes(opt.label.trim().toLowerCase())
+
   return (
-    <div className="border border-violet-200 dark:border-violet-800 rounded-lg p-4 bg-violet-50/50 dark:bg-violet-900/20">
+    <div className="border-l-4 border-decision rounded-comfortable p-4 bg-decision/10">
       <div className="flex items-center justify-between mb-3">
-        <label className="block text-sm font-medium text-violet-700 dark:text-violet-400">判断コンテキスト</label>
+        <label className="block text-sm font-medium text-decision font-serif">判断コンテキスト</label>
         {!editing && (
           <button
             onClick={startEdit}
-            className="text-violet-500 hover:text-violet-700 dark:text-violet-400 dark:hover:text-violet-300"
+            className="text-decision hover:opacity-80"
             title="判断コンテキストを編集"
           >
             <Pencil className="w-3.5 h-3.5" />
@@ -70,7 +79,7 @@ function DecisionContextSection({
       {editing ? (
         <div className="space-y-3">
           <div>
-            <label className="block text-xs font-medium text-violet-600 dark:text-violet-400 mb-1">背景</label>
+            <label className="block text-xs font-medium text-decision mb-1">背景</label>
             <textarea
               value={draftBackground}
               onChange={(e) => setDraftBackground(e.target.value)}
@@ -80,7 +89,7 @@ function DecisionContextSection({
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-violet-600 dark:text-violet-400 mb-1">判断事項</label>
+            <label className="block text-xs font-medium text-decision mb-1">判断事項</label>
             <textarea
               value={draftDecisionPoint}
               onChange={(e) => setDraftDecisionPoint(e.target.value)}
@@ -90,11 +99,11 @@ function DecisionContextSection({
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-violet-600 dark:text-violet-400 mb-1">選択肢</label>
+            <label className="block text-xs font-medium text-decision mb-1">選択肢</label>
             <div className="space-y-2">
               {draftOptions.map((opt, i) => (
                 <div key={i} className="flex gap-2 items-start">
-                  <span className="text-xs text-violet-400 mt-2.5 w-5 text-center flex-shrink-0">{i + 1}.</span>
+                  <span className="text-xs text-decision mt-2.5 w-5 text-center flex-shrink-0 font-mono">{i + 1}.</span>
                   <div className="flex-1 space-y-1">
                     <input
                       type="text"
@@ -114,7 +123,7 @@ function DecisionContextSection({
                   {draftOptions.length > 1 && (
                     <button
                       onClick={() => removeOption(i)}
-                      className="text-red-400 hover:text-red-600 mt-2"
+                      className="text-pri-urgent hover:opacity-80 mt-2"
                       title="削除"
                     >
                       <X className="w-4 h-4" />
@@ -125,7 +134,7 @@ function DecisionContextSection({
             </div>
             <button
               onClick={addOption}
-              className="mt-2 text-xs text-violet-600 dark:text-violet-400 hover:text-violet-800 dark:hover:text-violet-300"
+              className="mt-2 text-xs text-decision hover:opacity-80"
             >
               + 選択肢を追加
             </button>
@@ -133,13 +142,13 @@ function DecisionContextSection({
           <div className="flex gap-2 justify-end">
             <button
               onClick={() => setEditing(false)}
-              className="px-3 py-1 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+              className="px-3 py-1 text-sm text-gray-200 border border-gray-600 rounded-comfortable hover:bg-gray-700"
             >
               キャンセル
             </button>
             <button
               onClick={save}
-              className="px-3 py-1 text-sm text-white bg-violet-600 rounded-lg hover:bg-violet-700"
+              className="px-3 py-1 text-sm text-gray-50 bg-decision rounded-comfortable hover:opacity-90"
             >
               保存
             </button>
@@ -149,44 +158,65 @@ function DecisionContextSection({
         <div className="space-y-3 cursor-pointer" onClick={startEdit}>
           {dc.background && (
             <div>
-              <span className="text-xs font-medium text-violet-600 dark:text-violet-400">背景</span>
-              <p className="text-sm text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap">{dc.background}</p>
+              <span className="text-xs font-medium text-decision">背景</span>
+              <p className="text-sm text-gray-100 mt-1 whitespace-pre-wrap">{dc.background}</p>
             </div>
           )}
           {dc.decision_point && (
             <div>
-              <span className="text-xs font-medium text-violet-600 dark:text-violet-400">判断事項</span>
-              <p className="text-sm text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap">{dc.decision_point}</p>
+              <span className="text-xs font-medium text-decision">判断事項</span>
+              <p className="text-sm text-gray-100 mt-1 whitespace-pre-wrap">{dc.decision_point}</p>
             </div>
           )}
           {dc.options?.length > 0 && (
             <div>
-              <span className="text-xs font-medium text-violet-600 dark:text-violet-400">選択肢</span>
-              <ol className="mt-1 space-y-1.5">
-                {dc.options.map((opt, i) => (
-                  <li key={i} className="flex items-start gap-2">
-                    <span className="text-sm font-semibold text-violet-500 mt-0.5">{i + 1}.</span>
-                    <div>
-                      <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{opt.label}</span>
-                      {opt.description && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{opt.description}</p>
+              <span className="text-xs font-medium text-decision">選択肢</span>
+              <ol className="mt-2 space-y-2">
+                {dc.options.map((opt, i) => {
+                  const recommended = isRecommended(opt)
+                  return (
+                    <li
+                      key={i}
+                      className={clsx(
+                        'flex items-start gap-2 p-3 rounded-comfortable border transition-colors',
+                        recommended
+                          ? 'bg-approved/15 border-approved'
+                          : 'bg-gray-800/60 border-gray-700',
                       )}
-                    </div>
-                  </li>
-                ))}
+                    >
+                      <span className={clsx(
+                        'text-sm font-semibold mt-0.5 font-mono flex-shrink-0',
+                        recommended ? 'text-approved' : 'text-decision',
+                      )}>
+                        {recommended ? '★' : `${i + 1}.`}
+                      </span>
+                      <div className="flex-1">
+                        <span className="text-sm font-medium text-gray-50">{opt.label}</span>
+                        {opt.description && (
+                          <p className="text-xs text-gray-300 mt-0.5">{opt.description}</p>
+                        )}
+                        {recommended && (
+                          <span className="inline-block mt-1.5 text-[10px] font-mono uppercase tracking-wider text-approved">
+                            推奨
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
               </ol>
             </div>
           )}
           {dc.recommendation && (
-            <div>
-              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">推奨</span>
-              <p className="text-sm text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap">{dc.recommendation}</p>
+            <div className="border-l-2 border-approved pl-3 py-1 bg-approved/5 rounded-r">
+              <span className="text-xs font-medium text-approved">推奨</span>
+              <p className="text-sm text-gray-100 mt-1 whitespace-pre-wrap">{dc.recommendation}</p>
             </div>
           )}
         </div>
       ) : (
         <p
-          className="text-sm text-violet-400 dark:text-violet-500 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
+          className="text-sm text-decision/70 cursor-pointer hover:text-decision"
           onClick={startEdit}
         >
           クリックして判断コンテキストを追加...
@@ -209,9 +239,19 @@ interface Props {
    * parent (used by TaskDetailPane).
    */
   displayMode?: 'slideOver' | 'pane'
+  /**
+   * Phase 5: when ``true``, the meta fields (status / priority / due
+   * date / review flag / task type) move into a 260 px right-hand
+   * rail and the main column shows only narrative content (decision
+   * context, description, tags, completion report, attachments,
+   * links, subtasks, comments). Only meaningful in ``pane`` mode —
+   * slide-over keeps the legacy single-column layout because the
+   * modal is too narrow for a side rail.
+   */
+  metaRail?: boolean
 }
 
-export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask, displayMode = 'slideOver' }: Props) {
+export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask, displayMode = 'slideOver', metaRail = false }: Props) {
   const qc = useQueryClient()
 
   // Editing state
@@ -432,6 +472,9 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
   // positioning + backdrop (legacy ProjectPage modal), pane mode
   // renders flush in its parent (no backdrop, fills 100% height).
   const isPane = displayMode === 'pane'
+  // metaRail only applies in pane mode — slide-over modal is too
+  // narrow (max-w-3xl) for a side rail to be useful.
+  const useMetaRail = isPane && metaRail
   const outerClass = isPane
     ? 'h-full flex flex-col bg-gray-100 dark:bg-gray-800'
     : 'fixed inset-0 z-50 flex items-center justify-center p-4'
@@ -503,11 +546,13 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
           </div>
         )}
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Status */}
+        {/* Body — wrapped in 2-column layout when metaRail is on */}
+        <div className={clsx('flex-1 overflow-hidden', useMetaRail ? 'flex' : 'flex flex-col')}>
+        <div className={clsx('flex-1 overflow-y-auto p-6 space-y-6', useMetaRail && 'min-w-0')}>
+          {/* Status — hidden in main column when metaRail; shown in aside */}
+          {!useMetaRail && (
           <div>
-            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">ステータス</label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">ステータス</label>
             <div className="flex flex-wrap gap-2">
               {STATUS_OPTIONS.map((opt) => (
                 <button
@@ -516,8 +561,8 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
                   className={clsx(
                     'px-3 py-1 text-sm rounded-full border transition-colors',
                     task.status === opt.value
-                      ? 'bg-accent-500 text-gray-100 border-accent-600'
-                      : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-accent-400 dark:hover:border-accent-500'
+                      ? 'bg-accent-500 text-gray-50 border-accent-600'
+                      : 'border-gray-600 text-gray-200 hover:border-accent-500'
                   )}
                 >
                   {opt.label}
@@ -525,11 +570,13 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
               ))}
             </div>
           </div>
+          )}
 
-          {/* Priority & Due date */}
+          {/* Priority & Due date — hidden in main column when metaRail */}
+          {!useMetaRail && (
           <div className="flex items-center gap-4">
             <div className="w-40">
-              <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">優先度</label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">優先度</label>
               <select
                 value={task.priority}
                 onChange={(e) => handlePriorityChange(e.target.value as TaskPriority)}
@@ -541,7 +588,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
               </select>
             </div>
             <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">期限</label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">期限</label>
               <input
                 type="date"
                 value={draftDueDate}
@@ -550,18 +597,20 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
               />
             </div>
           </div>
+          )}
 
-          {/* Review Flags */}
+          {/* Review Flags — hidden in main column when metaRail */}
+          {!useMetaRail && (
           <div>
-            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">レビューフラグ</label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">レビューフラグ</label>
             <div className="flex gap-4">
               <button
                 onClick={() => updateFlags.mutate({ approved: !task.approved })}
                 className={clsx(
                   'inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-full border transition-all',
                   task.approved
-                    ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700 shadow-sm'
-                    : 'bg-gray-50 dark:bg-gray-700/50 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700',
+                    ? 'bg-approved/15 text-approved border-approved/40 shadow-sm'
+                    : 'bg-gray-700/50 text-gray-300 border-gray-600 hover:bg-gray-700',
                 )}
                 aria-label={task.approved ? '実行許可を取消' : '実行許可を付与'}
               >
@@ -570,10 +619,12 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
               </button>
             </div>
           </div>
+          )}
 
-          {/* Task Type */}
+          {/* Task Type — hidden in main column when metaRail */}
+          {!useMetaRail && (
           <div>
-            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">タスク種別</label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">タスク種別</label>
             <div className="flex flex-wrap gap-2">
               {TASK_TYPE_OPTIONS.map((opt) => (
                 <button
@@ -586,9 +637,9 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
                     'px-3 py-1 text-sm rounded-full border transition-colors',
                     task.task_type === opt.value
                       ? opt.value === 'decision'
-                        ? 'bg-violet-600 text-white border-violet-600'
-                        : 'bg-accent-500 text-gray-100 border-accent-600'
-                      : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-accent-400 dark:hover:border-accent-500'
+                        ? 'bg-decision text-gray-50 border-decision'
+                        : 'bg-accent-500 text-gray-50 border-accent-600'
+                      : 'border-gray-600 text-gray-200 hover:border-accent-500'
                   )}
                 >
                   {opt.label}
@@ -596,6 +647,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
               ))}
             </div>
           </div>
+          )}
 
           {/* Decision Context */}
           {task.task_type === 'decision' && (
@@ -722,9 +774,9 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
 
           {/* Completion Report */}
           {task.status === 'done' && (
-            <div className="border border-emerald-200 dark:border-emerald-800 rounded-lg p-4 bg-emerald-50/50 dark:bg-emerald-900/20">
+            <div className="border-l-4 border-approved rounded-comfortable p-4 bg-approved/10">
               <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-medium text-emerald-700 dark:text-emerald-400">完了レポート</label>
+                <label className="block text-sm font-medium text-approved font-serif">完了レポート</label>
                 {!editingCompletionReport && (
                   <button
                     onClick={() => {
@@ -732,7 +784,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
                       setEditingCompletionReport(true)
                       setTimeout(() => completionReportRef.current?.focus(), 0)
                     }}
-                    className="text-emerald-500 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+                    className="text-approved hover:opacity-80"
                     title="完了レポートを編集"
                   >
                     <Pencil className="w-3.5 h-3.5" />
@@ -752,7 +804,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
                   <div className="flex gap-2 justify-end">
                     <button
                       onClick={() => setEditingCompletionReport(false)}
-                      className="px-3 py-1 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+                      className="px-3 py-1 text-sm text-gray-200 border border-gray-600 rounded-comfortable hover:bg-gray-700"
                     >
                       キャンセル
                     </button>
@@ -764,7 +816,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
                         }
                         setEditingCompletionReport(false)
                       }}
-                      className="px-3 py-1 text-sm text-white bg-emerald-600 rounded-lg hover:bg-emerald-700"
+                      className="px-3 py-1 text-sm text-gray-50 bg-approved rounded-comfortable hover:opacity-90"
                     >
                       保存
                     </button>
@@ -783,7 +835,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
                 </div>
               ) : (
                 <p
-                  className="text-sm text-emerald-400 dark:text-emerald-500 cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400"
+                  className="text-sm text-approved/70 cursor-pointer hover:text-approved"
                   onClick={() => {
                     setDraftCompletionReport('')
                     setEditingCompletionReport(true)
@@ -830,7 +882,7 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
                     />
                     <button
                       onClick={() => deleteAttachment.mutate(a.id)}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-pri-urgent text-gray-50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:opacity-90"
                       title="削除"
                       aria-label="削除"
                     >
@@ -878,6 +930,100 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
 
           {/* Comments */}
           <TaskCommentList task={task} />
+        </div>
+
+        {/* Right rail (metaRail mode) — 260px column for meta fields */}
+        {useMetaRail && (
+          <aside
+            className="w-[260px] flex-shrink-0 border-l border-gray-700 bg-gray-900/40 overflow-y-auto p-5 space-y-5"
+            aria-label="タスクメタ情報"
+          >
+            <div>
+              <label className="block text-xs font-mono uppercase tracking-wider text-gray-300 mb-2">ステータス</label>
+              <div className="flex flex-wrap gap-1.5">
+                {STATUS_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => handleStatusChange(opt.value)}
+                    className={clsx(
+                      'px-2.5 py-1 text-xs rounded-full border transition-colors',
+                      task.status === opt.value
+                        ? 'bg-accent-500 text-gray-50 border-accent-600'
+                        : 'border-gray-600 text-gray-200 hover:border-accent-500'
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-mono uppercase tracking-wider text-gray-300 mb-2">優先度</label>
+              <select
+                value={task.priority}
+                onChange={(e) => handlePriorityChange(e.target.value as TaskPriority)}
+                className={selectClasses}
+              >
+                {PRIORITY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-mono uppercase tracking-wider text-gray-300 mb-2">期限</label>
+              <input
+                type="date"
+                value={draftDueDate}
+                onChange={(e) => handleDueDateChange(e.target.value)}
+                className={inputClasses}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-mono uppercase tracking-wider text-gray-300 mb-2">レビューフラグ</label>
+              <button
+                onClick={() => updateFlags.mutate({ approved: !task.approved })}
+                className={clsx(
+                  'inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-all',
+                  task.approved
+                    ? 'bg-approved/15 text-approved border-approved/40 shadow-sm'
+                    : 'bg-gray-700/50 text-gray-300 border-gray-600 hover:bg-gray-700',
+                )}
+                aria-label={task.approved ? '実行許可を取消' : '実行許可を付与'}
+              >
+                {task.approved ? <ShieldCheck className="w-3.5 h-3.5" /> : <ShieldOff className="w-3.5 h-3.5" />}
+                実行許可
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-mono uppercase tracking-wider text-gray-300 mb-2">タスク種別</label>
+              <div className="flex flex-wrap gap-1.5">
+                {TASK_TYPE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => {
+                      if (task.task_type === opt.value) return
+                      updateTask.mutate({ task_type: opt.value })
+                    }}
+                    className={clsx(
+                      'px-2.5 py-1 text-xs rounded-full border transition-colors',
+                      task.task_type === opt.value
+                        ? opt.value === 'decision'
+                          ? 'bg-decision text-gray-50 border-decision'
+                          : 'bg-accent-500 text-gray-50 border-accent-600'
+                        : 'border-gray-600 text-gray-200 hover:border-accent-500'
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </aside>
+        )}
         </div>
 
         {/* Comment input */}

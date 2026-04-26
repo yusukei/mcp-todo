@@ -75,6 +75,7 @@ export default function TaskDetailPane({
       onClose={handleClose}
       onNavigateTask={navigateTask}
       displayMode="pane"
+      metaRail
     />
   )
 }
