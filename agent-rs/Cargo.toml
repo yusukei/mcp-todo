@@ -1,0 +1,49 @@
+[package]
+name = "mcp-workspace-agent-rs"
+version = "0.6.0-dev"
+edition = "2021"
+rust-version = "1.78"
+description = "Cross-platform Rust port of the mcp-todo workspace agent."
+license = "MIT"
+
+[[bin]]
+# Distinct from the Python agent's `mcp-workspace-agent.exe` so
+# `taskkill /IM mcp-workspace-agent.exe` doesn't cascade-kill it
+# during the parallel-run PoC. Renamed in agent-rs/10 once the
+# Python version is retired.
+name = "mcp-workspace-agent-rs"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-native-roots"] }
+# Pull rustls in directly so the `ring` crypto provider is compiled in.
+# rustls 0.23+ requires either `ring` or `aws-lc-rs` to be enabled, and
+# without an explicit dep tokio-tungstenite's transitive selection
+# leaves the provider unset → CryptoProvider::install_default panic
+# at first WS connect. We initialise it explicitly in `main`.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+url = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive", "env"] }
+anyhow = "1"
+thiserror = "2"
+chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"
+rand = "0.8"
+# Strip Windows `\\?\` UNC prefix from canonicalize results so paths
+# stay comparable with the user-supplied form. No-op on Unix.
+dunce = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1
+opt-level = "z"
