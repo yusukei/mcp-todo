@@ -123,6 +123,12 @@ export function useSSE() {
           if (event.type.startsWith('task.') || event.type.startsWith('tasks.')) {
             queryClient.invalidateQueries({ queryKey: ['tasks', projectId] })
             queryClient.invalidateQueries({ queryKey: ['project-summary', projectId] })
+            // Phase 2 / API-1: sidebar "今日の動き" counters reflect any
+            // task lifecycle change (in_progress / completed / decision).
+            queryClient.invalidateQueries({ queryKey: ['stats:today', projectId] })
+            // Phase 0.5 / API-3: project ``task_count`` badge in the
+            // sidebar updates whenever a task is created or finished.
+            queryClient.invalidateQueries({ queryKey: ['projects'] })
             // Refresh cross-project Live Activity panel (S2-8) on any
             // task change — status/active_form updates can add or remove
             // the task from the in-progress feed.

@@ -8,6 +8,16 @@
 import { api } from './client'
 import type { Project } from '../types'
 
+/** Phase 0.5 / API-1 — sidebar "今日の動き" counters. */
+export interface ProjectStatsToday {
+  in_progress: number
+  awaiting_decision: number
+  completed_24h: number
+  decisions_pending: number
+  /** ISO-8601 wallclock when the snapshot was taken. */
+  as_of: string
+}
+
 export const projectsApi = {
   list: () => api.get<Project[]>('/projects').then((r) => r.data),
 
@@ -15,6 +25,10 @@ export const projectsApi = {
 
   summary: (id: string) =>
     api.get(`/projects/${id}/summary`).then((r) => r.data),
+
+  /** Phase 0.5 / API-1: drives the SidebarFull "今日の動き" section. */
+  statsToday: (id: string) =>
+    api.get<ProjectStatsToday>(`/projects/${id}/stats/today`).then((r) => r.data),
 
   create: (data: Partial<Project>) =>
     api.post<Project>('/projects', data).then((r) => r.data),

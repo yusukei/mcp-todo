@@ -30,6 +30,8 @@ export interface Comment {
   created_at: string
 }
 
+export type ActorType = 'human' | 'ai' | 'system'
+
 export interface Task {
   id: string
   project_id: string
@@ -39,10 +41,21 @@ export interface Task {
   priority: TaskPriority
   due_date: string | null
   assignee_id: string | null
+  /** Phase 0.5 / API-2: filled by ``list_tasks`` batch enrichment.
+   *  ``null`` when the response came from a single-task endpoint. */
+  assignee_name?: string | null
   parent_task_id: string | null
   blocks: string[]
   blocked_by: string[]
+  /** Phase 0.5: cheap derived counter (``len(blocked_by)``). */
+  blocked_by_count?: number
+  /** Phase 0.5 / API-2: open subtask count, batch-fetched. */
+  subtask_count?: number | null
   task_type: TaskType
+  /** Phase 0.5: user responsible for resolving a decision-type task. */
+  decider_id?: string | null
+  decider_name?: string | null
+  decision_requested_at?: string | null
   decision_context: DecisionContext | null
   tags: string[]
   comments: Comment[]
@@ -79,7 +92,12 @@ export interface Project {
   created_by: string
   created_at: string
   updated_at: string
+  /** Phase 0.5 / API-3: open task count for sidebar badges.
+   *  Undefined on legacy responses from single-project endpoints. */
+  task_count?: number
 }
+
+export type UserStatus = 'active' | 'invited' | 'suspended'
 
 export interface User {
   id: string
@@ -87,10 +105,21 @@ export interface User {
   name: string
   auth_type: 'admin' | 'google'
   is_active: boolean
+  /** Phase 0.5: lifecycle status. ``is_active`` is retained for
+   *  compatibility but new code should branch on ``status``. */
+  status?: UserStatus
   is_admin: boolean
   picture_url?: string
   has_passkeys?: boolean
   password_disabled?: boolean
+  /** Phase 0.5 / API-4: last authenticated request timestamp. */
+  last_active_at?: string | null
+  /** Phase 0.5 / API-4 (admin only): MCP tool call count over the
+   *  last 30 days. */
+  ai_runs_30d?: number
+  /** Phase 0.5 / API-4 (admin only): number of projects the user
+   *  is a member of. */
+  projects_count?: number
   created_at: string
   updated_at?: string
 }
