@@ -70,11 +70,11 @@ export default function TerminalPage() {
     <div className="flex flex-col h-full bg-gray-900">
       <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-700">
         <Link
-          to="/workspaces"
+          to="/admin"
           className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          Workspaces
+          管理者設定
         </Link>
         <span className="text-gray-500">/</span>
         <Link
@@ -102,7 +102,7 @@ export default function TerminalPage() {
           </Link>
         )}
         <button
-          onClick={() => navigate('/workspaces')}
+          onClick={() => navigate('/admin')}
           className={`text-xs text-gray-400 hover:text-gray-200 ${
             isList ? 'ml-auto' : ''
           }`}

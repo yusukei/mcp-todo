@@ -24,7 +24,6 @@ import SettingsPage from './pages/SettingsPage'
 const WorkbenchPage = React.lazy(() => import('./pages/WorkbenchPage'))
 const KnowledgePage = React.lazy(() => import('./pages/KnowledgePage'))
 const DocSiteViewerPage = React.lazy(() => import('./pages/DocSiteViewerPage'))
-const WorkspacePage = React.lazy(() => import('./pages/WorkspacePage'))
 const TerminalPage = React.lazy(() => import('./pages/TerminalPage'))
 const BookmarksPage = React.lazy(() => import('./pages/BookmarksPage'))
 const GoogleCallbackPage = React.lazy(() => import('./pages/GoogleCallbackPage'))
@@ -74,14 +73,7 @@ function AppRoutes() {
             <Route path="docsites/:siteId/*" element={lazy(<DocSiteViewerPage />)} />
             <Route path="bookmarks" element={lazy(<BookmarksPage />)} />
             <Route path="bookmarks/:bookmarkId" element={lazy(<BookmarksPage />)} />
-            <Route
-              path="workspaces"
-              element={
-                <AdminRoute>
-                  {lazy(<WorkspacePage />)}
-                </AdminRoute>
-              }
-            />
+            <Route path="workspaces" element={<Navigate to="/admin" replace />} />
             <Route
               path="workspaces/terminal/:agentId"
               element={

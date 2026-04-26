@@ -9,7 +9,7 @@ import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { FolderOpen, LogOut, Settings, UserCog, CheckSquare, Menu, X, BookOpen, Bookmark, Library, TerminalSquare, GripVertical } from 'lucide-react'
+import { FolderOpen, LogOut, Settings, UserCog, CheckSquare, Menu, X, BookOpen, Bookmark, Library, GripVertical } from 'lucide-react'
 import { api } from '../../api/client'
 import { useAuthStore } from '../../store/auth'
 import { useSSE } from '../../hooks/useSSE'
@@ -206,17 +206,6 @@ export default function Layout() {
           <UserCog className="w-4 h-4" />
           アカウント設定
         </Link>
-        {user?.is_admin && (
-          <Link
-            to="/workspaces"
-            onClick={closeSidebar}
-            aria-label="エージェント管理"
-            className="flex items-center gap-2 px-2 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-          >
-            <TerminalSquare className="w-4 h-4" />
-            エージェント管理
-          </Link>
-        )}
         {user?.is_admin && (
           <Link
             to="/admin"
