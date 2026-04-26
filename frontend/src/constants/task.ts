@@ -8,34 +8,42 @@ export const STATUS_LABELS: Record<TaskStatus, string> = {
   cancelled: 'キャンセル',
 }
 
+// Phase 4: Monokai Pro semantic tokens. Status colors use the
+// `status-*` palette defined in tailwind.config.js (cyan / yellow /
+// green / pink). Light-mode is intentionally broken — see UI 再設計
+// 仕様書 §6 (Monokai Light is a future epic).
 export const STATUS_COLORS: Record<TaskStatus, string> = {
-  todo: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
-  in_progress: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
-  on_hold: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400',
-  done: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
-  cancelled: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400',
+  todo: 'bg-gray-700 text-gray-200',
+  in_progress: 'bg-status-progress/15 text-status-progress',
+  on_hold: 'bg-status-hold/15 text-status-hold',
+  done: 'bg-status-done/15 text-status-done',
+  cancelled: 'bg-status-cancel/15 text-status-cancel',
 }
 
+// Used for board column headers — slightly stronger surface tint
+// than the badges so the column is visually distinct from cards.
 export const STATUS_BG_COLORS: Record<TaskStatus, string> = {
-  todo: 'bg-gray-100',
-  in_progress: 'bg-blue-100',
-  on_hold: 'bg-amber-100',
-  done: 'bg-green-100',
-  cancelled: 'bg-red-100',
+  todo: 'bg-gray-800',
+  in_progress: 'bg-status-progress/10',
+  on_hold: 'bg-status-hold/10',
+  done: 'bg-status-done/10',
+  cancelled: 'bg-status-cancel/10',
 }
 
+// Pill-style badge (kept for callers that still want a labeled
+// priority chip — TaskCard now uses dot-only via PRIORITY_DOT_COLORS).
 export const PRIORITY_COLORS: Record<TaskPriority, string> = {
-  urgent: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
-  high: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400',
-  medium: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400',
-  low: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+  urgent: 'bg-pri-urgent/15 text-pri-urgent',
+  high: 'bg-pri-high/15 text-pri-high',
+  medium: 'bg-pri-medium/15 text-pri-medium',
+  low: 'bg-pri-low/15 text-gray-200',
 }
 
 export const PRIORITY_DOT_COLORS: Record<TaskPriority, string> = {
-  urgent: 'bg-red-500',
-  high: 'bg-orange-500',
-  medium: 'bg-yellow-500',
-  low: 'bg-gray-400',
+  urgent: 'bg-pri-urgent',
+  high: 'bg-pri-high',
+  medium: 'bg-pri-medium',
+  low: 'bg-pri-low',
 }
 
 export const PRIORITY_LABELS: Record<TaskPriority, string> = {
@@ -61,11 +69,11 @@ export const PRIORITY_OPTIONS = [
 ]
 
 export const BOARD_COLUMNS: { key: TaskStatus; label: string; color: string; colorDark: string }[] = [
-  { key: 'todo', label: 'TODO', color: 'bg-gray-100', colorDark: 'dark:bg-gray-700' },
-  { key: 'in_progress', label: '進行中', color: 'bg-blue-100', colorDark: 'dark:bg-blue-900/40' },
-  { key: 'on_hold', label: '保留', color: 'bg-amber-100', colorDark: 'dark:bg-amber-900/40' },
-  { key: 'done', label: '完了', color: 'bg-green-100', colorDark: 'dark:bg-green-900/40' },
-  { key: 'cancelled', label: 'キャンセル', color: 'bg-red-100', colorDark: 'dark:bg-red-900/40' },
+  { key: 'todo', label: 'TODO', color: 'bg-gray-800', colorDark: 'dark:bg-gray-800' },
+  { key: 'in_progress', label: '進行中', color: 'bg-status-progress/10', colorDark: 'dark:bg-status-progress/10' },
+  { key: 'on_hold', label: '保留', color: 'bg-status-hold/10', colorDark: 'dark:bg-status-hold/10' },
+  { key: 'done', label: '完了', color: 'bg-status-done/10', colorDark: 'dark:bg-status-done/10' },
+  { key: 'cancelled', label: 'キャンセル', color: 'bg-status-cancel/10', colorDark: 'dark:bg-status-cancel/10' },
 ]
 
 export const TASK_TYPE_OPTIONS = [

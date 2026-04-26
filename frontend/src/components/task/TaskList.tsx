@@ -122,8 +122,8 @@ function TaskRowInner({
           className={clsx(
             'inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border transition-all',
             task.approved
-              ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700 shadow-sm'
-              : 'bg-gray-50 dark:bg-gray-700/50 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700',
+              ? 'bg-approved/15 text-approved border-approved/40 shadow-sm'
+              : 'bg-gray-700/50 text-gray-300 border-gray-600 hover:bg-gray-700',
           )}
           aria-label={task.approved ? '実行許可を取消' : '実行許可を付与'}
         >
@@ -131,7 +131,7 @@ function TaskRowInner({
           実行許可
         </button>
         {task.task_type === 'decision' && (
-          <span className="flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400">
+          <span className="flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap bg-decision/15 text-decision">
             <HelpCircle className="w-3 h-3" />
             要判断
           </span>
@@ -319,14 +319,14 @@ export default function TaskList({ tasks, projectId, selectMode, onTaskClick, on
                 <button
                   onClick={() => bulkUpdateFlags({ approved: true })}
                   disabled={selectedIds.size === 0}
-                  className="text-xs px-2 py-1 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="text-xs px-2 py-1 rounded bg-approved/15 text-approved hover:bg-approved/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   実行許可 ON
                 </button>
                 <button
                   onClick={() => bulkUpdateFlags({ approved: false })}
                   disabled={selectedIds.size === 0}
-                  className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-200 hover:bg-gray-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   実行許可 OFF
                 </button>
@@ -358,7 +358,7 @@ export default function TaskList({ tasks, projectId, selectMode, onTaskClick, on
                 <button
                   onClick={() => onExport(orderedTasks.map(e => e.task.id).filter(id => selectedIds.has(id)), 'markdown')}
                   disabled={selectedIds.size === 0}
-                  className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-gray-700 text-gray-100 hover:bg-gray-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <FileDown className="w-3 h-3" />
                   Markdown
@@ -366,7 +366,7 @@ export default function TaskList({ tasks, projectId, selectMode, onTaskClick, on
                 <button
                   onClick={() => onExport(orderedTasks.map(e => e.task.id).filter(id => selectedIds.has(id)), 'pdf')}
                   disabled={selectedIds.size === 0}
-                  className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-gray-700 text-gray-100 hover:bg-gray-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <FileDown className="w-3 h-3" />
                   PDF
@@ -402,8 +402,8 @@ export default function TaskList({ tasks, projectId, selectMode, onTaskClick, on
           </SortableContext>
           <DragOverlay dropAnimation={null}>
             {activeTask ? (
-              <div className="bg-gray-100 dark:bg-gray-800 shadow-lg rounded-lg border border-accent-300 dark:border-accent-600 px-4 py-3 opacity-90">
-                <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{activeTask.title}</span>
+              <div className="bg-gray-800 shadow-whisper rounded-comfortable border border-accent-500 px-4 py-3 opacity-90">
+                <span className="text-sm font-medium text-gray-50">{activeTask.title}</span>
               </div>
             ) : null}
           </DragOverlay>

@@ -64,15 +64,15 @@ function DroppableColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`flex-1 min-w-[240px] max-w-[600px] flex flex-col rounded-xl transition-all duration-200 ${
+      className={`flex-1 min-w-[240px] max-w-[600px] flex flex-col rounded-very transition-all duration-200 ${
         isOver
-          ? 'ring-2 ring-accent-400 dark:ring-accent-500 bg-accent-50/50 dark:bg-accent-900/20'
+          ? 'ring-2 ring-accent-500 bg-accent-900/20'
           : ''
       }`}
     >
-      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg mb-2 ${color} ${colorDark}`}>
-        <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{label}</span>
-        <span className="text-xs text-gray-500 dark:text-gray-400 bg-white/60 dark:bg-black/20 px-1.5 py-0.5 rounded-full">
+      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-comfortable mb-2 ${color} ${colorDark}`}>
+        <span className="text-sm font-semibold text-gray-50 font-serif tracking-tight">{label}</span>
+        <span className="text-xs text-gray-200 bg-gray-900/60 px-1.5 py-0.5 rounded-full font-mono">
           {count}
         </span>
       </div>
@@ -289,20 +289,20 @@ export default function TaskBoard({
 
       {/* Floating export bar */}
       {selectMode && selectedIds.size > 0 && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg rounded-xl px-4 py-2.5 z-20">
-          <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-gray-800 border border-gray-700 shadow-whisper rounded-very px-4 py-2.5 z-20">
+          <span className="text-xs text-gray-200 font-medium">
             {selectedIds.size}件選択
           </span>
           <button
             onClick={() => onExport(tasks.slice().sort((a, b) => a.sort_order - b.sort_order).map(t => t.id).filter(id => selectedIds.has(id)), 'markdown')}
-            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors font-medium"
+            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-comfortable bg-gray-700 text-gray-100 hover:bg-gray-600 transition-colors font-medium"
           >
             <FileDown className="w-3.5 h-3.5" />
             Markdown
           </button>
           <button
             onClick={() => onExport(tasks.slice().sort((a, b) => a.sort_order - b.sort_order).map(t => t.id).filter(id => selectedIds.has(id)), 'pdf')}
-            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors font-medium"
+            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-comfortable bg-gray-700 text-gray-100 hover:bg-gray-600 transition-colors font-medium"
           >
             <FileDown className="w-3.5 h-3.5" />
             PDF

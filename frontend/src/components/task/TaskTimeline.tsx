@@ -41,12 +41,15 @@ type FlatRow =
   | { kind: 'group-header'; groupKey: string; label: string; count: number }
   | { kind: 'task'; task: Task }
 
+// Phase 4: Monokai status palette. The bar fills the row regardless
+// of dark mode (light-mode is intentionally unsupported until Monokai
+// Light lands — see UI 再設計仕様書 §6).
 const STATUS_BAR_CLASSES: Record<Task['status'], string> = {
-  todo: 'bg-gray-400 dark:bg-gray-500',
-  in_progress: 'bg-blue-500 dark:bg-blue-400 motion-safe:animate-pulse',
-  on_hold: 'bg-amber-500 dark:bg-amber-400',
-  done: 'bg-emerald-500 dark:bg-emerald-400',
-  cancelled: 'bg-red-400 dark:bg-red-500 timeline-bar-cancelled',
+  todo: 'bg-status-todo',
+  in_progress: 'bg-status-progress motion-safe:animate-pulse',
+  on_hold: 'bg-status-hold',
+  done: 'bg-status-done',
+  cancelled: 'bg-status-cancel timeline-bar-cancelled',
 }
 
 export default function TaskTimeline({

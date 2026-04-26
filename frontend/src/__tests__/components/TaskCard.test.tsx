@@ -15,15 +15,20 @@ describe('TaskCard', () => {
     expect(screen.getByText('Sample Task')).toBeInTheDocument()
   })
 
-  it('優先度ラベルを描画する', () => {
+  it('優先度ドットを描画する (medium = pri-medium 黄)', () => {
     render(<TaskCard task={baseTask} onClick={() => {}} onUpdateFlags={() => {}} />)
-    expect(screen.getByText('中')).toBeInTheDocument()
+    // ドットは aria-label / title で priority を表現する
+    const dot = screen.getByLabelText(/優先度: 中/)
+    expect(dot).toBeInTheDocument()
+    expect(dot.className).toContain('bg-pri-medium')
   })
 
-  it('urgent 優先度の場合に "緊急" を表示', () => {
+  it('urgent 優先度の場合にドットが pri-urgent (pink) になる', () => {
     const task = createMockTask({ ...baseTask, priority: 'urgent' })
     render(<TaskCard task={task} onClick={() => {}} onUpdateFlags={() => {}} />)
-    expect(screen.getByText('緊急')).toBeInTheDocument()
+    const dot = screen.getByLabelText(/優先度: 緊急/)
+    expect(dot).toBeInTheDocument()
+    expect(dot.className).toContain('bg-pri-urgent')
   })
 
   it('due_date がない場合にカレンダーアイコンを表示しない', () => {
@@ -43,14 +48,15 @@ describe('TaskCard', () => {
     expect(screen.getByText(/12月|31/)).toBeInTheDocument()
   })
 
-  it('期限切れタスク (due_date が過去かつ status !== done) の場合に赤色クラスが適用される', () => {
+  it('期限切れタスク (due_date が過去かつ status !== done) の場合に urgent 色クラスが適用される', () => {
     const task = createMockTask({
       ...baseTask,
       due_date: '2020-01-01T00:00:00Z', // 過去
       status: 'todo',
     })
     const { container } = render(<TaskCard task={task} onClick={() => {}} onUpdateFlags={() => {}} />)
-    expect(container.querySelector('.text-red-500')).toBeInTheDocument()
+    // Phase 4: Monokai trade — overdue は border-l-pri-urgent + text-pri-urgent
+    expect(container.querySelector('.text-pri-urgent')).toBeInTheDocument()
   })
 
   it('done タスクは期限切れ表示にならない', () => {
@@ -60,7 +66,7 @@ describe('TaskCard', () => {
       status: 'done',
     })
     const { container } = render(<TaskCard task={task} onClick={() => {}} onUpdateFlags={() => {}} />)
-    expect(container.querySelector('.text-red-500')).not.toBeInTheDocument()
+    expect(container.querySelector('.text-pri-urgent')).not.toBeInTheDocument()
   })
 
   it('タグを描画する', () => {

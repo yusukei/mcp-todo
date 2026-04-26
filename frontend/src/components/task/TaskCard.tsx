@@ -1,8 +1,8 @@
-﻿import { Archive, ArchiveRestore, Calendar, User, CornerDownRight, HelpCircle, Copy, Lock, ShieldCheck, ShieldOff } from 'lucide-react'
+import { Archive, ArchiveRestore, Calendar, User, CornerDownRight, HelpCircle, Copy, Lock, ShieldCheck, ShieldOff } from 'lucide-react'
 import { showSuccessToast } from '../common/Toast'
 import clsx from 'clsx'
 import type { Task } from '../../types'
-import { PRIORITY_COLORS, PRIORITY_LABELS } from '../../constants/task'
+import { PRIORITY_DOT_COLORS, PRIORITY_LABELS } from '../../constants/task'
 
 interface Props {
   task: Task
@@ -18,6 +18,7 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive, sele
   const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'done' && task.status !== 'cancelled' && task.status !== 'on_hold'
   const blockedByCount = task.blocked_by?.length ?? 0
   const isBlocked = blockedByCount > 0 && task.status !== 'done' && task.status !== 'cancelled'
+  const priorityLabel = PRIORITY_LABELS[task.priority]
 
   return (
     <div
@@ -27,11 +28,11 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive, sele
       aria-label={task.title}
       tabIndex={0}
       className={clsx(
-        'relative bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-1.5 cursor-pointer hover:shadow-sm hover:border-accent-300 dark:hover:border-accent-600 transition-all group/card',
+        'relative bg-gray-800 rounded-comfortable border border-gray-700 px-3 py-2 cursor-pointer hover:border-accent-500 hover:shadow-whisper transition-all group/card',
         task.archived && 'opacity-60',
         isBlocked && 'opacity-70',
-        isOverdue && 'border-l-4 border-l-red-500 dark:border-l-red-400',
-        selectMode && isSelected && 'ring-2 ring-accent-400 dark:ring-accent-500',
+        isOverdue && 'border-l-4 border-l-pri-urgent',
+        selectMode && isSelected && 'ring-2 ring-accent-400',
       )}
     >
       <button
@@ -40,18 +41,18 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive, sele
           navigator.clipboard.writeText(task.id)
           showSuccessToast('タスクIDをコピーしました')
         }}
-        className="absolute top-1.5 right-1.5 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 p-0.5 rounded transition-all opacity-0 group-hover/card:opacity-100"
+        className="absolute top-1.5 right-1.5 text-gray-400 hover:text-gray-200 p-0.5 rounded transition-all opacity-0 group-hover/card:opacity-100"
         title={`ID: ${task.id}`}
       >
         <Copy className="w-3 h-3" />
       </button>
       {task.parent_task_id && (
         <div className="flex items-center gap-1 mb-1">
-          <CornerDownRight className="w-3 h-3 text-gray-400 dark:text-gray-500" />
-          <span className="text-xs text-gray-400 dark:text-gray-500">サブタスク</span>
+          <CornerDownRight className="w-3 h-3 text-gray-300" />
+          <span className="text-xs text-gray-300">サブタスク</span>
         </div>
       )}
-      <div className="flex items-start gap-1.5 mb-1">
+      <div className="flex items-start gap-2 mb-1.5">
         {selectMode && (
           <label
             className="flex items-center mt-0.5 cursor-pointer"
@@ -61,14 +62,19 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive, sele
               type="checkbox"
               checked={isSelected ?? false}
               onChange={() => onToggleSelect?.()}
-              className="rounded border-gray-300 dark:border-gray-600 text-accent-600 focus:ring-focus w-4 h-4"
+              className="rounded border-gray-600 text-accent-500 focus:ring-focus w-4 h-4"
             />
           </label>
         )}
-        <span className={clsx('text-xs px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap mt-0.5', PRIORITY_COLORS[task.priority])}>
-          {PRIORITY_LABELS[task.priority]}
-        </span>
-        <p className="text-sm font-medium text-gray-800 dark:text-gray-100 line-clamp-2">{task.title}</p>
+        <span
+          className={clsx(
+            'inline-block w-2 h-2 rounded-full flex-shrink-0 mt-1.5',
+            PRIORITY_DOT_COLORS[task.priority],
+          )}
+          aria-label={`優先度: ${priorityLabel}`}
+          title={`優先度: ${priorityLabel}`}
+        />
+        <p className="text-sm font-medium text-gray-50 line-clamp-2 leading-snug">{task.title}</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
@@ -77,8 +83,8 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive, sele
           className={clsx(
             'inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border transition-all',
             task.approved
-              ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-700 shadow-sm'
-              : 'bg-gray-50 dark:bg-gray-700/50 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700',
+              ? 'bg-approved/15 text-approved border-approved/40 shadow-sm'
+              : 'bg-gray-700/50 text-gray-300 border-gray-600 hover:bg-gray-700',
           )}
           aria-label={task.approved ? '実行許可を取消' : '実行許可を付与'}
         >
@@ -86,14 +92,14 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive, sele
           実行許可
         </button>
         {task.task_type === 'decision' && (
-          <span className="flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400">
+          <span className="flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap bg-decision/15 text-decision">
             <HelpCircle className="w-3 h-3" />
             要判断
           </span>
         )}
         {isBlocked && (
           <span
-            className="flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
+            className="flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap bg-blocked/15 text-blocked"
             title={`${blockedByCount}件のタスクを待機中`}
           >
             <Lock className="w-3 h-3" />
@@ -101,18 +107,18 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive, sele
           </span>
         )}
         {task.tags?.map((tag: string) => (
-          <span key={tag} className="text-xs bg-accent-50 dark:bg-accent-900/40 text-accent-600 dark:text-accent-400 px-2 py-0.5 rounded-full">
+          <span key={tag} className="text-xs bg-accent-900/40 text-accent-300 px-2 py-0.5 rounded-full">
             {tag}
           </span>
         ))}
         {task.due_date && (
-          <span className={clsx('flex items-center gap-1 text-xs', isOverdue ? 'text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-gray-500')}>
+          <span className={clsx('flex items-center gap-1 text-xs', isOverdue ? 'text-pri-urgent' : 'text-gray-300')}>
             <Calendar className="w-3 h-3" />
             {new Date(task.due_date).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
           </span>
         )}
         {task.assignee_id && (
-          <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+          <span className="flex items-center gap-1 text-xs text-gray-300">
             <User className="w-3 h-3" />
           </span>
         )}
@@ -125,8 +131,8 @@ export default function TaskCard({ task, onClick, onUpdateFlags, onArchive, sele
             className={clsx(
               'ml-auto p-0.5 rounded transition-colors',
               task.archived
-                ? 'text-accent-500 dark:text-accent-400 hover:bg-accent-50 dark:hover:bg-accent-900/30'
-                : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700',
+                ? 'text-accent-400 hover:bg-accent-900/30'
+                : 'text-gray-300 hover:bg-gray-700',
             )}
             title={task.archived ? 'アーカイブ解除' : 'アーカイブ'}
           >
