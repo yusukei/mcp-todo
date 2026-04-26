@@ -9,12 +9,15 @@ http:
           Permissions-Policy: "geolocation=(), microphone=(), camera=()"
           Strict-Transport-Security: "max-age=31536000; includeSubDomains"
         # nginx の CSP typo (`abs.twimg.com:` の末尾コロン) を修正済み
+        # Phase 1 redesign: allow Google Fonts (Fraunces / Noto Sans JP /
+        # JetBrains Mono) — stylesheet from fonts.googleapis.com, font
+        # files (woff2) from fonts.gstatic.com.
         contentSecurityPolicy: >-
           default-src 'self';
           script-src 'self';
-          style-src 'self' 'unsafe-inline';
+          style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
           img-src 'self' data: blob: https://pbs.twimg.com https://abs.twimg.com;
-          font-src 'self';
+          font-src 'self' https://fonts.gstatic.com;
           connect-src 'self' https://accounts.google.com https://react-tweet.vercel.app blob:;
           frame-src https://www.youtube.com https://youtube.com https://player.vimeo.com;
           object-src 'none';
