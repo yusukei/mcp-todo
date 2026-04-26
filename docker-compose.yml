@@ -73,8 +73,9 @@ services:
       - "traefik.http.routers.backend-mcp.entrypoints=web"
       - "traefik.http.routers.backend-mcp.middlewares=security-headers@file,compress@file"
       - "traefik.http.routers.backend-mcp.service=backend-mcp-svc"
-      # Router: その他すべてのバックエンドパス (/api, /health, /.well-known)
-      - "traefik.http.routers.backend.rule=PathPrefix(`/api`) || PathPrefix(`/.well-known`) || Path(`/health`)"
+      # Router: その他すべてのバックエンドパス (/api, /health, /.well-known, /install)
+      # /install/{code} は supervisor-only 配備モデルの bootstrap (anonymous PS スクリプト返却)
+      - "traefik.http.routers.backend.rule=PathPrefix(`/api`) || PathPrefix(`/.well-known`) || Path(`/health`) || PathPrefix(`/install`)"
       - "traefik.http.routers.backend.entrypoints=web"
       - "traefik.http.routers.backend.middlewares=security-headers@file,compress@file"
       - "traefik.http.routers.backend.service=backend-svc"
@@ -214,6 +215,11 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        # Phase 1.5: enable /dev/preview on this staging-style stack
+        # so we can eyeball Phase 2-6 progress without spinning up
+        # local vite dev. Set to "" for true-production deploys.
+        VITE_DEV_PREVIEW: "1"
     container_name: todo-frontend
     labels:
       - "traefik.enable=true"

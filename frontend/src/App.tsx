@@ -30,6 +30,18 @@ const GoogleCallbackPage = React.lazy(() => import('./pages/GoogleCallbackPage')
 const AdminPage = React.lazy(() => import('./pages/AdminPage'))
 const NotFoundPage = React.lazy(() => import('./pages/NotFoundPage'))
 
+// Phase 1.5: design-system preview. Enabled when either:
+//   * vite is running in DEV mode (``npm run dev``), or
+//   * the build defines ``VITE_DEV_PREVIEW=1`` (set on staging so we
+//     can eyeball Phase 2-6 progress without spinning up local dev).
+// Pure-production builds keep the gate ``false`` so Rollup tree-shakes
+// the lazy import out of ``dist/``.
+const DEV_PREVIEW_ENABLED =
+  import.meta.env.DEV || import.meta.env.VITE_DEV_PREVIEW === '1'
+const DevPreviewPage = DEV_PREVIEW_ENABLED
+  ? React.lazy(() => import('./pages/dev/DevPreviewPage'))
+  : null
+
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
 })
@@ -100,6 +112,12 @@ function AppRoutes() {
               }
             />
           </Route>
+          {/* Phase 1.5: dev-only design-system preview. Rendered outside
+              the ProtectedRoute so it works without auth in local dev.
+              Production builds drop the route via the DEV gate. */}
+          {DevPreviewPage && (
+            <Route path="/dev/preview" element={lazy(<DevPreviewPage />)} />
+          )}
           <Route path="*" element={lazy(<NotFoundPage />)} />
         </Routes>
       </AppInit>
