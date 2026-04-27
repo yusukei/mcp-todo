@@ -41,19 +41,21 @@ export default function SidebarRail({ onExpand }: Props) {
       className="flex h-full w-14 flex-shrink-0 flex-col items-center border-r border-line-2 bg-gray-950 py-3 text-gray-100"
       aria-label="サイドバー (折りたたみ)"
     >
-      {/* Brand mark — clicking expands back to full. */}
-      <button
-        type="button"
-        onClick={onExpand}
+      {/* P2-E: ブランドマーク (上) と展開ボタン (下) を分離。
+          上はクリックで /projects へ navigate (= ロゴ本来の機能)、
+          展開トグルは下端の chevron に専念。設計プロト
+          variant-b.jsx:263-271 の構造と整合。 */}
+      <Link
+        to="/projects"
         className="mb-3 flex h-8 w-8 items-center justify-center rounded-md hover:bg-gray-700/60"
-        title="サイドバーを展開"
-        aria-label="サイドバーを展開"
+        title="MCP Todo (ホーム)"
+        aria-label="MCP Todo ホーム"
       >
         <span
           aria-hidden
           className="inline-block h-2 w-2 rotate-45 rounded-[2px] bg-accent-500"
         />
-      </button>
+      </Link>
 
       {/* Project palette — first 6, dot-only. */}
       <div className="flex flex-1 flex-col items-center gap-1">

@@ -549,8 +549,11 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
         {/* Body — wrapped in 2-column layout when metaRail is on */}
         <div className={clsx('flex-1 overflow-hidden', useMetaRail ? 'flex' : 'flex flex-col')}>
         <div className={clsx('flex-1 overflow-y-auto p-6 space-y-6', useMetaRail && 'min-w-0')}>
-          {/* Status — hidden in main column when metaRail; shown in aside */}
-          {!useMetaRail && (
+          {/* Status: P1-A 修正で metaRail でも main column に残す。
+              metaRail は設計プロト variant-b.jsx:101-174 の「担当/判断者
+              /関連タスク/添付/履歴」5 セクションに専念し、メタフィー
+              ルドの編集は main column の通常位置に置く。 */}
+          {true && (
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">ステータス</label>
             <div className="flex flex-wrap gap-2">
@@ -572,8 +575,8 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
           </div>
           )}
 
-          {/* Priority & Due date — hidden in main column when metaRail */}
-          {!useMetaRail && (
+          {/* Priority & Due date (P1-A: 常時表示) */}
+          {true && (
           <div className="flex items-center gap-4">
             <div className="w-40">
               <label className="block text-sm font-medium text-gray-300 mb-2">優先度</label>
@@ -599,8 +602,8 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
           </div>
           )}
 
-          {/* Review Flags — hidden in main column when metaRail */}
-          {!useMetaRail && (
+          {/* Review Flags (P1-A: 常時表示) */}
+          {true && (
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">レビューフラグ</label>
             <div className="flex gap-4">
@@ -621,8 +624,8 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
           </div>
           )}
 
-          {/* Task Type — hidden in main column when metaRail */}
-          {!useMetaRail && (
+          {/* Task Type (P1-A: 常時表示) */}
+          {true && (
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">タスク種別</label>
             <div className="flex flex-wrap gap-2">
@@ -932,97 +935,12 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
           <TaskCommentList task={task} />
         </div>
 
-        {/* Right rail (metaRail mode) — 260px column for meta fields */}
+        {/* P1-A: metaRail を設計プロト variant-b.jsx:101-174 準拠の
+            5 セクションに整理 (担当 / 判断者 / 関連タスク / 添付 / 履歴)。
+            ステータス・優先度・タスク種別の編集 UI は main column 側
+            (上部) に常時表示する。 */}
         {useMetaRail && (
-          <aside
-            className="w-[260px] flex-shrink-0 border-l border-gray-700 bg-gray-900/40 overflow-y-auto p-5 space-y-5"
-            aria-label="タスクメタ情報"
-          >
-            <div>
-              <label className="block text-xs font-mono uppercase tracking-wider text-gray-300 mb-2">ステータス</label>
-              <div className="flex flex-wrap gap-1.5">
-                {STATUS_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => handleStatusChange(opt.value)}
-                    className={clsx(
-                      'px-2.5 py-1 text-xs rounded-full border transition-colors',
-                      task.status === opt.value
-                        ? 'bg-accent-500 text-gray-50 border-accent-600'
-                        : 'border-gray-600 text-gray-200 hover:border-accent-500'
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-mono uppercase tracking-wider text-gray-300 mb-2">優先度</label>
-              <select
-                value={task.priority}
-                onChange={(e) => handlePriorityChange(e.target.value as TaskPriority)}
-                className={selectClasses}
-              >
-                {PRIORITY_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-mono uppercase tracking-wider text-gray-300 mb-2">期限</label>
-              <input
-                type="date"
-                value={draftDueDate}
-                onChange={(e) => handleDueDateChange(e.target.value)}
-                className={inputClasses}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-mono uppercase tracking-wider text-gray-300 mb-2">レビューフラグ</label>
-              <button
-                onClick={() => updateFlags.mutate({ approved: !task.approved })}
-                className={clsx(
-                  'inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-all',
-                  task.approved
-                    ? 'bg-approved/15 text-approved border-approved/40 shadow-sm'
-                    : 'bg-gray-700/50 text-gray-300 border-gray-600 hover:bg-gray-700',
-                )}
-                aria-label={task.approved ? '実行許可を取消' : '実行許可を付与'}
-              >
-                {task.approved ? <ShieldCheck className="w-3.5 h-3.5" /> : <ShieldOff className="w-3.5 h-3.5" />}
-                実行許可
-              </button>
-            </div>
-
-            <div>
-              <label className="block text-xs font-mono uppercase tracking-wider text-gray-300 mb-2">タスク種別</label>
-              <div className="flex flex-wrap gap-1.5">
-                {TASK_TYPE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => {
-                      if (task.task_type === opt.value) return
-                      updateTask.mutate({ task_type: opt.value })
-                    }}
-                    className={clsx(
-                      'px-2.5 py-1 text-xs rounded-full border transition-colors',
-                      task.task_type === opt.value
-                        ? opt.value === 'decision'
-                          ? 'bg-decision text-gray-50 border-decision'
-                          : 'bg-accent-500 text-gray-50 border-accent-600'
-                        : 'border-gray-600 text-gray-200 hover:border-accent-500'
-                    )}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </aside>
+          <MetaRail task={task} onNavigateTask={onNavigateTask} />
         )}
         </div>
 
@@ -1030,5 +948,178 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
         <TaskCommentInput task={task} projectId={projectId} />
       </div>
     </div>
+  )
+}
+
+// ── MetaRail (P1-A) ───────────────────────────────────────────────
+//
+// 設計プロト variant-b.jsx:101-174 の右側 260px metaRail を再現。
+// 5 セクション: 担当 / 判断者 / 関連タスク / 添付 / 履歴。
+// 既存 task オブジェクトから取れる情報のみ表示し、追加 API 呼び出し
+// は行わない (関連タスク id 一覧は表示するが title 解決は省略)。
+function MetaRail({
+  task,
+  onNavigateTask,
+}: {
+  task: Task
+  onNavigateTask?: (taskId: string) => void
+}) {
+  const labelClass =
+    'mb-2 block text-[10.5px] font-mono uppercase tracking-[0.12em] text-gray-300 font-semibold'
+  const sectionClass = 'mb-5'
+
+  const initial = (s: string | null | undefined) =>
+    (s ?? '?').trim().charAt(0).toUpperCase() || '?'
+
+  const shortId = (id: string) =>
+    id ? `T${id.replace(/[^0-9a-zA-Z]/g, '').slice(-6).toUpperCase()}` : ''
+
+  const formatRelative = (iso: string | null | undefined): string => {
+    if (!iso) return ''
+    const t = new Date(iso).getTime()
+    if (Number.isNaN(t)) return ''
+    const diff = Date.now() - t
+    const m = 60_000, h = 60 * m, d = 24 * h
+    if (diff < h) return `${Math.max(1, Math.floor(diff / m))}m`
+    if (diff < d) return `${Math.floor(diff / h)}h`
+    return `${Math.floor(diff / d)}d`
+  }
+
+  const relatedIds = [
+    ...(task.blocked_by ?? []),
+    ...(task.blocks ?? []),
+  ].slice(0, 6)
+
+  // 履歴: ActivityEntry が無いので created/updated/completed の 3 点
+  // のみ復元 (Phase 0.5 で追加された actor_type を将来的に取り込む拡張点)
+  const historyEntries: Array<{
+    who: string
+    what: string
+    when: string
+  }> = []
+  if (task.completed_at) {
+    historyEntries.push({
+      who: 'system',
+      what: 'タスクを完了',
+      when: formatRelative(task.completed_at),
+    })
+  }
+  if (
+    task.updated_at &&
+    task.updated_at !== task.created_at &&
+    task.updated_at !== task.completed_at
+  ) {
+    historyEntries.push({
+      who: 'system',
+      what: '更新',
+      when: formatRelative(task.updated_at),
+    })
+  }
+  historyEntries.push({
+    who: 'system',
+    what: 'タスク作成',
+    when: formatRelative(task.created_at),
+  })
+
+  return (
+    <aside
+      className="w-[260px] flex-shrink-0 border-l border-line-2 bg-gray-950 overflow-y-auto p-5 text-[12px] text-gray-100"
+      aria-label="タスクメタ情報"
+    >
+      {/* 1. 担当 */}
+      {task.assignee_name && (
+        <div className={sectionClass}>
+          <div className={labelClass}>担当</div>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-accent-500 text-[10px] font-semibold text-gray-50">
+              {initial(task.assignee_name)}
+            </span>
+            <span className="text-gray-50">{task.assignee_name}</span>
+          </div>
+        </div>
+      )}
+
+      {/* 2. 判断者 (decision タスクのみ) */}
+      {task.task_type === 'decision' && task.decider_name && (
+        <div className={sectionClass}>
+          <div className={labelClass}>判断者</div>
+          <div className="mb-1 flex items-center gap-2">
+            <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-decision text-[10px] font-semibold text-gray-50">
+              {initial(task.decider_name)}
+            </span>
+            <span className="text-gray-50">{task.decider_name}</span>
+          </div>
+          {task.decision_requested_at && (
+            <div className="pl-[30px] text-[11px] text-gray-300">
+              応答待ち · {formatRelative(task.decision_requested_at)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 3. 関連タスク */}
+      {relatedIds.length > 0 && (
+        <div className={sectionClass}>
+          <div className={labelClass}>関連タスク</div>
+          <div className="flex flex-col gap-1">
+            {relatedIds.map((id) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onNavigateTask?.(id)}
+                className="flex items-center gap-1.5 rounded px-1 py-1 text-left text-[12px] text-gray-100 hover:bg-gray-800"
+              >
+                <span aria-hidden className="status-dot todo" />
+                <span className="flex-1 truncate">関連タスク</span>
+                <span className="font-mono text-[10px] text-gray-300">
+                  {shortId(id)}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 4. 添付 */}
+      {task.attachments && task.attachments.length > 0 && (
+        <div className={sectionClass}>
+          <div className={labelClass}>添付 ({task.attachments.length})</div>
+          <div className="flex flex-col gap-1">
+            {task.attachments.map((a) => (
+              <div
+                key={a.id}
+                className="flex items-center gap-1.5 rounded bg-gray-700 px-2 py-1.5 text-[12px] text-gray-100"
+              >
+                <span aria-hidden className="text-gray-300">📎</span>
+                <span className="flex-1 truncate">{a.filename}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 5. 履歴 */}
+      <div>
+        <div className={labelClass}>履歴</div>
+        <div className="relative flex flex-col gap-2.5 pl-3.5">
+          <div
+            aria-hidden
+            className="absolute left-1 top-1 bottom-1 w-px bg-line-2"
+          />
+          {historyEntries.map((h, i) => (
+            <div key={i} className="relative text-[11.5px]">
+              <span
+                aria-hidden
+                className="absolute -left-3.5 top-[5px] h-[9px] w-[9px] rounded-full border-[1.5px] border-gray-300 bg-gray-950"
+              />
+              <div className="text-gray-100">
+                <b className="font-semibold text-gray-50">{h.who}</b> {h.what}
+              </div>
+              <div className="text-[10.5px] text-gray-400">{h.when} ago</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </aside>
   )
 }

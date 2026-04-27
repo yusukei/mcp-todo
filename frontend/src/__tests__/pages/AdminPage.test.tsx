@@ -45,7 +45,11 @@ describe('AdminPage', () => {
   it('renders the page header and the four tab buttons', () => {
     renderWithProviders(<AdminPage />)
 
-    expect(screen.getByRole('heading', { name: '管理者設定' })).toBeInTheDocument()
+    // P1-B: AdminHeader 共通化で title は currentTab.label に変更。
+    // 初期表示は users タブなので heading 名は「ユーザ」。
+    // overline (ADMIN) と subtitle で admin 画面である文脈は surfaced 済み。
+    expect(screen.getByRole('heading', { name: 'ユーザ' })).toBeInTheDocument()
+    expect(screen.getByText('ADMIN')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'ユーザ' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '許可メール' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'プロジェクト' })).toBeInTheDocument()

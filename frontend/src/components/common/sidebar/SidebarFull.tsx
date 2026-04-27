@@ -163,7 +163,10 @@ export default function SidebarFull({ onCloseMobile, onCollapse }: Props) {
             </span>
           </Link>
           <div className="mt-1 font-mono text-[10.5px] text-gray-300">
-            build {__BUILD_TIMESTAMP__}
+            {/* P2-D: ISO 文字列 (2026-04-27T01:33:21.143Z) は折り返しで
+                サイドバーが膨らむ。MM-DD HH:MM の短縮形に整形して
+                設計プロトの 'build 04-26T11:04' 表現に揃える。 */}
+            build {formatBuildStamp(__BUILD_TIMESTAMP__)}
           </div>
         </div>
         {onCloseMobile && (
@@ -404,4 +407,17 @@ function SortableProjectRow({
       </Link>
     </div>
   )
+}
+
+// P2-D: ISO build timestamp を `MM-DD HH:MM` の短縮形に。失敗時は
+// 元文字列を先頭 16 文字 (= ISO の `YYYY-MM-DDTHH:MM`) で打ち切る。
+function formatBuildStamp(iso: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 16)
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mi = String(d.getMinutes()).padStart(2, '0')
+  return `${mm}-${dd} ${hh}:${mi}`
 }

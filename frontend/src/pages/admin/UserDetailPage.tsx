@@ -14,6 +14,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Mail, Activity, FolderOpen, Bot, Calendar, ShieldCheck, ShieldOff } from 'lucide-react'
 import { usersApi } from '../../api/users'
 import type { UserStatus } from '../../types'
+import AdminHeader from './AdminHeader'
 
 const STATUS_LABELS: Record<UserStatus, string> = {
   active: '稼働中',
@@ -120,20 +121,21 @@ export default function UserDetailPage() {
     (user.is_active ? 'active' : 'suspended')
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto">
-      <div className="px-8 py-4 border-b border-gray-700 bg-gray-800 flex items-center gap-4">
-        <Link
-          to="/admin"
-          className="inline-flex items-center gap-1 text-sm text-gray-200 hover:text-accent-400 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          ユーザ一覧
-        </Link>
-        <h1 className="text-xl font-serif text-gray-50 leading-tight-serif">{user.name}</h1>
-        <span className={`inline-block px-2 py-0.5 text-xs rounded-full font-medium ${STATUS_BADGE[status]}`}>
-          {STATUS_LABELS[status]}
-        </span>
-      </div>
+    <div className="flex flex-col h-full bg-gray-900 overflow-y-auto">
+      <AdminHeader
+        backTo="/admin"
+        backLabel="ユーザ一覧"
+        overline="USER"
+        title={user.name}
+        subtitle={user.email}
+        actions={
+          <span
+            className={`inline-block px-2.5 py-0.5 text-[11px] rounded-full font-medium ${STATUS_BADGE[status]}`}
+          >
+            {STATUS_LABELS[status]}
+          </span>
+        }
+      />
 
       <div className="flex-1 max-w-5xl mx-auto w-full p-8 space-y-8">
         {/* Profile card */}

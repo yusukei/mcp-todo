@@ -570,13 +570,16 @@ interface ViewModeSwitchProps {
 }
 
 function ViewModeSwitch({ mode, effective, onChange, isNarrow }: ViewModeSwitchProps) {
+  // P1-C: 設計プロト workbench-parts.jsx:419-422 の「bg-bg-2 + line-1 +
+  // padding 2 で 3 アイコンを内包する pill」に。3 個の独立ボタンから
+  // 1 つの segmented control に変更。
   const ICON: Record<ViewMode, React.FC<{ className?: string }>> = {
     board: LayoutGrid,
     list: List,
     timeline: GanttChartSquare,
   }
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="inline-flex items-center gap-0.5 rounded-full border border-line-1 bg-gray-800 p-[2px]">
       {VIEW_MODES.map((m) => {
         const Icon = ICON[m]
         const isActive = m === mode
@@ -586,11 +589,11 @@ function ViewModeSwitch({ mode, effective, onChange, isNarrow }: ViewModeSwitchP
             key={m}
             type="button"
             onClick={() => onChange(m)}
-            className={`p-1 rounded ${
+            className={`flex items-center justify-center rounded-full px-2 py-[3px] transition-colors ${
               isActive
                 ? isDegraded
                   ? 'bg-status-hold/15 text-status-hold'
-                  : 'bg-gray-700 text-gray-50'
+                  : 'bg-gray-600 text-gray-50'
                 : 'text-gray-300 hover:text-gray-50'
             }`}
             title={
@@ -602,15 +605,14 @@ function ViewModeSwitch({ mode, effective, onChange, isNarrow }: ViewModeSwitchP
                     ? 'リスト'
                     : 'タイムライン (Gantt)'
             }
+            aria-pressed={isActive}
           >
             <Icon className="w-3.5 h-3.5" />
           </button>
         )
       })}
       {isNarrow && effective === 'list' && mode !== 'list' && (
-        <span className="text-[10px] text-status-hold ml-1">
-          狭幅 list 強制
-        </span>
+        <span className="ml-1 text-[10px] text-status-hold">狭幅 list 強制</span>
       )}
     </div>
   )

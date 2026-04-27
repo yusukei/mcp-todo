@@ -596,7 +596,10 @@ export default function WorkbenchPage() {
   }
 
   return (
-    <div className="relative flex flex-col h-full bg-gray-900">
+    // P2-F: paper-grain で Workbench メイン領域に微弱な紙質感ノイズを乗せる。
+    // tokens.css と同じ terra (pink) + decision (purple) の radial gradient
+    // + SVG turbulence overlay。relative + overflow-hidden が前提。
+    <div className="paper-grain relative flex flex-col h-full overflow-hidden bg-gray-900">
       {/* Phase 3: top header strip removed. Project breadcrumb and
           page-level actions live inside the primary TabGroup. */}
       <div className="flex-1 min-h-0">

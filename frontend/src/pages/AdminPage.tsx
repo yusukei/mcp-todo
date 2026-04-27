@@ -7,6 +7,7 @@ import BackupRestoreTab from './admin/BackupRestoreTab'
 import McpUsageTab from './admin/McpUsageTab'
 import BinaryManagementTab from './admin/BinaryManagementTab'
 import WorkspacePage from './WorkspacePage'
+import AdminHeader from './admin/AdminHeader'
 
 type Tab = 'users' | 'emails' | 'projects' | 'backup' | 'mcp-usage' | 'agents' | 'binaries'
 
@@ -34,25 +35,29 @@ export default function AdminPage() {
   const fullBleed = currentTab?.fullBleed ?? false
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-8 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800">
-        <h1 className="text-xl font-serif font-medium text-gray-800 dark:text-gray-100">管理者設定</h1>
-      </div>
+    <div className="flex flex-col h-full bg-gray-900">
+      <AdminHeader
+        overline="ADMIN"
+        title={currentTab?.label ?? '管理者設定'}
+        subtitle="ユーザー / プロジェクト / バックアップ / MCP 使用状況 など、システム全体の設定"
+      />
       <div className="flex-1 min-h-0 flex">
-        {/* Vertical tab navigation */}
-        <aside className="w-52 flex-shrink-0 bg-gray-100 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto">
+        {/* Vertical tab navigation (P1-B: Monokai に揃える) */}
+        <aside className="w-52 flex-shrink-0 bg-gray-950 border-r border-line-2 overflow-y-auto">
           <nav className="flex flex-col p-2 gap-0.5">
             {TABS.map((t) => (
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors text-left ${
+                className={`flex items-center gap-2 px-3 py-2 text-sm rounded-comfortable transition-colors text-left ${
                   tab === t.id
-                    ? 'bg-accent-50 dark:bg-accent-900/30 text-accent-700 dark:text-accent-300 font-medium'
-                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                    ? 'bg-gray-700 text-gray-50 font-medium'
+                    : 'text-gray-100 hover:bg-gray-800'
                 }`}
               >
-                {t.icon}
+                <span className={tab === t.id ? 'text-accent-400' : 'text-gray-300'}>
+                  {t.icon}
+                </span>
                 <span className="truncate">{t.label}</span>
               </button>
             ))}
@@ -61,11 +66,11 @@ export default function AdminPage() {
 
         {/* Tab content */}
         {fullBleed ? (
-          <div className="flex-1 min-w-0 min-h-0 overflow-hidden">
+          <div className="flex-1 min-w-0 min-h-0 overflow-hidden bg-gray-900">
             {tab === 'agents' && <WorkspacePage />}
           </div>
         ) : (
-          <div className="flex-1 min-w-0 min-h-0 overflow-auto">
+          <div className="flex-1 min-w-0 min-h-0 overflow-auto bg-gray-900">
             <div className="max-w-4xl mx-auto p-8">
               {tab === 'users' && <UsersTab />}
               {tab === 'emails' && <AllowedEmailsTab />}
