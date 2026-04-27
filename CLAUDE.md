@@ -24,6 +24,7 @@ MCP Todo is a task management system with a Claude Code MCP server integration. 
 | マルチワーカー構成 | [docs/architecture/multi-worker-sidecar.md](docs/architecture/multi-worker-sidecar.md) | デプロイ・インデクサ・clip queue |
 | 運用 (multi-worker) | [docs/runbook/multi-worker.md](docs/runbook/multi-worker.md) | 障害対応、ロールバック |
 | エラートラッカー | [docs/error-tracker/README.md](docs/error-tracker/README.md) | エラー収集、PII スクラブ、DSN 管理 |
+| URL Contract (frontend/backend 共通) | [docs/api/url-contract.md](docs/api/url-contract.md) | URL ↔ resource 解決、Copy URL UX、`lookup_url` MCP tool |
 
 各仕様書の末尾には「変更時のチェックリスト」がある。コード変更時は該当チェックリストを上から順に確認すること。
 
@@ -453,6 +454,24 @@ Rules:
 Before adding any new env var, ask: "Would a different deployment of
 this same application ever need a different value for this?" If the
 honest answer is "no", it is not an env var.
+
+#### Frontend: useEffect は外部システム同期のみ
+
+> **設計原則 (2026-04-27 制定)**: `useEffect` は **外部システム同期** (DOM API / network / browser API / third-party library / EventSource / WebSocket / ResizeObserver 等) のみに使用する。**state → state、state → 永続化、state → URL の同期は禁止** — それらは action handler 内で同期的に行う。
+
+詳細・判断フローチャート・12 アンチパターン・PR チェックリストはナレッジ `69eedf52aadadfddd2f0e27a` (React useEffect 使用判断ガイド) を参照。背景は React 公式 [You Might Not Need an Effect](https://react.dev/learn/you-might-not-need-an-effect)。
+
+**禁止パターン** (PR レビューで block 対象):
+- `useEffect(() => { setX(derive(y)) }, [y])` — 派生 state は render 中に計算 (`useMemo`)
+- `useEffect(() => { setSearchParams({...}) }, [state])` — URL writeback は user action handler 内で同期実行
+- `useEffect(() => { localStorage.setItem(...) }, [state])` — 永続化は dispatcher の副作用ハンドラで
+- `useEffect(() => { onChange(value) }, [value, onChange])` — 親への通知は event handler から直接
+- `useRef` で `useEffect` の double-fire を抑止する pattern (`if (!hasInit.current)` 等) — effect は冪等であるべき
+- `// eslint-disable-next-line react-hooks/exhaustive-deps` — 暗黙の前提が deps と食い違っている兆候
+
+**判断ルール**: 「このコードはコンポーネントが画面に出たから走るのか? 外部システムと同期しているか?」 NO なら useEffect ではなく event handler / lazy initializer / `useMemo` / `useSyncExternalStore`。
+
+新規 `useEffect` を追加する PR では、上記チェックリストの確認結果を PR description に記載すること。
 
 ### Git
 - Do not add `Co-Authored-By` trailer to commits
