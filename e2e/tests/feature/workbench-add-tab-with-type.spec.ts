@@ -96,9 +96,11 @@ test("[axis5][axis6] + メニューで Terminal タブを追加できる", async
     page.getByRole("menu", { name: "Add tab type" }),
   ).not.toBeVisible();
 
-  // ⋮ に Change type が無いこと
-  await page.getByRole("button", { name: "Pane menu", exact: true }).click();
-  await expect(page.getByText(/Change type/i)).not.toBeVisible();
+  // (旧) "⋮ Pane menu に Change type が無いこと" を検証していたが、
+  // P3-5 (TabGroup.tsx §237-245) で ⋮ Pane menu 自体が撤去された.
+  // 今や タブ追加経路は + メニューに集約されているため、確認対象
+  // (Pane menu) が DOM に存在しない = 上の "Add tab type メニュー
+  // が閉じている" の検証で十分.
 
   expect(
     watcher.errors,
