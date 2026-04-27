@@ -226,6 +226,17 @@ The backend runs two containers from the same Docker image, differentiated by en
   4. If unresolved, restart session (`/mcp` to check status, then `/exit` and restart)
   6. **Never fall back to TodoWrite — fix the connection**
 
+### URL Handling (URL を見たら lookup_url)
+
+**MCP ツール仕様: [docs/mcp-tools/url-lookup.md](docs/mcp-tools/url-lookup.md)**
+**URL Contract 本体: [docs/api/url-contract.md](docs/api/url-contract.md)**
+
+- mcp-todo の URL (`/projects/{pid}?task={tid}` 等) を渡されたら **`lookup_url` ツール** を使ってリソースを resolve する。`get_task` / `get_document` を別々に呼ぶより、URL → resource を一発で引き当てる方が漏れ・意図ズレが少ない。
+- routing メタデータだけ欲しい場合は `lookup_url(url, follow=False)` か `parse_url(url)`。
+- legacy URL `/workbench/{id}` は自動で `redirect_to: '/projects/{id}'` を返す。
+- セキュリティ要件 (IDOR / 存在 oracle 統一 / rate limit 100/min / audit log) は MCP 層で自動。失敗時の応答は `{kind: "unknown", message: "Not found or access denied"}` で oracle を排除しているので、message から「不在」「拒否」を判別しないこと。
+- 個人 layout 帰属の query (`?view=` / `?layout=` / `?group=`) は `had_unknown_params: true` で握り潰される。これらは URL ではなく Phase B `workbench_layouts` で個人 sync される。
+
 ### Development Workflow
 Before modifying code or configuration files:
 1. **Task first** — Ensure a task exists via `create_task` (exception: trivial typo/formatting fixes)
