@@ -1,20 +1,18 @@
 /**
- * WorkbenchPage primary-tabgroup invariants (H3-H6, P0-2 update).
+ * WorkbenchPage primary-tabgroup invariants (post P3-5 simplification).
  *
- * P0-2 撤去前の H1 (breadcrumb projects link) / H2 (project name) は
- * 設計プロト指示で削除済み。プロジェクトコンテキストはサイドバー
- * (active project highlight + collapsed rail dot) で surfaced する。
+ * 履歴:
+ *   - P0-2 で breadcrumb (H1/H2) を撤去
+ *   - P3-5 で Pane menu (⋮) と Copy URL ボタンを Tab strip から撤去
  *
- *   * H3 — Layout presets live inside the ⋮ menu.
- *   * H4 — Copy URL is a small icon button (aria-label) at the right
- *          edge of the tab strip on the primary group only.
- *   * H5 — Reset layout is a MenuItem inside the same ⋮ menu and
- *          still triggers the "Replace current layout?" modal.
- *   * H6 — modal ESC / Enter behaviour is unchanged.
+ * Tab strip 右側に残るのは「+ (Add tab)」のみ。Layout reset modal は
+ * hotkey (Cmd+Shift+R) 経由でも開くので、その経路だけテストする。
+ *
+ *   * H6 — Cmd+Shift+R で Reset confirm modal が開き、ESC でキャンセル、
+ *          Enter で確定する
  */
 import { describe, expect, it, vi, beforeAll, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -57,7 +55,10 @@ function renderPage() {
       <MemoryRouter initialEntries={[`/projects/${PROJECT_ID}`]}>
         <Routes>
           <Route path="/projects/:projectId" element={<WorkbenchPage />} />
-          <Route path="/projects" element={<div data-testid="projects-list">PROJECTS LIST</div>} />
+          <Route
+            path="/projects"
+            element={<div data-testid="projects-list">PROJECTS LIST</div>}
+          />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -79,96 +80,49 @@ beforeEach(() => {
   window.sessionStorage.setItem('workbench:clientId', 'test-tab')
 })
 
-// ── H1, H2 (breadcrumb) は P0-2 で撤去。設計プロト変更指示
-//    (chat1.md「上部の Project · mcp-todo / Workbench / Layout / URL の
-//    部分は削除してください」) を尊重し、関連テストは廃止。
-
-// ── Helper: WorkbenchPage が project を取得し終わるまで待つ ──
 async function waitForReady() {
-  // ペインが mount されると ProbePane が複数描画される。最低 1 つ
-  // 出現するのを project query 完了の代理シグナルにする。
   await waitFor(() => {
     expect(screen.queryAllByTestId('probe').length).toBeGreaterThan(0)
   })
 }
 
-// ── H3: Layout presets via the ⋮ menu ───────────────────────────
+// ── H6: Reset layout via Cmd+Shift+R hotkey (modal ESC / Enter) ──
 
-describe('Workbench / Header — H3: Layout preset menu lists 5 presets', () => {
-  it('opens the ⋮ menu with the preset entries when clicked', async () => {
-    const user = userEvent.setup()
+describe('Workbench / Header — H6: Cmd+Shift+R で Reset modal が開く', () => {
+  it('hotkey で modal を開き、ESC でキャンセル / Enter で確定', async () => {
     renderPage()
     await waitForReady()
-    // Phase 3: presets live inside the primary TabGroup's ⋮ menu.
-    const menuBtn = await screen.findByRole('button', { name: /pane menu/i })
-    await user.click(menuBtn)
-    const labels = [
-      /Tasks only/i,
-      /Tasks \+ Detail/i,
-      /Tasks \+ Terminal/i,
-      /Doc \+ Files/i,
-    ]
-    for (const re of labels) {
-      expect(screen.queryByText(re)).not.toBeNull()
-    }
-  })
-})
 
-// ── H4: Copy URL icon ───────────────────────────────────────────
-
-describe('Workbench / Header — H4: Copy URL button', () => {
-  it('calls navigator.clipboard.writeText with the current URL', async () => {
-    const user = userEvent.setup()
-    const writeText = vi.fn().mockResolvedValue(undefined)
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
+    // Cmd+Shift+R で modal を発火
+    fireEvent.keyDown(window, {
+      key: 'R',
+      code: 'KeyR',
+      metaKey: true,
+      shiftKey: true,
     })
-    renderPage()
-    await waitForReady()
-    const copyBtn = await screen.findByRole('button', { name: /URL をコピー/i })
-    await user.click(copyBtn)
-    expect(writeText).toHaveBeenCalledTimes(1)
-    expect(writeText.mock.calls[0][0]).toMatch(/^http/)
-  })
-})
-
-// ── H5: Reset layout opens the confirm modal ────────────────────
-
-describe('Workbench / Header — H5: Reset button opens confirm modal', () => {
-  it('shows a "Replace current layout?" modal when clicked', async () => {
-    const user = userEvent.setup()
-    renderPage()
-    await waitForReady()
-    await user.click(await screen.findByRole('button', { name: /pane menu/i }))
-    const resetItem = await screen.findByRole('button', {
-      name: /Reset layout/i,
+    await waitFor(() => {
+      expect(screen.queryByText(/Replace current layout\?/i)).not.toBeNull()
     })
-    await user.click(resetItem)
-    expect(screen.getByText(/Replace current layout\?/i)).toBeInTheDocument()
-  })
-})
 
-// ── H6: confirm modal ESC / Enter ───────────────────────────────
-
-describe('Workbench / Header — H6: confirm modal ESC / Enter', () => {
-  it('closes on ESC, confirms on Enter', async () => {
-    const user = userEvent.setup()
-    renderPage()
-    await waitForReady()
-    const openModal = async () => {
-      await user.click(await screen.findByRole('button', { name: /pane menu/i }))
-      await user.click(
-        await screen.findByRole('button', { name: /Reset layout/i }),
-      )
-    }
-    await openModal()
-    expect(screen.getByText(/Replace current layout\?/i)).toBeInTheDocument()
+    // ESC で閉じる
     fireEvent.keyDown(window, { key: 'Escape' })
-    expect(screen.queryByText(/Replace current layout\?/i)).toBeNull()
-    // Re-open and confirm via Enter — should also dismiss the modal.
-    await openModal()
+    await waitFor(() => {
+      expect(screen.queryByText(/Replace current layout\?/i)).toBeNull()
+    })
+
+    // 再度開いて Enter で確定 (もう modal は閉じる)
+    fireEvent.keyDown(window, {
+      key: 'R',
+      code: 'KeyR',
+      metaKey: true,
+      shiftKey: true,
+    })
+    await waitFor(() => {
+      expect(screen.queryByText(/Replace current layout\?/i)).not.toBeNull()
+    })
     fireEvent.keyDown(window, { key: 'Enter' })
-    expect(screen.queryByText(/Replace current layout\?/i)).toBeNull()
+    await waitFor(() => {
+      expect(screen.queryByText(/Replace current layout\?/i)).toBeNull()
+    })
   })
 })

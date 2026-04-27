@@ -579,7 +579,7 @@ function ViewModeSwitch({ mode, effective, onChange, isNarrow }: ViewModeSwitchP
     timeline: GanttChartSquare,
   }
   return (
-    <div className="inline-flex items-center gap-0.5 rounded-full border border-line-1 bg-gray-800 p-[2px]">
+    <div className="inline-flex h-7 items-center gap-0.5 rounded-full border border-line-1 bg-gray-800 p-[2px]">
       {VIEW_MODES.map((m) => {
         const Icon = ICON[m]
         const isActive = m === mode
@@ -589,7 +589,7 @@ function ViewModeSwitch({ mode, effective, onChange, isNarrow }: ViewModeSwitchP
             key={m}
             type="button"
             onClick={() => onChange(m)}
-            className={`flex items-center justify-center rounded-full px-2 py-[3px] transition-colors ${
+            className={`flex h-6 w-9 items-center justify-center rounded-full transition-colors ${
               isActive
                 ? isDegraded
                   ? 'bg-status-hold/15 text-status-hold'
@@ -606,8 +606,15 @@ function ViewModeSwitch({ mode, effective, onChange, isNarrow }: ViewModeSwitchP
                     : 'タイムライン (Gantt)'
             }
             aria-pressed={isActive}
+            aria-label={
+              m === 'board'
+                ? 'カンバン表示'
+                : m === 'list'
+                  ? 'リスト表示'
+                  : 'タイムライン表示'
+            }
           >
-            <Icon className="w-3.5 h-3.5" />
+            <Icon className="h-4 w-4" />
           </button>
         )
       })}

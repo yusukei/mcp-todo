@@ -1,20 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import {
-  Plus,
-  X,
-  MoreVertical,
-  SplitSquareVertical,
-  SplitSquareHorizontal,
-  Trash2,
-  Link2,
-  RefreshCcw,
-  Layers,
-} from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import type { TabsNode, Pane, PaneType } from './types'
 import { MAX_TABS_PER_GROUP, MAX_TAB_GROUPS } from './types'
 import { isKeepAlivePane, PANE_TYPE_LABELS } from './paneRegistry'
-import { PRESETS } from './presets'
 import PaneFrame from './PaneFrame'
 import DropZoneOverlay from './DropZoneOverlay'
 import {
@@ -69,44 +58,24 @@ export default function TabGroup({
   projectName: _projectName,
   totalGroups,
   reducedMotion,
-  isPrimary,
+  // P3-5: Pane menu (⋮) と Copy URL を撤去したため未使用 prop。シグネ
+  // チャは温存して呼び出し元 (WorkbenchLayout / WorkbenchPage) を壊さ
+  // ない。
+  isPrimary: _isPrimary,
   onActivateTab,
   onCloseTab,
   onAddTab,
   onConfigChange,
-  onSplit,
-  onCloseGroup,
-  onLoadPreset,
-  onResetLayout,
-  onCopyUrl,
+  onSplit: _onSplit,
+  onCloseGroup: _onCloseGroup,
+  onLoadPreset: _onLoadPreset,
+  onResetLayout: _onResetLayout,
+  onCopyUrl: _onCopyUrl,
 }: Props) {
-  const [menuOpen, setMenuOpen] = useState(false)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
-  const menuWrapRef = useRef<HTMLDivElement>(null)
   const addMenuWrapRef = useRef<HTMLDivElement>(null)
 
-  // Close ⋮ menu on outside click + ESC.
-  useEffect(() => {
-    if (!menuOpen) return
-    const onDown = (e: MouseEvent) => {
-      const t = e.target as Node | null
-      if (t && menuWrapRef.current && !menuWrapRef.current.contains(t)) {
-        setMenuOpen(false)
-      }
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMenuOpen(false)
-    }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [menuOpen])
-
-  // Close + (Add tab) menu on outside click + ESC. Mirror of the ⋮
-  // menu pattern so behaviour is consistent.
+  // Close + (Add tab) menu on outside click + ESC.
   useEffect(() => {
     if (!addMenuOpen) return
     const onDown = (e: MouseEvent) => {
@@ -131,7 +100,6 @@ export default function TabGroup({
   }, [addMenuOpen])
 
   const canAddTab = group.tabs.length < MAX_TABS_PER_GROUP
-  const canSplit = totalGroups < MAX_TAB_GROUPS
 
   // Drop target: the entire group rect. dnd-kit only resolves which
   // group is hovered; the layout root narrows that to a 5-zone result
@@ -228,7 +196,6 @@ export default function TabGroup({
             onClick={() => {
               if (!canAddTab) return
               setAddMenuOpen((v) => !v)
-              setMenuOpen(false)
             }}
             disabled={!canAddTab}
             aria-label={
@@ -267,112 +234,15 @@ export default function TabGroup({
           )}
         </div>
 
-        {/* Phase 3: page-level Copy URL — primary group only so it
-            sits at the natural top-right corner of the workbench. */}
-        {isPrimary && (
-          <button
-            type="button"
-            onClick={onCopyUrl}
-            title="現在の Workbench 状態を含む URL をコピー (?task / ?doc / ?view 等)"
-            aria-label="URL をコピー"
-            className="px-2 text-gray-300 hover:text-gray-100"
-          >
-            <Link2 className="w-3.5 h-3.5" />
-          </button>
-        )}
-
-        {/* Group menu — Split / Close. ``Change type`` was removed
-            in favour of the + dropdown above (task 69edb607). */}
-        <div ref={menuWrapRef} className="relative flex items-stretch">
-          <button
-            type="button"
-            onClick={() => {
-              setMenuOpen((v) => !v)
-              setAddMenuOpen(false)
-            }}
-            className="px-2 text-gray-300 hover:text-gray-100"
-            aria-label="Pane menu"
-          >
-            <MoreVertical className="w-4 h-4" />
-          </button>
-          {menuOpen && (
-            <div
-              className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-line-2 bg-gray-800 text-gray-100 shadow-lg text-xs"
-            >
-              {/* Phase 3: page-level actions on the primary group only.
-                  Layout preset / Reset are gated this way so secondary
-                  splits keep a focused per-group menu. */}
-              {isPrimary && (
-                <>
-                  <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-gray-300">
-                    Layout
-                  </div>
-                  {PRESETS.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => {
-                        setMenuOpen(false)
-                        onLoadPreset(p.id)
-                      }}
-                      className="w-full text-left px-3 py-1.5 hover:bg-gray-700/60"
-                      title={p.description}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Layers className="w-3.5 h-3.5 text-gray-300" />
-                        <span className="font-medium text-gray-50">{p.label}</span>
-                      </div>
-                      <div className="text-[10px] text-gray-300 mt-0.5 ml-5">
-                        {p.description}
-                      </div>
-                    </button>
-                  ))}
-                  <MenuItem
-                    icon={<RefreshCcw className="w-3.5 h-3.5 text-gray-300" />}
-                    label="Reset layout (Cmd+Shift+R)"
-                    onClick={() => {
-                      setMenuOpen(false)
-                      onResetLayout()
-                    }}
-                  />
-                  <div className="border-t border-line-2 my-1" />
-                  <div className="px-3 pt-1 pb-1 text-[10px] uppercase tracking-wider text-gray-300">
-                    Pane
-                  </div>
-                </>
-              )}
-              <MenuItem
-                icon={<SplitSquareVertical className="w-3.5 h-3.5" />}
-                label="Split right"
-                disabled={!canSplit}
-                disabledHint={`Max ${MAX_TAB_GROUPS} panes`}
-                onClick={() => {
-                  setMenuOpen(false)
-                  onSplit(group.id, 'horizontal')
-                }}
-              />
-              <MenuItem
-                icon={<SplitSquareHorizontal className="w-3.5 h-3.5" />}
-                label="Split down"
-                disabled={!canSplit}
-                disabledHint={`Max ${MAX_TAB_GROUPS} panes`}
-                onClick={() => {
-                  setMenuOpen(false)
-                  onSplit(group.id, 'vertical')
-                }}
-              />
-              <div className="border-t border-line-2 my-1" />
-              <MenuItem
-                icon={<Trash2 className="w-3.5 h-3.5 text-status-cancel" />}
-                label="Close group"
-                onClick={() => {
-                  setMenuOpen(false)
-                  onCloseGroup(group.id)
-                }}
-              />
-            </div>
-          )}
-        </div>
+        {/* P3-5: Copy URL ボタンと Pane menu (⋮: Layout プリセット /
+            Reset / Split / Close group) は撤去。Tab strip 右側に残るのは
+            「+ (Add tab)」のみ。
+            機能アクセス代替:
+              - Layout reset: hotkey Cmd+Shift+R
+              - Split: 将来的にタブ DnD で実装 (DropZoneOverlay 参照)
+              - Close group: 全タブを × で閉じれば自動的に group も
+                解放される
+              - Copy URL: ブラウザの URL バーから直接コピー */}
       </div>
 
       {/* Active pane body — wrapped so the DnD overlay can sit
@@ -536,27 +406,3 @@ function InsertIndicator() {
   )
 }
 
-// ── MenuItem ──────────────────────────────────────────────────
-
-interface MenuItemProps {
-  icon: React.ReactNode
-  label: string
-  disabled?: boolean
-  disabledHint?: string
-  onClick: () => void
-}
-
-function MenuItem({ icon, label, disabled, disabledHint, onClick }: MenuItemProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={disabled ? disabledHint : undefined}
-      className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-700/60 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent text-gray-100"
-    >
-      {icon}
-      <span>{label}</span>
-    </button>
-  )
-}
