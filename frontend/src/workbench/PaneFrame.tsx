@@ -1,9 +1,9 @@
-import { useCallback, useContext } from 'react'
+import { useCallback, useContext, useMemo } from 'react'
 import { createContext } from 'react'
 import ErrorBoundary from '../components/common/ErrorBoundary'
 import { AlertTriangle } from 'lucide-react'
-import type { Pane } from './types'
-import { getPaneComponent } from './paneRegistry'
+import type { Pane, PaneConfigByType, PaneType } from './types'
+import { getPaneComponent, type PaneComponent } from './paneRegistry'
 import { useWorkbenchEventBus } from './eventBus'
 
 interface Props {
@@ -36,9 +36,16 @@ export function useCurrentPaneId(): string | null {
  * receive focus themselves) bubbles up via ``onMouseDown`` /
  * ``onFocusCapture`` and tells the bus this pane is the routing
  * target for cross-pane events.
+ *
+ * ## Phase 3 typed dispatch
+ *
+ * `Pane` の `paneType` で getPaneComponent → 対応する typed component
+ * が返る. PaneFrame 側は `pane.paneType` を runtime で確定しているので
+ * `pane.paneConfig` は対応する config 型として安全に渡せる.
+ * (TS の制限で 1 行 cast を介す: registry の key 型と pane.paneType の
+ * リテラル型が一致しているため runtime は安全.)
  */
 export default function PaneFrame({ pane, projectId, onConfigChange }: Props) {
-  const Component = getPaneComponent(pane.paneType)
   const bus = useWorkbenchEventBus()
 
   const markFocused = useCallback(() => {
@@ -52,9 +59,29 @@ export default function PaneFrame({ pane, projectId, onConfigChange }: Props) {
   // effect) to re-fire on every parent render. That spammed
   // dispatch calls and cascaded into a flicker loop.
   const wrappedOnConfigChange = useCallback(
-    (patch: Record<string, unknown>) => onConfigChange(pane.id, patch),
+    (patch: Partial<PaneConfigByType[PaneType]>) =>
+      onConfigChange(pane.id, patch as Record<string, unknown>),
     [onConfigChange, pane.id],
   )
+
+  // 動的に typed component を取り出して typed paneConfig と一緒に
+  // 渡す. registry の declaration が `{ [K]: PaneComponent<K> }` で
+  // narrow されているため、pane.paneType と pane.paneConfig は同じ T
+  // に index されている.
+  const typedNode = useMemo(() => {
+    // generic helper: T を runtime に握る代わりに 1 ヶ所だけ unknown
+    // 経由で typed call を組む (内部 helper のため consumer に cast
+    // は漏れない).
+    const Component = getPaneComponent(pane.paneType) as PaneComponent
+    return (
+      <Component
+        paneId={pane.id}
+        projectId={projectId}
+        paneConfig={pane.paneConfig}
+        onConfigChange={wrappedOnConfigChange}
+      />
+    )
+  }, [pane.paneType, pane.id, pane.paneConfig, projectId, wrappedOnConfigChange])
 
   return (
     <PanePaneIdContext.Provider value={pane.id}>
@@ -81,12 +108,7 @@ export default function PaneFrame({ pane, projectId, onConfigChange }: Props) {
         tabIndex={-1}
       >
         <ErrorBoundary fallback={<PaneCrashFallback />}>
-          <Component
-            paneId={pane.id}
-            projectId={projectId}
-            paneConfig={pane.paneConfig}
-            onConfigChange={wrappedOnConfigChange}
-          />
+          {typedNode}
         </ErrorBoundary>
       </div>
     </PanePaneIdContext.Provider>

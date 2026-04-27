@@ -88,9 +88,9 @@ export default function FileBrowserPane({
   projectId,
   paneConfig,
   onConfigChange,
-}: PaneComponentProps) {
+}: PaneComponentProps<'file-browser'>) {
   void paneId // FileBrowserPane only emits; no subscriptions.
-  const config = paneConfig as { cwd?: string }
+  const config = paneConfig
   const cwd = config.cwd ?? '.'
   const bus = useWorkbenchEventBus()
 

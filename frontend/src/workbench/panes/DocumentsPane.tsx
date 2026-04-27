@@ -3,11 +3,6 @@ import ProjectDocumentsTab from '../../components/project/ProjectDocumentsTab'
 import type { PaneComponentProps } from '../paneRegistry'
 import { useWorkbenchEventBus } from '../eventBus'
 
-interface PaneConfig {
-  /** Currently selected document, persisted across reloads. */
-  docId?: string
-}
-
 /**
  * Documents pane (Phase C2 D1-b/2). Adapter around the existing
  * ``ProjectDocumentsTab`` (CRUD / sort / import / export / version
@@ -26,9 +21,9 @@ export default function DocumentsPane({
   projectId,
   paneConfig,
   onConfigChange,
-}: PaneComponentProps) {
+}: PaneComponentProps<'documents'>) {
   void paneId // DocumentsPane only emits; subscriptions live in DocPane.
-  const config = paneConfig as PaneConfig
+  const config = paneConfig
   const bus = useWorkbenchEventBus()
 
   const handleSelectId = useCallback(

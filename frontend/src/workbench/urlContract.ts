@@ -117,12 +117,13 @@ export function serialiseUrlContract(
  *  whose paneType matches. ``null`` when none exist. Used for
  *  routing URL params to a "single representative pane" without
  *  needing focus/LRU state. */
-export function findFirstPaneOfType(
+export function findFirstPaneOfType<T extends PaneType>(
   tree: LayoutTree,
-  paneType: PaneType,
-): Pane | null {
+  paneType: T,
+): Pane<T> | null {
   if (tree.kind === 'tabs') {
-    return tree.tabs.find((p) => p.paneType === paneType) ?? null
+    const hit = tree.tabs.find((p): p is Pane<T> => p.paneType === paneType)
+    return hit ?? null
   }
   for (const child of tree.children) {
     const r = findFirstPaneOfType(child, paneType)

@@ -5,8 +5,8 @@ import type { PaneComponentProps } from '../paneRegistry'
  *  current build doesn't ship. We keep the layout structure intact
  *  (so a downgrade-and-upgrade cycle preserves user intent) and
  *  surface a clear message rather than silently dropping the pane. */
-export default function UnsupportedPane({ paneConfig }: PaneComponentProps) {
-  const originalType = (paneConfig as { originalType?: string }).originalType
+export default function UnsupportedPane({ paneConfig }: PaneComponentProps<'unsupported'>) {
+  const originalType = paneConfig.originalType
   return (
     <div className="h-full flex flex-col items-center justify-center gap-3 p-6 text-center bg-status-hold/10">
       <HelpCircle className="w-8 h-8 text-status-hold" />

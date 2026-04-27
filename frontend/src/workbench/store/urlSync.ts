@@ -35,13 +35,9 @@ function computeDesiredParams(state: State): {
   const detailPane = findFirstPaneOfType(state.tree, 'task-detail')
   const docPane = findFirstPaneOfType(state.tree, 'doc')
   const tasksPane = findFirstPaneOfType(state.tree, 'tasks')
-  const desiredTask =
-    (detailPane?.paneConfig as { taskId?: string } | undefined)?.taskId ?? null
-  const desiredDoc =
-    (docPane?.paneConfig as { docId?: string } | undefined)?.docId ?? null
-  const rawView = (
-    tasksPane?.paneConfig as { viewMode?: string } | undefined
-  )?.viewMode
+  const desiredTask = detailPane?.paneConfig.taskId ?? null
+  const desiredDoc = docPane?.paneConfig.docId ?? null
+  const rawView = tasksPane?.paneConfig.viewMode
   // board は実装上の default なので URL に出さない (clean URL)
   const desiredView: ViewName | null =
     rawView === 'list' || rawView === 'timeline' ? rawView : null

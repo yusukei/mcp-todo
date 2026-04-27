@@ -17,7 +17,7 @@ import type { PaneComponentProps } from '../paneRegistry'
 export default function ErrorTrackerPane({
   paneId,
   projectId,
-}: PaneComponentProps) {
+}: PaneComponentProps<'error-tracker'>) {
   void paneId // No subscriptions yet; kept for signature parity.
   return (
     <div className="h-full flex flex-col overflow-hidden">

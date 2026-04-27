@@ -64,23 +64,19 @@ const boardColumnsKey = (projectId: string) => `board-columns:${projectId}`
  */
 const LIST_FORCE_BREAKPOINT = 640
 
-interface PaneConfig {
-  viewMode?: ViewMode
-}
-
 export default function TasksPane({
   paneId,
   projectId,
   paneConfig,
   onConfigChange,
-}: PaneComponentProps) {
+}: PaneComponentProps<'tasks'>) {
   void paneId
   const bus = useWorkbenchEventBus()
   const qc = useQueryClient()
 
   // ── Persisted per-pane state ─────────────────────────────────
 
-  const persistedView = (paneConfig as PaneConfig).viewMode
+  const persistedView = paneConfig.viewMode
   const userView: ViewMode = isViewMode(persistedView) ? persistedView : 'board'
 
   // Seed paneConfig.viewMode from the legacy `lastView:<projectId>`

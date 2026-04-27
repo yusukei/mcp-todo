@@ -46,8 +46,8 @@ export default function DocPane({
   projectId,
   paneConfig,
   onConfigChange,
-}: PaneComponentProps) {
-  const config = paneConfig as { docId?: string }
+}: PaneComponentProps<'doc'>) {
+  const config = paneConfig
   const [pickerOpen, setPickerOpen] = useState(!config.docId)
 
   // Cross-pane wiring: a click in TasksPane / FileBrowserPane emits

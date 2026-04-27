@@ -3,9 +3,20 @@
  * render. Adding a new pane type means: (1) add it to ``PaneType`` in
  * ``./types``, (2) write a component, (3) register it here. Nothing
  * else in the Workbench needs to know about specific pane types.
+ *
+ * ## Phase 3 (discriminated union 化) 後の型契約
+ *
+ * `PaneComponentProps<T>` は `paneType T` で narrow された **typed
+ * paneConfig** を受け取る. `getPaneComponent('tasks')` は
+ * `React.FC<PaneComponentProps<'tasks'>>` を返すので、`PaneFrame` が
+ * paneType ごとに分岐すれば実装側 (TasksPane など) は cast 不要で
+ * `paneConfig.viewMode` 等を直接アクセスできる.
+ *
+ * 内部 registry の型アサーションは一度だけここで完結し、consumer
+ * 側に cast を漏らさない (Phase 3 KPI: cast 0 箇所).
  */
 import type React from 'react'
-import type { PaneType } from './types'
+import type { PaneConfigByType, PaneType } from './types'
 import TasksPane from './panes/TasksPane'
 import TaskDetailPane from './panes/TaskDetailPane'
 import TerminalPane from './panes/TerminalPane'
@@ -15,7 +26,7 @@ import FileBrowserPane from './panes/FileBrowserPane'
 import ErrorTrackerPane from './panes/ErrorTrackerPane'
 import UnsupportedPane from './panes/UnsupportedPane'
 
-export interface PaneComponentProps {
+export interface PaneComponentProps<T extends PaneType = PaneType> {
   /** Stable pane id (Pane.id). Panes use this to register cross-pane
    *  event listeners with the workbench event bus and to identify
    *  themselves when reporting focus. */
@@ -23,18 +34,21 @@ export interface PaneComponentProps {
   /** The Workbench's project context. Most panes scope their queries
    *  to this. */
   projectId: string
-  /** Pane-specific config persisted in the LayoutTree. Components
-   *  must treat this as immutable; they call ``onConfigChange`` to
-   *  request a write-back. */
-  paneConfig: Record<string, unknown>
+  /** Pane-specific config persisted in the LayoutTree, narrowed to
+   *  this pane type's shape (Phase 3 discriminated union). */
+  paneConfig: PaneConfigByType[T]
   /** Patch the persisted ``paneConfig``. Persisted via the debounced
    *  saver in WorkbenchPage. */
-  onConfigChange: (patch: Record<string, unknown>) => void
+  onConfigChange: (patch: Partial<PaneConfigByType[T]>) => void
 }
 
-export type PaneComponent = React.FC<PaneComponentProps>
+export type PaneComponent<T extends PaneType = PaneType> = React.FC<
+  PaneComponentProps<T>
+>
 
-const registry: Record<PaneType, PaneComponent> = {
+/** Internal: paneType → typed component map. The cast lives here only;
+ *  consumers of `getPaneComponent` get a fully-typed callback. */
+const registry: { [K in PaneType]: PaneComponent<K> } = {
   tasks: TasksPane,
   'task-detail': TaskDetailPane,
   terminal: TerminalPane,
@@ -45,8 +59,10 @@ const registry: Record<PaneType, PaneComponent> = {
   unsupported: UnsupportedPane,
 }
 
-export function getPaneComponent(type: PaneType): PaneComponent {
-  return registry[type] ?? UnsupportedPane
+export function getPaneComponent<T extends PaneType>(
+  type: T,
+): PaneComponent<T> {
+  return registry[type]
 }
 
 /**

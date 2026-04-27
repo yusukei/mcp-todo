@@ -43,11 +43,8 @@ export default function TerminalPane({
   projectId,
   paneConfig,
   onConfigChange,
-}: PaneComponentProps) {
-  const config = paneConfig as {
-    sessionId?: string
-    agentId?: string
-  }
+}: PaneComponentProps<'terminal'>) {
+  const config = paneConfig
 
   // Imperative handle on TerminalView so we can inject ``cd <path>``
   // when this pane is the routing target for an ``open-terminal-cwd``

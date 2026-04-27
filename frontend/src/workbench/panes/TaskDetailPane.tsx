@@ -4,12 +4,6 @@ import TaskDetail from '../../components/task/TaskDetail'
 import type { PaneComponentProps } from '../paneRegistry'
 import { useWorkbenchEvent } from '../eventBus'
 
-interface PaneConfig {
-  /** Currently displayed task. Persisted in paneConfig so reload
-   *  restores the same task. */
-  taskId?: string
-}
-
 /**
  * TaskDetail pane (Phase C2 D1-b). Displays a single task in
  * Workbench-native mode (no slide-over backdrop). The current
@@ -29,8 +23,8 @@ export default function TaskDetailPane({
   projectId,
   paneConfig,
   onConfigChange,
-}: PaneComponentProps) {
-  const config = paneConfig as PaneConfig
+}: PaneComponentProps<'task-detail'>) {
+  const config = paneConfig
   const taskId = config.taskId
 
   // Subscribe to cross-pane open-task events. The bus picks the
