@@ -16,23 +16,45 @@ import { server } from '../mocks/server'
 
 const PROJECT_A = '69bfffad73ed736a9d13fd0f'
 
+interface ProbeTree {
+  kind: 'tabs' | 'split'
+  id: string
+  tabs?: Array<{ id: string; paneType: string }>
+  children?: ProbeTree[]
+}
+
 interface CapturedCallbacks {
   onConfigChange?: (paneId: string, patch: Record<string, unknown>) => void
+  tree?: ProbeTree
 }
 
 const renderHistory: CapturedCallbacks[] = []
 
 vi.mock('../../workbench/WorkbenchLayout', () => {
-  function ProbeLayout(props: CapturedCallbacks & { tree: unknown; projectId: string }) {
+  function ProbeLayout(
+    props: CapturedCallbacks & { tree: ProbeTree; projectId: string },
+  ) {
     const ref = useRef(0)
     useEffect(() => {
       ref.current += 1
     })
-    renderHistory.push({ onConfigChange: props.onConfigChange })
+    renderHistory.push({
+      onConfigChange: props.onConfigChange,
+      tree: props.tree,
+    })
     return <div data-testid="probe-layout" />
   }
   return { default: ProbeLayout, registerTabStrip: () => () => {} }
 })
+
+/** default layout の最初の pane id を tree から拾う. v2 reducer は
+ *  存在しない paneId への configChange を no-op として扱い save を
+ *  trigger しないため (echo loop 防止と同じ理屈)、テストは本物の
+ *  paneId を使う必要がある. */
+function firstPaneId(tree: ProbeTree): string {
+  if (tree.kind === 'tabs') return tree.tabs![0].id
+  return firstPaneId(tree.children![0])
+}
 
 let beacons: Array<{ url: string; data: BodyInit | null }> = []
 
@@ -103,8 +125,9 @@ describe('Workbench / Persistence — P12: mutation triggers debounced PUT', () 
       expect(renderHistory.length).toBeGreaterThan(0)
     })
     const initial = renderHistory[renderHistory.length - 1]
+    const paneId = firstPaneId(initial.tree!)
     await act(async () => {
-      initial.onConfigChange!('p1', { _bumped: 1 })
+      initial.onConfigChange!(paneId, { _bumped: 1 })
     })
     // Wait past the 500 ms debounce.
     await act(async () => {
@@ -122,9 +145,10 @@ describe('Workbench / Persistence — P13: visibilitychange (hidden) flushes via
       expect(renderHistory.length).toBeGreaterThan(0)
     })
     const initial = renderHistory[renderHistory.length - 1]
+    const paneId = firstPaneId(initial.tree!)
     // Mutate to dirty the state (so flushNow has something to write).
     await act(async () => {
-      initial.onConfigChange!('p1', { _bumped: 1 })
+      initial.onConfigChange!(paneId, { _bumped: 1 })
     })
     // Force visibilityState to 'hidden' and dispatch the event.
     Object.defineProperty(document, 'visibilityState', {
@@ -146,8 +170,9 @@ describe('Workbench / Persistence — P14: pagehide flushes via beacon', () => {
       expect(renderHistory.length).toBeGreaterThan(0)
     })
     const initial = renderHistory[renderHistory.length - 1]
+    const paneId = firstPaneId(initial.tree!)
     await act(async () => {
-      initial.onConfigChange!('p1', { _bumped: 1 })
+      initial.onConfigChange!(paneId, { _bumped: 1 })
     })
     await act(async () => {
       window.dispatchEvent(new Event('pagehide'))
