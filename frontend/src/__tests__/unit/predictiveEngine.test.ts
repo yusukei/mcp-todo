@@ -474,6 +474,52 @@ describe('PredictiveEngine — metrics + dispose', () => {
   })
 })
 
+describe('PredictiveEngine — processServerData (v7 echo wrapping)', () => {
+  it('returns data unchanged when no anchor (no predict in flight)', () => {
+    const { engine } = makeEngine()
+    const out = engine.processServerData('hello')
+    expect(out).toBe('hello')
+  })
+
+  it('wraps echo with prefix CHA(serverCol) and suffix CHA(nextCol) on match', () => {
+    // anchor.x = 5, predict 'a' at col 5 → nextCol = 6, serverCol = 5
+    const { engine } = makeEngine()
+    engine.onUserInput('a')
+    // Server echoes 'a': prefix to serverCol (5+1=6), then 'a', then suffix to nextCol (6+1=7)
+    // After match: pending = 0, anchor reset, so afterNextCol = null → no suffix
+    const out = engine.processServerData('a')
+    expect(out).toBe('\x1b[6Ga')
+    expect(engine.getMetrics().confirmed).toBe(1)
+  })
+
+  it('keeps suffix CHA(nextCol) when predict still in flight after echo', () => {
+    // Pre-paint TWO predicts: 'ab' at cols 5,6 → nextCol = 7, serverCol = 5
+    const { engine } = makeEngine()
+    engine.onUserInput('ab')
+    // Server echoes only 'a': matches head, serverCol → 6, pending=['b'], nextCol=7
+    // Wrap: prefix \e[6G + 'a' + suffix \e[8G (= nextCol+1)
+    const out = engine.processServerData('a')
+    expect(out).toBe('\x1b[6Ga\x1b[8G')
+  })
+
+  it('returns just data when echo causes mismatch rollback', () => {
+    // Pre-paint 'a' at col 5 → serverCol=5, pending=['a']
+    const { engine } = makeEngine()
+    engine.onUserInput('a')
+    // Server echoes 'X': mismatch → rollback → anchor reset → no wrap
+    const out = engine.processServerData('X')
+    // After rollback, anchor null, afterNextCol = null, beforeServerCol was captured as 5 → prefix only
+    expect(out).toBe('\x1b[6GX')
+  })
+
+  it('passes scrollback / multi-byte echo through (e.g., bash prompt rebuild)', () => {
+    // No anchor → no wrapping
+    const { engine } = makeEngine()
+    const out = engine.processServerData('user@host:~$ ')
+    expect(out).toBe('user@host:~$ ')
+  })
+})
+
 describe('PredictiveEngine — onMetrics callback', () => {
   it('fires after each prediction', () => {
     const onMetrics = vi.fn()

@@ -266,6 +266,9 @@ async fn handle_terminal_create(
     let max = scrollback_max();
     tokio::task::spawn_blocking(move || {
         let mut buf = vec![0u8; 64 * 1024];
+        // v7+log: reader started - visibility for is-the-reader-alive
+        info!(session = %session_id_for_reader, "pty reader thread started");
+        let mut chunk_seq: u64 = 0;
         loop {
             let n = match session_for_reader.read(&mut buf) {
                 Ok(0) => break,
@@ -314,26 +317,40 @@ async fn handle_terminal_create(
             // stale Sender's blocking_send returned Err forever and
             // the old code logged a debug! and dropped the byte
             // silently. See `out_tx_slot()` / `current_out_tx()`.
+            chunk_seq += 1;
+            // v0.6.5+log: every chunk that the PTY reader produces gets one INFO
+            // line so we can correlate "user typed X" with "agent emitted Y".
+            // Bytes are bounded (max 64KB per read) and we log only size + seq.
             match current_out_tx() {
                 Some(tx) => {
-                    if tx
-                        .blocking_send(Message::Text(serialized.into()))
-                        .is_err()
-                    {
-                        warn!(
-                            session = %session_id_for_reader,
-                            "out channel send failed despite live registration; \
-                             likely a tight WS reconnect race; frame buffered to scrollback only"
-                        );
+                    let send_result = tx
+                        .blocking_send(Message::Text(serialized.into()));
+                    match send_result {
+                        Ok(_) => {
+                            info!(
+                                session = %session_id_for_reader,
+                                seq = chunk_seq,
+                                bytes = n,
+                                "pty reader sent chunk to backend"
+                            );
+                        }
+                        Err(_) => {
+                            warn!(
+                                session = %session_id_for_reader,
+                                seq = chunk_seq,
+                                bytes = n,
+                                "out channel send FAILED despite live registration; \
+                                 tight WS reconnect race? frame buffered to scrollback only"
+                            );
+                        }
                     }
                 }
                 None => {
-                    // No backend WS up; the frame is already in
-                    // scrollback so the next browser attach will
-                    // replay. Debug-level routine state, not a bug.
-                    debug!(
+                    warn!(
                         session = %session_id_for_reader,
-                        "no agent <-> backend WS up; frame buffered to scrollback only"
+                        seq = chunk_seq,
+                        bytes = n,
+                        "NO backend WS up; chunk dropped to scrollback only"
                     );
                 }
             }
@@ -385,8 +402,11 @@ async fn handle_terminal_input(payload: Value) {
         // valid base64 — e.g. a four-character lowercase string like
         // `"abcd"` decoded to garbage instead of being written as-is.)
         let bytes = data.into_bytes();
-        if let Err(e) = state.session.write(&bytes) {
-            warn!(%session_id, error = %e, "PTY write failed");
+        // v0.6.5+log: every input write gets an INFO line for end-to-end visibility.
+        let n = bytes.len();
+        match state.session.write(&bytes) {
+            Ok(_) => info!(%session_id, bytes = n, "pty input forwarded"),
+            Err(e) => warn!(%session_id, bytes = n, error = %e, "pty input write FAILED"),
         }
         *state.last_activity.lock().unwrap() = now_secs();
     }

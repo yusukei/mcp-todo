@@ -305,6 +305,8 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
       }
 
       ws.onmessage = (event) => {
+        const raw = typeof event.data === 'string' ? event.data : '<binary>'
+        console.info(`[terminal] ws.recv bytes=${raw.length} peek=${JSON.stringify(raw.slice(0, 100))}`)
         let msg: Record<string, unknown>
         try {
           msg = JSON.parse(event.data) as Record<string, unknown>
@@ -385,6 +387,7 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
           // v7: engine wraps echo with CHA so bytes land at server's cursor
           // (not at predict tip where xterm cursor sits in v7).
           const wrapped = engineRef.current?.processServerData(data) ?? data
+          console.info(`[terminal] terminal_output handled: data.len=${data.length} wrapped.len=${wrapped.length} engine=${engineRef.current ? 'present' : 'NULL'}`)
           terminal.write(wrapped)
           // FIFO-match incoming bytes against pending-key timestamps.
           // Latency is measured per character so bash echo (one byte

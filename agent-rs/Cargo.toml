@@ -1,6 +1,6 @@
 [package]
 name = "mcp-workspace-agent-rs"
-version = "0.6.4-pty-reader-fix"
+version = "0.6.5-pty-diag"
 edition = "2021"
 rust-version = "1.78"
 description = "Cross-platform Rust port of the mcp-todo workspace agent."

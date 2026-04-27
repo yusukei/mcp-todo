@@ -954,7 +954,7 @@ dependencies = [
 
 [[package]]
 name = "mcp-workspace-agent-rs"
-version = "0.6.4-pty-reader-fix"
+version = "0.6.5-pty-diag"
 dependencies = [
  "anyhow",
  "base64",

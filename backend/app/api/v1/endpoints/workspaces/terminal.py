@@ -262,7 +262,7 @@ async def terminal_websocket(ws: WebSocket):
             agent_id, rpc_type, rpc_payload, timeout=10.0,
         )
     except AgentOfflineError:
-        terminal_router.unregister(session_id)
+        terminal_router.unregister(session_id, ws)
         try:
             await ws.send_text(json.dumps({
                 "type": "error", "message": "Agent offline",
@@ -272,7 +272,7 @@ async def terminal_websocket(ws: WebSocket):
         await ws.close(code=4500, reason="Agent offline")
         return
     except Exception as e:
-        terminal_router.unregister(session_id)
+        terminal_router.unregister(session_id, ws)
         logger.exception(
             "terminal_websocket: send_request failed agent=%s session=%s rpc=%s",
             agent_id, session_id, rpc_type,
@@ -287,7 +287,7 @@ async def terminal_websocket(ws: WebSocket):
         return
 
     if not isinstance(result, dict) or not result.get("success"):
-        terminal_router.unregister(session_id)
+        terminal_router.unregister(session_id, ws)
         msg = (result or {}).get(
             "error",
             "session not found" if is_attach else "PTY open failed",
@@ -325,7 +325,7 @@ async def terminal_websocket(ws: WebSocket):
             "terminal_websocket: failed to send session_started session=%s",
             session_id,
         )
-        terminal_router.unregister(session_id)
+        terminal_router.unregister(session_id, ws)
         return
 
     try:
@@ -387,7 +387,7 @@ async def terminal_websocket(ws: WebSocket):
             "terminal_websocket: unexpected error session=%s", session_id,
         )
     finally:
-        terminal_router.unregister(session_id)
+        terminal_router.unregister(session_id, ws)
         # Phase A: browser disconnect = detach (session keeps running
         # so the operator can reattach later). Explicit termination
         # uses the new ``DELETE`` REST endpoint or
