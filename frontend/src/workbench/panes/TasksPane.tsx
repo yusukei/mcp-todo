@@ -15,7 +15,6 @@
  */
 import {
   useCallback,
-  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -79,24 +78,6 @@ export default function TasksPane({
 
   const persistedView = paneConfig.viewMode
   const userView: ViewMode = isViewMode(persistedView) ? persistedView : 'board'
-
-  // Seed paneConfig.viewMode from the legacy `lastView:<projectId>`
-  // key on first mount so the user's existing preference flows
-  // through. After this the pane owns the viewMode and writes to
-  // paneConfig (other tabs / standalone ProjectPage continue to use
-  // the legacy key).
-  useEffect(() => {
-    if (persistedView) return
-    try {
-      const legacy = window.localStorage.getItem(lastViewKey(projectId))
-      if (isViewMode(legacy)) {
-        onConfigChange({ viewMode: legacy })
-      }
-    } catch {
-      /* ignore */
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   const setViewMode = useCallback(
     (m: ViewMode) => {
