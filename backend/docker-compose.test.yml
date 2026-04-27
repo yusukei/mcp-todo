@@ -27,6 +27,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.test
+    # docs/ を read-only bind-mount。frontend / backend で共有する
+    # ``docs/api/url-contract.fixtures.json`` のような spec/fixture を
+    # 再 build なしで参照できるようにする。
+    volumes:
+      - ../docs:/app/docs:ro
     # CMD はそのまま使用 (Dockerfile.test に定義済み)
     # 個別ファイルを渡す場合:
     #   docker compose ... run --rm test uv run pytest tests/xxx.py -v

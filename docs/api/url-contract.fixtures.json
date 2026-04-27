@@ -1,0 +1,249 @@
+{
+  "_meta": {
+    "version": 1,
+    "spec": "docs/api/url-contract.md",
+    "purpose": "Frontend (frontend/src/__tests__/unit/urlContract.test.ts) と backend (backend/tests/unit/test_url_contract.py) が同じ fixture を読むことで仕様の同期を保証する。両側 round-trip テスト (parseUrl(buildUrl(kind, opts)) == {kind, ...opts}) を駆動する。",
+    "ids": {
+      "p1": "aaaaaaaaaaaaaaaaaaaaaaaa",
+      "p2": "bbbbbbbbbbbbbbbbbbbbbbbb",
+      "t1": "cccccccccccccccccccccccc",
+      "d1": "dddddddddddddddddddddddd",
+      "bm1": "eeeeeeeeeeeeeeeeeeeeeeee",
+      "kn1": "ffffffffffffffffffffffff",
+      "site1": "111111111111111111111111"
+    }
+  },
+  "valid": [
+    {
+      "name": "task",
+      "kind": "task",
+      "buildOpts": { "projectId": "aaaaaaaaaaaaaaaaaaaaaaaa", "resourceId": "cccccccccccccccccccccccc" },
+      "url": "/projects/aaaaaaaaaaaaaaaaaaaaaaaa?task=cccccccccccccccccccccccc",
+      "parsed": {
+        "kind": "task",
+        "projectId": "aaaaaaaaaaaaaaaaaaaaaaaa",
+        "resourceId": "cccccccccccccccccccccccc",
+        "hadUnknownParams": false
+      }
+    },
+    {
+      "name": "document",
+      "kind": "document",
+      "buildOpts": { "projectId": "aaaaaaaaaaaaaaaaaaaaaaaa", "resourceId": "dddddddddddddddddddddddd" },
+      "url": "/projects/aaaaaaaaaaaaaaaaaaaaaaaa?doc=dddddddddddddddddddddddd",
+      "parsed": {
+        "kind": "document",
+        "projectId": "aaaaaaaaaaaaaaaaaaaaaaaa",
+        "resourceId": "dddddddddddddddddddddddd",
+        "hadUnknownParams": false
+      }
+    },
+    {
+      "name": "document_full",
+      "kind": "document_full",
+      "buildOpts": { "projectId": "aaaaaaaaaaaaaaaaaaaaaaaa", "resourceId": "dddddddddddddddddddddddd" },
+      "url": "/projects/aaaaaaaaaaaaaaaaaaaaaaaa/documents/dddddddddddddddddddddddd",
+      "parsed": {
+        "kind": "document_full",
+        "projectId": "aaaaaaaaaaaaaaaaaaaaaaaa",
+        "resourceId": "dddddddddddddddddddddddd",
+        "hadUnknownParams": false
+      }
+    },
+    {
+      "name": "bookmark",
+      "kind": "bookmark",
+      "buildOpts": { "resourceId": "eeeeeeeeeeeeeeeeeeeeeeee" },
+      "url": "/bookmarks/eeeeeeeeeeeeeeeeeeeeeeee",
+      "parsed": {
+        "kind": "bookmark",
+        "resourceId": "eeeeeeeeeeeeeeeeeeeeeeee",
+        "hadUnknownParams": false
+      }
+    },
+    {
+      "name": "knowledge",
+      "kind": "knowledge",
+      "buildOpts": { "resourceId": "ffffffffffffffffffffffff" },
+      "url": "/knowledge/ffffffffffffffffffffffff",
+      "parsed": {
+        "kind": "knowledge",
+        "resourceId": "ffffffffffffffffffffffff",
+        "hadUnknownParams": false
+      }
+    },
+    {
+      "name": "docsite_page (single segment)",
+      "kind": "docsite_page",
+      "buildOpts": { "siteId": "111111111111111111111111", "path": "intro" },
+      "url": "/docsites/111111111111111111111111/intro",
+      "parsed": {
+        "kind": "docsite_page",
+        "siteId": "111111111111111111111111",
+        "path": "intro",
+        "hadUnknownParams": false
+      }
+    },
+    {
+      "name": "docsite_page (multiple segments)",
+      "kind": "docsite_page",
+      "buildOpts": { "siteId": "111111111111111111111111", "path": "intro/getting-started" },
+      "url": "/docsites/111111111111111111111111/intro/getting-started",
+      "parsed": {
+        "kind": "docsite_page",
+        "siteId": "111111111111111111111111",
+        "path": "intro/getting-started",
+        "hadUnknownParams": false
+      }
+    },
+    {
+      "name": "project (Workbench home)",
+      "kind": "project",
+      "buildOpts": { "projectId": "aaaaaaaaaaaaaaaaaaaaaaaa" },
+      "url": "/projects/aaaaaaaaaaaaaaaaaaaaaaaa",
+      "parsed": {
+        "kind": "project",
+        "projectId": "aaaaaaaaaaaaaaaaaaaaaaaa",
+        "hadUnknownParams": false
+      }
+    }
+  ],
+  "with_unknown_params": [
+    {
+      "name": "task with ?view= (個人 layout に帰属)",
+      "url": "/projects/aaaaaaaaaaaaaaaaaaaaaaaa?task=cccccccccccccccccccccccc&view=board",
+      "parsed": {
+        "kind": "task",
+        "projectId": "aaaaaaaaaaaaaaaaaaaaaaaa",
+        "resourceId": "cccccccccccccccccccccccc",
+        "hadUnknownParams": true
+      }
+    },
+    {
+      "name": "project with ?layout=",
+      "url": "/projects/aaaaaaaaaaaaaaaaaaaaaaaa?layout=tasks-with-detail",
+      "parsed": {
+        "kind": "project",
+        "projectId": "aaaaaaaaaaaaaaaaaaaaaaaa",
+        "hadUnknownParams": true
+      }
+    },
+    {
+      "name": "project with ?group=",
+      "url": "/projects/aaaaaaaaaaaaaaaaaaaaaaaa?group=status",
+      "parsed": {
+        "kind": "project",
+        "projectId": "aaaaaaaaaaaaaaaaaaaaaaaa",
+        "hadUnknownParams": true
+      }
+    },
+    {
+      "name": "未知 query key (nopinion)",
+      "url": "/projects/aaaaaaaaaaaaaaaaaaaaaaaa?somethingweird=1",
+      "parsed": {
+        "kind": "project",
+        "projectId": "aaaaaaaaaaaaaaaaaaaaaaaa",
+        "hadUnknownParams": true
+      }
+    }
+  ],
+  "legacy": [
+    {
+      "name": "/workbench/{id} (D1-a で route 削除済)",
+      "url": "/workbench/aaaaaaaaaaaaaaaaaaaaaaaa",
+      "parsed": {
+        "kind": "project",
+        "projectId": "aaaaaaaaaaaaaaaaaaaaaaaa",
+        "hadUnknownParams": false,
+        "redirectTo": "/projects/aaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    }
+  ],
+  "absolute_url": [
+    {
+      "name": "production origin (todo.vtech-studios.com)",
+      "url": "https://todo.vtech-studios.com/projects/aaaaaaaaaaaaaaaaaaaaaaaa?task=cccccccccccccccccccccccc",
+      "parsed": {
+        "kind": "task",
+        "projectId": "aaaaaaaaaaaaaaaaaaaaaaaa",
+        "resourceId": "cccccccccccccccccccccccc",
+        "hadUnknownParams": false
+      }
+    },
+    {
+      "name": "localhost dev origin",
+      "url": "http://localhost:5173/bookmarks/eeeeeeeeeeeeeeeeeeeeeeee",
+      "parsed": {
+        "kind": "bookmark",
+        "resourceId": "eeeeeeeeeeeeeeeeeeeeeeee",
+        "hadUnknownParams": false
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "未知 origin",
+      "url": "https://evil.example.com/projects/aaaaaaaaaaaaaaaaaaaaaaaa",
+      "parsed": { "kind": "unknown", "hadUnknownParams": false }
+    },
+    {
+      "name": "ObjectId 形式違反 (短い)",
+      "url": "/projects/abc123",
+      "parsed": { "kind": "unknown", "hadUnknownParams": false }
+    },
+    {
+      "name": "ObjectId 形式違反 (大文字)",
+      "url": "/projects/AAAAAAAAAAAAAAAAAAAAAAAA",
+      "parsed": { "kind": "unknown", "hadUnknownParams": false }
+    },
+    {
+      "name": "未知 path",
+      "url": "/foo/bar",
+      "parsed": { "kind": "unknown", "hadUnknownParams": false }
+    },
+    {
+      "name": "docsite_page with .. traversal",
+      "url": "/docsites/111111111111111111111111/intro/../secret",
+      "parsed": { "kind": "unknown", "hadUnknownParams": false }
+    },
+    {
+      "name": "docsite_page with . segment",
+      "url": "/docsites/111111111111111111111111/./intro",
+      "parsed": { "kind": "unknown", "hadUnknownParams": false }
+    },
+    {
+      "name": "空文字",
+      "url": "",
+      "parsed": { "kind": "unknown", "hadUnknownParams": false }
+    },
+    {
+      "name": "task ID が ObjectId 形式違反",
+      "url": "/projects/aaaaaaaaaaaaaaaaaaaaaaaa?task=not-an-objectid",
+      "parsed": {
+        "kind": "project",
+        "projectId": "aaaaaaaaaaaaaaaaaaaaaaaa",
+        "hadUnknownParams": true
+      }
+    }
+  ],
+  "trailing_slash": [
+    {
+      "name": "trailing slash on /projects/{pid}/",
+      "url": "/projects/aaaaaaaaaaaaaaaaaaaaaaaa/",
+      "parsed": {
+        "kind": "project",
+        "projectId": "aaaaaaaaaaaaaaaaaaaaaaaa",
+        "hadUnknownParams": false
+      }
+    },
+    {
+      "name": "trailing slash on /bookmarks/{id}/",
+      "url": "/bookmarks/eeeeeeeeeeeeeeeeeeeeeeee/",
+      "parsed": {
+        "kind": "bookmark",
+        "resourceId": "eeeeeeeeeeeeeeeeeeeeeeee",
+        "hadUnknownParams": false
+      }
+    }
+  ]
+}
