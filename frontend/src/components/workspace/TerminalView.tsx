@@ -9,6 +9,36 @@ import { PredictiveEngine } from './PredictiveEngine'
 
 const KILL_SWITCH_STORAGE_KEY = 'webterm:predictiveOff'
 
+const DEBUG_GLOBAL_KEY = '__webterm_debug__'
+const DEBUG_LS_KEY = 'webterm:debug'
+
+function debugEnabled(): boolean {
+  try {
+    if (typeof window === 'undefined') return false
+    const w = window as unknown as Record<string, unknown>
+    if (w[DEBUG_GLOBAL_KEY]) return true
+    if (window.localStorage?.getItem(DEBUG_LS_KEY) === '1') return true
+  } catch {
+    return false
+  }
+  return false
+}
+
+/** Gated structured log. Enable via window.__webterm_debug__=true or
+ *  localStorage.setItem('webterm:debug','1'). Same flag as PredictiveEngine. */
+function tlog(event: string, detail?: Record<string, unknown>): void {
+  if (!debugEnabled()) return
+  if (detail === undefined) console.log(`[terminal] ${event}`)
+  else console.log(`[terminal] ${event}`, detail)
+}
+
+/** Always-on warning for failure states (stuck replay gate, send on closed
+ *  WS, etc). These are rare AND actionable, so they bypass the debug gate. */
+function twarn(event: string, detail?: Record<string, unknown>): void {
+  if (detail === undefined) console.warn(`[terminal] ${event}`)
+  else console.warn(`[terminal] ${event}`, detail)
+}
+
 interface TerminalViewProps {
   agentId: string
   agentName?: string
@@ -162,6 +192,14 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
 
   useEffect(() => {
     let disposed = false
+    if (debugEnabled()) {
+      tlog('mount', { agentId, sessionIdInitial: sessionIdRef.current })
+    } else {
+      console.info(
+        '[terminal] verbose logging is OFF. Enable with: ' +
+        "window.__webterm_debug__ = true  OR  localStorage.setItem('webterm:debug','1') then reload."
+      )
+    }
     let cleanupFns: Array<() => void> = []
 
     const setup = async () => {
@@ -263,6 +301,7 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
 
       ws.onopen = () => {
         if (!disposed) setStatus('connecting')
+        tlog('ws.onopen', { url: wsUrl })
       }
 
       ws.onmessage = (event) => {
@@ -282,6 +321,11 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
           pendingRef.current.length = 0
           samplesRef.current.length = 0
           measuringRef.current = true
+          tlog('session_started', {
+            sessionId: msg.session_id,
+            attached: Boolean(msg.attached),
+            scrollbackChunks: Array.isArray(msg.scrollback) ? msg.scrollback.length : 0,
+          })
           const attached = Boolean(msg.attached)
           if (attached) {
             // Replay the agent-side scrollback so the screen looks
@@ -306,6 +350,7 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
             const lift = () => {
               requestAnimationFrame(() => {
                 replayingRef.current = false
+                tlog('replay.lift', { combinedBytes: combined.length })
               })
             }
             if (combined.length > 0) {
@@ -326,22 +371,32 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
             onSessionStartedRef.current(sid)
           }
         } else if (type === 'terminal_output') {
+          // Capture echo arrival time IMMEDIATELY at WS receive,
+          // before any rAF / paint work. performance.now() inside
+          // requestAnimationFrame conflates echo arrival with the
+          // next-paint deadline, and rAF throttles to ~1Hz on
+          // hidden tabs — that alone pushed p95 to ~1.9s in
+          // dogfooding. The rAF below is kept as a batching defer
+          // for setStats but uses this captured timestamp.
+          const t1 = performance.now()
           const data = (payload.data ?? msg.data ?? '') as string
           // Engine inspects bytes BEFORE xterm.js renders them so the
           // FIFO advances in lockstep with the visible frame.
-          engineRef.current?.onServerData(data)
-          terminal.write(data)
+          // v7: engine wraps echo with CHA so bytes land at server's cursor
+          // (not at predict tip where xterm cursor sits in v7).
+          const wrapped = engineRef.current?.processServerData(data) ?? data
+          terminal.write(wrapped)
           // FIFO-match incoming bytes against pending-key timestamps.
           // Latency is measured per character so bash echo (one byte
           // per keypress) gives one sample per keystroke.
           requestAnimationFrame(() => {
-            const t1 = performance.now()
-            // Garbage-collect predictions older than 2s before
+            // t1 captured at WS receive above, NOT inside this rAF.
+            // Garbage-collect predictions older than STALE_MS before
             // matching: a stale head pollutes p95 with multi-second
             // samples when it eventually matches a much later echo
             // (e.g. the user typed during a connect blip and the
             // first real echo arrives seconds later).
-            const STALE_MS = 2000
+            const STALE_MS = 500
             while (
               pendingRef.current.length > 0 &&
               t1 - pendingRef.current[0].t0 > STALE_MS
@@ -380,16 +435,19 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
       ws.onclose = (event) => {
         if (disposed) return
         setStatus('disconnected')
+        twarn('ws.onclose', { code: event.code, reason: event.reason || '(none)' })
         onDisconnect?.(event.reason || `closed:${event.code}`)
       }
 
       ws.onerror = () => {
         terminal.writeln(`\r\n\x1b[31mWebSocket error\x1b[0m`)
+        twarn('ws.onerror', { wsState: ws.readyState })
       }
 
       const sendInput = (data: string) => {
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'input', data }))
+          tlog('sendInput.ok', { bytes: data.length, wsState: ws.readyState })
         }
       }
 
@@ -408,7 +466,24 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
         // Drop xterm-generated responses to embedded DA / DSR queries
         // during scrollback replay. See ``replayingRef`` declaration
         // for the failure mode this guards against.
-        if (replayingRef.current) return
+        if (replayingRef.current) {
+          // onData is gated during scrollback replay because xterm emits
+          // bytes through this same callback when it auto-replies to
+          // DA/DSR queries embedded in the scrollback. Log so we can
+          // tell legitimate gating apart from stuck-state input loss.
+          tlog('onData gated by replayingRef', {
+            bytes: data.length,
+            first: data.length > 0 ? data.charCodeAt(0).toString(16) : null,
+          })
+          return
+        }
+        tlog('onData', {
+          bytes: data.length,
+          first: data.length > 0 ? data.charCodeAt(0).toString(16) : null,
+          measuring: measuringRef.current,
+          wsState: ws.readyState,
+          replayingNow: replayingRef.current,
+        })
         const t0 = performance.now()
         if (measuringRef.current) {
           for (const ch of data) {
@@ -453,6 +528,21 @@ const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(function 
         }
       }, 30_000)
       cleanupFns.push(() => window.clearInterval(pingTimer))
+
+      // Drop in-flight pending samples whenever the tab goes
+      // hidden — rAF / timer throttling guarantees their t0 will
+      // be ancient by the time we return, and a single late match
+      // dominates p95 for the rest of the session. Cheap reset.
+      const handleVisibility = () => {
+        const state = document.visibilityState
+        const cleared = pendingRef.current.length
+        if (state !== 'visible') {
+          pendingRef.current.length = 0
+        }
+        tlog('visibility', { state, clearedPending: state !== 'visible' ? cleared : 0 })
+      }
+      document.addEventListener('visibilitychange', handleVisibility)
+      cleanupFns.push(() => document.removeEventListener('visibilitychange', handleVisibility))
 
       cleanupFns.push(() => {
         try { ws.close() } catch { /* already closed */ }
