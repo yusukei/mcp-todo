@@ -17,7 +17,9 @@ use parking_lot::RwLock;
 use sha2::{Digest, Sha256};
 use tracing::{error, info, warn};
 
+mod agent_release;
 mod backend;
+mod bootstrap;
 mod config;
 mod handlers;
 mod log_capture;
@@ -32,9 +34,23 @@ mod upgrade;
 #[derive(Debug, Parser)]
 #[command(name = "mcp-workspace-supervisor", version, about)]
 struct Cli {
-    /// Path to the TOML config file.
-    #[arg(long)]
-    config: PathBuf,
+    /// Path to the TOML config file. Mutually exclusive with
+    /// `--bootstrap`.
+    #[arg(long, conflicts_with = "bootstrap")]
+    config: Option<PathBuf>,
+
+    /// Bootstrap mode: exchange the given install token for sv_/ta_
+    /// tokens, write config.toml, download the agent binary,
+    /// register the autostart task, and spawn the supervisor in the
+    /// background. Mutually exclusive with `--config`.
+    #[arg(long, value_name = "INSTALL_TOKEN", conflicts_with = "config")]
+    bootstrap: Option<String>,
+
+    /// Backend public origin used by `--bootstrap` to call the
+    /// exchange + release endpoints. Required when `--bootstrap` is
+    /// given. Falls back to `MCP_TODO_BACKEND_URL` env var.
+    #[arg(long, env = "MCP_TODO_BACKEND_URL")]
+    backend_url: Option<String>,
 }
 
 fn main() -> ExitCode {
@@ -49,8 +65,28 @@ fn run() -> Result<()> {
     init_tracing();
 
     let cli = Cli::parse();
-    let cfg = config::Config::load(&cli.config)
-        .with_context(|| format!("failed to load {}", cli.config.display()))?;
+
+    // Bootstrap path: short-circuit before loading any config file.
+    if let Some(token) = cli.bootstrap.clone() {
+        let backend_url = cli.backend_url.clone().ok_or_else(|| {
+            anyhow::anyhow!(
+                "--bootstrap requires --backend-url (or MCP_TODO_BACKEND_URL env var)"
+            )
+        })?;
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .thread_name("supervisor-bootstrap")
+            .build()
+            .context("build tokio runtime for bootstrap")?;
+        return runtime.block_on(bootstrap::run_bootstrap(token, backend_url));
+    }
+
+    // Normal operation requires --config.
+    let config_path = cli.config.ok_or_else(|| {
+        anyhow::anyhow!("either --config <path> or --bootstrap <token> is required")
+    })?;
+    let cfg = config::Config::load(&config_path)
+        .with_context(|| format!("failed to load {}", config_path.display()))?;
     info!(
         backend = %cfg.backend.url,
         agent_cwd = %cfg.agent.cwd.display(),
@@ -72,7 +108,7 @@ fn run() -> Result<()> {
         .build()
         .context("build tokio runtime")?;
 
-    runtime.block_on(async_main(cli.config, cfg))
+    runtime.block_on(async_main(config_path, cfg))
 }
 
 async fn async_main(config_path: PathBuf, cfg: config::Config) -> Result<()> {

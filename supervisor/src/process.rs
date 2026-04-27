@@ -81,7 +81,76 @@ impl AgentCommand {
                 cwd: cfg.cwd.clone(),
                 env,
             },
+            AgentMode::Exec => Self {
+                // Validation in `Config::validate` guarantees `exec_path`
+                // is `Some` whenever the parsed mode is `Exec`, so an
+                // expect here documents the invariant rather than
+                // trying to report a runtime error from a constructor.
+                program: cfg
+                    .exec_path
+                    .clone()
+                    .expect("exec_path is required by Config::validate when mode = Exec"),
+                args: vec![
+                    "--url".into(),
+                    cfg.url.clone(),
+                    "--token".into(),
+                    cfg.token.clone(),
+                ],
+                cwd: cfg.cwd.clone(),
+                env,
+            },
+            AgentMode::Managed => {
+                let dir = managed_agent_dir(cfg);
+                let exe = dir.join(default_managed_agent_exe_name());
+                Self {
+                    program: exe,
+                    args: vec![
+                        "--url".into(),
+                        cfg.url.clone(),
+                        "--token".into(),
+                        cfg.token.clone(),
+                    ],
+                    cwd: dir,
+                    env,
+                }
+            }
         }
+    }
+}
+
+/// Resolve the managed-mode agent directory.
+///
+/// Falls back to a platform-appropriate default when `managed_dir` is
+/// unset in config, so a fresh ``--bootstrap`` install with no manual
+/// editing still works.
+pub fn managed_agent_dir(cfg: &AgentConfig) -> PathBuf {
+    if let Some(d) = &cfg.managed_dir {
+        return d.clone();
+    }
+    if cfg!(windows) {
+        // %LOCALAPPDATA%\mcp-workspace\agent\
+        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+            return PathBuf::from(local).join("mcp-workspace").join("agent");
+        }
+    }
+    // POSIX (and Windows fallback): ~/.local/share/mcp-workspace/agent/
+    if let Some(home) = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }) {
+        return PathBuf::from(home)
+            .join(".local")
+            .join("share")
+            .join("mcp-workspace")
+            .join("agent");
+    }
+    // Last-resort: cwd/agent. Bootstrap surfaces a clearer error than
+    // a panic if even this fails.
+    PathBuf::from("mcp-workspace-agent")
+}
+
+pub fn default_managed_agent_exe_name() -> &'static str {
+    if cfg!(windows) {
+        "mcp-workspace-agent.exe"
+    } else {
+        "mcp-workspace-agent"
     }
 }
 
@@ -531,7 +600,11 @@ mod tests {
             cwd: std::env::current_dir().unwrap(),
             url: "wss://example/agent/ws".into(),
             token: "ta_zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz".into(),
+            exec_path: None,
             upgrade_target_path: None,
+            managed_dir: None,
+            update_channel: "stable".into(),
+            update_check_interval_s: 3600,
         };
         let cmd = AgentCommand::from_config(&cfg);
         assert!(cmd.args.iter().any(|a| a == "ta_zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"));
@@ -543,6 +616,59 @@ mod tests {
         assert_eq!(cmd.env.get("PYTHONUTF8").map(String::as_str), Some("1"));
         // First three positional args are always run / python / main.py.
         assert_eq!(&cmd.args[0..3], &["run", "python", "main.py"]);
+    }
+
+    #[test]
+    fn from_config_exec_uses_exec_path_directly() {
+        let exec_path = PathBuf::from(if cfg!(windows) {
+            r"C:\path\to\mcp-workspace-agent.exe"
+        } else {
+            "/path/to/mcp-workspace-agent"
+        });
+        let cfg = AgentConfig {
+            mode: AgentMode::Exec,
+            cwd: std::env::current_dir().unwrap(),
+            url: "wss://example/agent/ws".into(),
+            token: "ta_yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy".into(),
+            exec_path: Some(exec_path.clone()),
+            upgrade_target_path: Some(exec_path.clone()),
+            managed_dir: None,
+            update_channel: "stable".into(),
+            update_check_interval_s: 3600,
+        };
+        let cmd = AgentCommand::from_config(&cfg);
+        assert_eq!(cmd.program, exec_path);
+        // Exec mode skips the `run / python / main.py` prefix and goes
+        // straight to `--url <...> --token <...>`.
+        assert_eq!(
+            cmd.args,
+            vec![
+                "--url".to_string(),
+                "wss://example/agent/ws".to_string(),
+                "--token".to_string(),
+                "ta_yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "exec_path is required")]
+    fn from_config_exec_panics_when_path_missing() {
+        // This invariant is normally guaranteed by Config::validate;
+        // the panic-on-missing here is a defence-in-depth assertion
+        // documented at the construction site.
+        let cfg = AgentConfig {
+            mode: AgentMode::Exec,
+            cwd: std::env::current_dir().unwrap(),
+            url: "wss://example/agent/ws".into(),
+            token: "ta_xx".into(),
+            exec_path: None,
+            upgrade_target_path: None,
+            managed_dir: None,
+            update_channel: "stable".into(),
+            update_check_interval_s: 3600,
+        };
+        let _ = AgentCommand::from_config(&cfg);
     }
 
     #[tokio::test]

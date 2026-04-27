@@ -1,6 +1,6 @@
 [package]
 name = "mcp-workspace-supervisor"
-version = "0.1.0"
+version = "0.3.1"
 edition = "2021"
 rust-version = "1.78"
 description = "Process supervisor for the mcp-todo Python agent (1:1)."
@@ -17,7 +17,7 @@ toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 anyhow = "1"
 thiserror = "2"
 directories = "5"
@@ -25,7 +25,7 @@ chrono = { version = "0.4", features = ["serde"] }
 parking_lot = "0.12"
 rand = "0.8"
 regex = "1"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
 sha2 = "0.10"
 
 [target.'cfg(windows)'.dependencies]

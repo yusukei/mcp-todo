@@ -41,6 +41,12 @@ pub struct AgentConfig {
     pub cwd: PathBuf,
     pub url: String,
     pub token: String,
+    /// Path to a packaged agent executable. **Required when
+    /// `mode = "exec"`**, ignored for `mode = "uv-run"` (which always
+    /// invokes `uv run python main.py` from `cwd`) and for
+    /// `mode = "managed"` (where the supervisor controls the path).
+    #[serde(default)]
+    pub exec_path: Option<PathBuf>,
     /// Optional path to the single agent binary that
     /// ``supervisor_upgrade`` swaps. Unset for uv-run deployments
     /// (which have no single binary to replace) — the upgrade RPC
@@ -48,6 +54,29 @@ pub struct AgentConfig {
     /// of touching anything on disk.
     #[serde(default)]
     pub upgrade_target_path: Option<PathBuf>,
+    /// Directory where the supervisor stores + manages the agent
+    /// binary in `mode = "managed"`. Defaults to
+    /// `%LOCALAPPDATA%\mcp-workspace\agent\` on Windows. Ignored for
+    /// uv-run / exec modes (operator owns the binary).
+    #[serde(default)]
+    pub managed_dir: Option<PathBuf>,
+    /// Backend release channel polled in `managed` mode. Ignored for
+    /// uv-run / exec modes.
+    #[serde(default = "default_update_channel")]
+    pub update_channel: String,
+    /// How often the supervisor checks the backend for a newer agent
+    /// release in `managed` mode (seconds, 0 disables periodic
+    /// checks; bootstrap-time download still happens).
+    #[serde(default = "default_update_check_interval_s")]
+    pub update_check_interval_s: u32,
+}
+
+fn default_update_channel() -> String {
+    "stable".to_string()
+}
+
+fn default_update_check_interval_s() -> u32 {
+    3600
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -55,6 +84,17 @@ pub struct AgentConfig {
 pub enum AgentMode {
     /// ``uv run python main.py --url <url> --token <token>`` from ``cwd``.
     UvRun,
+    /// Run a packaged agent binary directly:
+    /// ``<exec_path> --url <url> --token <token>`` from ``cwd``.
+    /// Used for hosts that only have the PyInstaller-packaged exe
+    /// (no Python source / uv install) or for the future Rust agent.
+    Exec,
+    /// Supervisor-only deployment: supervisor downloads + manages the
+    /// agent binary at `managed_dir`, polls `update_channel` for
+    /// updates, and spawns the agent with the token from `agent.token`.
+    /// Operators don't need to handle the agent binary at all — the
+    /// `--bootstrap <install_token>` flow installs everything.
+    Managed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -154,6 +194,33 @@ impl Config {
                 "agent.cwd is not a directory: {}",
                 self.agent.cwd.display()
             ));
+        }
+
+        // Mode-specific requirements.
+        match self.agent.mode {
+            AgentMode::UvRun => {
+                // uv-run reads main.py from cwd; no extra file checks
+                // (we leave that to uv to surface as a runtime error).
+            }
+            AgentMode::Exec => {
+                let exec_path = self.agent.exec_path.as_ref().ok_or_else(|| {
+                    anyhow!("agent.exec_path is required when mode = \"exec\"")
+                })?;
+                if !exec_path.is_file() {
+                    return Err(anyhow!(
+                        "agent.exec_path is not a file: {}",
+                        exec_path.display()
+                    ));
+                }
+            }
+            AgentMode::Managed => {
+                // managed_dir is optional in config (we have a sensible
+                // platform-specific default); the supervisor itself
+                // ensures the directory exists at startup before
+                // spawning the agent. Don't enforce existence here —
+                // the bootstrap flow may be writing the config before
+                // the dir is created.
+            }
         }
 
         // Numeric guards.
@@ -278,6 +345,91 @@ token = "ta_bb"
         );
         let err = Config::load(&p).unwrap_err();
         assert!(err.to_string().contains("agent.cwd is not a directory"));
+    }
+
+    #[test]
+    fn exec_mode_parses_with_exec_path() {
+        let tmp = TempDir::new().unwrap();
+        let agent_cwd = tmp.path().join("agent");
+        std::fs::create_dir(&agent_cwd).unwrap();
+        let exec_path = agent_cwd.join("mcp-workspace-agent.exe");
+        std::fs::File::create(&exec_path).unwrap();
+        let p = write_config(
+            &tmp,
+            &format!(
+                r#"
+[backend]
+url = "wss://example.com/sup/ws"
+token = "sv_aabbccdd"
+
+[agent]
+mode = "exec"
+exec_path = "{}"
+cwd = "{}"
+url = "wss://example.com/agent/ws"
+token = "ta_eeff0011"
+"#,
+                exec_path.display().to_string().replace('\\', "/"),
+                agent_cwd.display().to_string().replace('\\', "/"),
+            ),
+        );
+        let cfg = Config::load(&p).expect("load exec-mode config");
+        assert!(matches!(cfg.agent.mode, AgentMode::Exec));
+        assert_eq!(cfg.agent.exec_path.as_ref().unwrap(), &exec_path);
+    }
+
+    #[test]
+    fn exec_mode_requires_exec_path() {
+        let tmp = TempDir::new().unwrap();
+        let agent_cwd = tmp.path().join("agent");
+        std::fs::create_dir(&agent_cwd).unwrap();
+        let p = write_config(
+            &tmp,
+            &format!(
+                r#"
+[backend]
+url = "wss://example.com/sup/ws"
+token = "sv_aabbccdd"
+
+[agent]
+mode = "exec"
+cwd = "{}"
+url = "wss://example.com/agent/ws"
+token = "ta_eeff0011"
+"#,
+                agent_cwd.display().to_string().replace('\\', "/"),
+            ),
+        );
+        let err = Config::load(&p).unwrap_err();
+        assert!(err.to_string().contains("agent.exec_path is required"));
+    }
+
+    #[test]
+    fn exec_mode_rejects_missing_exec_path_file() {
+        let tmp = TempDir::new().unwrap();
+        let agent_cwd = tmp.path().join("agent");
+        std::fs::create_dir(&agent_cwd).unwrap();
+        let p = write_config(
+            &tmp,
+            &format!(
+                r#"
+[backend]
+url = "wss://example.com/sup/ws"
+token = "sv_aabbccdd"
+
+[agent]
+mode = "exec"
+exec_path = "{}/does-not-exist.exe"
+cwd = "{}"
+url = "wss://example.com/agent/ws"
+token = "ta_eeff0011"
+"#,
+                agent_cwd.display().to_string().replace('\\', "/"),
+                agent_cwd.display().to_string().replace('\\', "/"),
+            ),
+        );
+        let err = Config::load(&p).unwrap_err();
+        assert!(err.to_string().contains("agent.exec_path is not a file"));
     }
 
     #[test]
