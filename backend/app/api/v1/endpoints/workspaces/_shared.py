@@ -38,6 +38,7 @@ class CreateAgentRequest(BaseModel):
 
 
 class AgentSettingsUpdateRequest(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=100)
     auto_update: bool | None = None
     update_channel: str | None = None
 

@@ -53,7 +53,7 @@ describe('AgentList — render', () => {
   })
 })
 
-describe('AgentList — selection gating', () => {
+describe('AgentList — selection', () => {
   it('clicking an online agent calls onSelect', async () => {
     const user = userEvent.setup()
     const onSelect = vi.fn()
@@ -70,7 +70,7 @@ describe('AgentList — selection gating', () => {
     expect(onSelect.mock.calls[0][0].id).toBe('on')
   })
 
-  it('clicking an offline agent does NOT call onSelect', async () => {
+  it('clicking an offline agent still calls onSelect so details can be inspected', async () => {
     const user = userEvent.setup()
     const onSelect = vi.fn()
     render(
@@ -82,7 +82,8 @@ describe('AgentList — selection gating', () => {
       />,
     )
     await user.click(screen.getByText('Workstation'))
-    expect(onSelect).not.toHaveBeenCalled()
+    expect(onSelect).toHaveBeenCalledTimes(1)
+    expect(onSelect.mock.calls[0][0].id).toBe('off')
   })
 })
 

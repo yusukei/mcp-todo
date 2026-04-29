@@ -18,7 +18,17 @@ from .....core.deps import get_admin_user_flexible
 from .....core.security import hash_api_key
 from .....models import User
 from .....models.remote import RemoteAgent, RemoteSupervisor
-from .....services.supervisor_manager import supervisor_manager
+from .....services.supervisor_manager import (
+    SupervisorOfflineError,
+    SupervisorRpcTimeout,
+    supervisor_manager,
+)
+from ._shared import ALLOWED_CHANNELS
+from ._supervisor_releases_util import (
+    build_update_payload,
+    find_latest_release,
+    is_newer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +37,10 @@ router = APIRouter()
 
 class CreateSupervisorRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
+
+
+class SupervisorSettingsUpdateRequest(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=255)
 
 
 async def _supervisor_dict(s: RemoteSupervisor) -> dict[str, Any]:
@@ -48,7 +62,7 @@ async def _supervisor_dict(s: RemoteSupervisor) -> dict[str, Any]:
         "host_id": s.host_id,
         "hostname": s.hostname,
         "os_type": s.os_type,
-        "is_online": supervisor_manager.is_connected(sid),
+        "is_online": await supervisor_manager.is_connected_anywhere(sid),
         "supervisor_version": s.supervisor_version,
         "agent_version": s.agent_version,
         "agent_pid": s.agent_pid,
@@ -92,6 +106,21 @@ async def get_supervisor(
     s = await RemoteSupervisor.get(supervisor_id)
     if not s or s.owner_id != str(user.id):
         raise HTTPException(status_code=404, detail="Supervisor not found")
+    return await _supervisor_dict(s)
+
+
+@router.patch("/supervisors/{supervisor_id}")
+async def update_supervisor_settings(
+    supervisor_id: str,
+    body: SupervisorSettingsUpdateRequest,
+    user: User = Depends(get_admin_user_flexible),
+) -> dict:
+    s = await RemoteSupervisor.get(supervisor_id)
+    if not s or s.owner_id != str(user.id):
+        raise HTTPException(status_code=404, detail="Supervisor not found")
+    if body.name is not None:
+        s.name = body.name
+    await s.save()
     return await _supervisor_dict(s)
 
 
@@ -139,3 +168,57 @@ async def rotate_supervisor_token(
         "Rotated token for supervisor %s (%s)", s.name, supervisor_id
     )
     return {**await _supervisor_dict(s), "token": raw_token}
+
+
+@router.post("/supervisors/{supervisor_id}/check-update")
+async def check_supervisor_update(
+    supervisor_id: str,
+    channel: str = "stable",
+    user: User = Depends(get_admin_user_flexible),
+) -> dict:
+    """Manually push the latest supervisor upgrade payload if needed."""
+    s = await RemoteSupervisor.get(supervisor_id)
+    if not s or s.owner_id != str(user.id):
+        raise HTTPException(status_code=404, detail="Supervisor not found")
+    if channel not in ALLOWED_CHANNELS:
+        raise HTTPException(status_code=422, detail=f"Invalid channel: {channel}")
+    if not await supervisor_manager.is_connected_anywhere(supervisor_id):
+        raise HTTPException(status_code=409, detail="Supervisor is not connected")
+    if not s.os_type:
+        return {"pushed": False, "reason": "supervisor os_type unknown"}
+
+    latest = await find_latest_release(s.os_type, channel)
+    if latest is None:
+        return {"pushed": False, "reason": "no release available"}
+    if not is_newer(latest.version, s.supervisor_version):
+        return {
+            "pushed": False,
+            "reason": "already up to date",
+            "current": s.supervisor_version,
+            "latest": latest.version,
+        }
+
+    payload = build_update_payload(latest)
+    try:
+        result = await supervisor_manager.send_request(
+            supervisor_id, "supervisor_upgrade", payload, timeout=120.0
+        )
+    except SupervisorOfflineError as exc:
+        raise HTTPException(status_code=409, detail="Supervisor disconnected during check") from exc
+    except SupervisorRpcTimeout as exc:
+        raise HTTPException(status_code=504, detail="Supervisor update check timed out") from exc
+    except Exception as exc:
+        logger.exception("check supervisor update: send failed for %s", supervisor_id)
+        raise HTTPException(status_code=500, detail=f"Push failed: {exc}") from exc
+
+    logger.info(
+        "Manual supervisor update check: pushed v%s to supervisor=%s (current=%s)",
+        latest.version, supervisor_id, s.supervisor_version,
+    )
+    return {
+        "pushed": True,
+        "release_id": str(latest.id),
+        "version": latest.version,
+        "current": s.supervisor_version,
+        "result": result,
+    }

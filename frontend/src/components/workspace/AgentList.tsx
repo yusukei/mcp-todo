@@ -10,6 +10,8 @@ interface Agent {
   last_seen_at: string | null
   created_at: string
   agent_version: string | null
+  auto_update?: boolean
+  update_channel?: 'stable' | 'beta' | 'canary'
 }
 
 interface AgentListProps {
@@ -44,14 +46,14 @@ export default function AgentList({ agents, selectedAgentId, onSelect, onDelete 
       {agents.map((agent) => (
         <div
           key={agent.id}
-          className={`group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
+          className={`group flex items-start gap-3 px-3 py-3 rounded-lg cursor-pointer transition-colors ${
             selectedAgentId === agent.id
               ? 'bg-accent-50 dark:bg-accent-900/30 border border-accent-200 dark:border-accent-800'
               : 'hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent'
           }`}
-          onClick={() => agent.is_online && onSelect(agent)}
+          onClick={() => onSelect(agent)}
         >
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0 pt-0.5">
             {agent.is_online ? (
               <Wifi className="w-4 h-4 text-green-500" />
             ) : (
@@ -59,26 +61,33 @@ export default function AgentList({ agents, selectedAgentId, onSelect, onDelete 
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <span className={`text-sm font-medium truncate ${
                 agent.is_online ? 'text-gray-800 dark:text-gray-200' : 'text-gray-400 dark:text-gray-500'
               }`}>
                 {agent.name}
               </span>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
               <span className="text-xs text-gray-400 dark:text-gray-500">
                 {osLabel(agent.os_type)}
               </span>
-              {agent.agent_version && (
-                <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 font-mono text-[10px]">
-                  v{agent.agent_version}
-                </span>
-              )}
+              <span
+                className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                  agent.is_online
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    : 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
+                }`}
+              >
+                {agent.is_online ? 'online' : 'offline'}
+              </span>
+              <span className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 font-mono text-[10px]">
+                v{agent.agent_version ?? 'unknown'}
+              </span>
             </div>
-            {agent.hostname && (
-              <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
-                {agent.hostname}
-              </p>
-            )}
+            <p className="text-xs text-gray-400 dark:text-gray-500 truncate mt-1">
+              {agent.hostname || 'hostname 未取得'}
+            </p>
           </div>
           <button
             onClick={(e) => {

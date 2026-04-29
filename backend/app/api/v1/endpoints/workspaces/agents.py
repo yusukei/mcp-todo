@@ -58,6 +58,8 @@ async def update_agent_settings(
     agent = await RemoteAgent.get(agent_id)
     if not agent or agent.owner_id != str(user.id):
         raise HTTPException(status_code=404, detail="Agent not found")
+    if body.name is not None:
+        agent.name = body.name
     if body.auto_update is not None:
         agent.auto_update = body.auto_update
     if body.update_channel is not None:

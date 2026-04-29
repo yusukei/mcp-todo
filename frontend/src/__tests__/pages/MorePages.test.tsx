@@ -45,6 +45,7 @@ describe('WorkspacePage — render', () => {
   it('renders the agent list (empty state) once /workspaces/agents resolves', async () => {
     server.use(
       http.get('/api/v1/workspaces/agents', () => HttpResponse.json([])),
+      http.get('/api/v1/workspaces/supervisors', () => HttpResponse.json([])),
       http.get('/api/v1/projects', () => HttpResponse.json([])),
     )
     renderWithProviders(<WorkspacePage />)
