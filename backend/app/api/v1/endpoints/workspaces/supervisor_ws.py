@@ -22,6 +22,7 @@ The endpoint owns:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import secrets
@@ -45,6 +46,12 @@ _PUSH_TYPES = frozenset(
     {"supervisor_info", "supervisor_event", "supervisor_log"}
 )
 
+# Supervisor clients use WebSocket protocol Ping frames for heartbeat.
+# Starlette handles those below receive_text(), so they do not refresh
+# our Redis registry TTL. Keep the registry alive while the socket task
+# is alive; unregister() still removes it immediately on close.
+_REGISTRY_REFRESH_INTERVAL_S = 30.0
+
 
 async def _safe_close(ws: WebSocket, *, code: int, reason: str) -> None:
     try:
@@ -58,6 +65,18 @@ async def _safe_close(ws: WebSocket, *, code: int, reason: str) -> None:
 
 def _allowed_origins() -> set[str]:
     return settings.ws_allowed_origins
+
+
+async def _refresh_supervisor_registry(supervisor_id: str) -> None:
+    while True:
+        await asyncio.sleep(_REGISTRY_REFRESH_INTERVAL_S)
+        try:
+            await supervisor_manager.refresh_registration(supervisor_id)
+        except Exception:
+            logger.exception(
+                "Failed to refresh supervisor registry TTL (%s)",
+                supervisor_id,
+            )
 
 
 @router.websocket("/supervisor/ws")
@@ -141,6 +160,9 @@ async def supervisor_websocket(ws: WebSocket) -> None:
     logger.info(
         "Supervisor connected: %s (%s)", supervisor.name, supervisor_id
     )
+    registry_refresh_task = asyncio.create_task(
+        _refresh_supervisor_registry(supervisor_id)
+    )
 
     # ── Message loop ──
     try:
@@ -158,9 +180,8 @@ async def supervisor_websocket(ws: WebSocket) -> None:
             msg_type = msg.get("type")
             request_id = msg.get("request_id")
 
-            # Refresh the bus registry TTL on every inbound frame so
-            # heartbeat-driven cluster routing stays alive without a
-            # background loop.
+            # Refresh promptly on text frames too; the background task
+            # covers protocol-level Ping frames that Starlette handles.
             await supervisor_manager.refresh_registration(supervisor_id)
 
             # Push frames carry no request_id — skip the correlation
@@ -248,6 +269,9 @@ async def supervisor_websocket(ws: WebSocket) -> None:
             "Supervisor WebSocket error (%s)", supervisor_id
         )
     finally:
+        registry_refresh_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await registry_refresh_task
         await supervisor_manager.unregister(supervisor_id, ws)
         try:
             await supervisor.set({"last_seen_at": datetime.now(UTC)})
