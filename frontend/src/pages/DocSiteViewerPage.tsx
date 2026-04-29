@@ -5,6 +5,7 @@ import { ChevronRight, ChevronDown, Search, ArrowLeft, Library, ExternalLink } f
 import { api } from '../api/client'
 import MarkdownRenderer from '../components/common/MarkdownRenderer'
 import AuthImage from '../components/common/AuthImage'
+import CopyUrlButton from '../components/common/CopyUrlButton'
 import type { DocSite, DocSiteSection, DocPage } from '../types'
 
 // ── Link path normalization ─────────────────────────────
@@ -405,14 +406,26 @@ export default function DocSiteViewerPage() {
             <div className="p-8 text-gray-500 dark:text-gray-400">読み込み中...</div>
           ) : page ? (
             <div className="max-w-4xl mx-auto px-6 py-6 md:px-8 md:py-8">
-              {/* Mobile back button */}
-              <button
-                onClick={() => setMobileShowContent(false)}
-                className="md:hidden flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 mb-4 hover:text-gray-700 dark:hover:text-gray-300"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                目次に戻る
-              </button>
+              <div className="flex items-center justify-between gap-2 mb-4">
+                {/* Mobile back button */}
+                <button
+                  onClick={() => setMobileShowContent(false)}
+                  className="md:hidden flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  目次に戻る
+                </button>
+                <div className="ml-auto flex-shrink-0">
+                  <CopyUrlButton
+                    kind="docsite_page"
+                    siteId={siteId}
+                    resourcePath={page.path}
+                    title={page.title ?? page.path}
+                    variant="always-visible"
+                    size="md"
+                  />
+                </div>
+              </div>
               <MarkdownRenderer componentOverrides={{
                 img: ({ src, alt, ...rest }) => <AuthImage src={src} alt={alt} {...rest} />,
                 a: DocSiteLink as any,

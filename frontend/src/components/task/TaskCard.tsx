@@ -16,6 +16,7 @@ import { CornerDownRight, Lock, ShieldCheck, MessageSquare, Link2, Calendar } fr
 import clsx from 'clsx'
 import type { Task } from '../../types'
 import { PRIORITY_DOT_COLORS, PRIORITY_LABELS } from '../../constants/task'
+import CopyUrlButton from '../common/CopyUrlButton'
 
 interface Props {
   task: Task
@@ -80,7 +81,7 @@ export default function TaskCard({
       aria-label={task.title}
       tabIndex={0}
       className={clsx(
-        'group/card relative flex flex-col gap-1.5 rounded-[6px] border bg-gray-700 px-3 py-2.5 text-left cursor-pointer transition-colors',
+        'group group/card relative flex flex-col gap-1.5 rounded-[6px] border bg-gray-700 px-3 py-2.5 text-left cursor-pointer transition-colors',
         'border-line-2 hover:border-accent-500',
         isDecision && 'border-l-2 border-l-decision',
         isOverdue && !isDecision && 'border-l-2 border-l-pri-urgent',
@@ -89,6 +90,22 @@ export default function TaskCard({
         selectMode && isSelected && 'ring-2 ring-accent-400',
       )}
     >
+      {/* 右上: Copy URL (hover-reveal、card click を不発火) */}
+      <div
+        className="absolute right-1 top-1 z-10"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
+        <CopyUrlButton
+          kind="task"
+          contextProjectId={task.project_id}
+          resourceId={task.id}
+          title={task.title}
+          variant="hover-reveal"
+          size="sm"
+        />
+      </div>
+
       {/* row1: priority dot + 短縮 ID + 右側インジケータ */}
       <div className="flex items-center gap-1.5 text-[10px] font-mono text-gray-300">
         {selectMode && (

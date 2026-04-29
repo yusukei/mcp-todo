@@ -11,6 +11,7 @@ import { showErrorToast, showSuccessToast } from '../common/Toast'
 import { TaskCommentList, TaskCommentInput } from './TaskCommentSection'
 import TaskLinksSection from './TaskLinksSection'
 import TaskSubtaskSection from './TaskSubtaskSection'
+import CopyUrlButton from '../common/CopyUrlButton'
 
 function DecisionContextSection({
   task,
@@ -518,6 +519,14 @@ export default function TaskDetail({ taskId, projectId, onClose, onNavigateTask,
             </div>
           )}
           <div className="flex items-center gap-1 flex-shrink-0">
+            <CopyUrlButton
+              kind="task"
+              contextProjectId={task.project_id}
+              resourceId={task.id}
+              title={task.title}
+              variant="always-visible"
+              size="md"
+            />
             <button
               onClick={() => {
                 navigator.clipboard.writeText(task.id)

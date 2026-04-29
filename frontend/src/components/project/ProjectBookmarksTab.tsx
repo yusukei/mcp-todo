@@ -9,6 +9,7 @@ import { api } from '../../api/client'
 import { showErrorToast, showSuccessToast } from '../common/Toast'
 import { showConfirm } from '../common/ConfirmDialog'
 import AuthImage from '../common/AuthImage'
+import CopyUrlButton from '../common/CopyUrlButton'
 import ClipContentRenderer from '../bookmark/ClipContentRenderer'
 import BookmarkCreateModal from '../bookmark/BookmarkCreateModal'
 import BookmarkCollectionSidebar from '../bookmark/BookmarkCollectionSidebar'
@@ -561,7 +562,7 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
                   draggable
                   onDragStart={(e) => handleDragStart(e, bm.id)}
                   onClick={() => selectionMode ? toggleSelect(bm.id) : setSelectedId(bm.id)}
-                  className={`cursor-pointer rounded-lg border bg-gray-100 dark:bg-gray-800 overflow-hidden hover:shadow-md transition-shadow ${
+                  className={`group relative cursor-pointer rounded-lg border bg-gray-100 dark:bg-gray-800 overflow-hidden hover:shadow-md transition-shadow ${
                     selectionMode && selectedIds.has(bm.id)
                       ? 'border-accent-500 ring-1 ring-accent-500 bg-accent-50 dark:bg-accent-950'
                       : selectedId === bm.id && !selectionMode
@@ -569,6 +570,19 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
                       : 'border-gray-200 dark:border-gray-700'
                   }`}
                 >
+                  <div
+                    className="absolute right-1 top-1 z-10"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    <CopyUrlButton
+                      kind="bookmark"
+                      resourceId={bm.id}
+                      title={bm.title}
+                      variant="hover-reveal"
+                      size="sm"
+                    />
+                  </div>
                   <div className="relative">
                     <Thumbnail bm={bm} size="grid" />
                     {selectionMode && (
@@ -618,7 +632,7 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
                   onDrop={(e) => handleReorderDrop(e, idx)}
                   onDragEnd={handleReorderDragEnd}
                   onClick={() => selectionMode ? toggleSelect(bm.id) : setSelectedId(bm.id)}
-                  className={`cursor-pointer flex items-center gap-3 px-3 py-2 rounded-lg border bg-gray-100 dark:bg-gray-800 hover:shadow-sm transition-all ${
+                  className={`group cursor-pointer flex items-center gap-3 px-3 py-2 rounded-lg border bg-gray-100 dark:bg-gray-800 hover:shadow-sm transition-all ${
                     dragOverIndex === idx
                       ? 'border-accent-400 ring-2 ring-accent-300 dark:ring-accent-600'
                       : selectionMode && selectedIds.has(bm.id)
@@ -648,6 +662,19 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
                       {bm.is_starred && <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />}
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{domainFromUrl(bm.url)}</p>
+                  </div>
+                  <div
+                    className="flex-shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    <CopyUrlButton
+                      kind="bookmark"
+                      resourceId={bm.id}
+                      title={bm.title}
+                      variant="hover-reveal"
+                      size="sm"
+                    />
                   </div>
                 </div>
               ))}
@@ -702,6 +729,13 @@ export default function ProjectBookmarksTab({ projectId, selectedId: externalSel
                     {domainFromUrl(selected.url)}
                   </a>
                   <div className="flex items-center gap-1.5 mt-2">
+                    <CopyUrlButton
+                      kind="bookmark"
+                      resourceId={selected.id}
+                      title={selected.title}
+                      variant="always-visible"
+                      size="md"
+                    />
                     <button
                       onClick={() => starMutation.mutate({ id: selected.id, starred: !selected.is_starred })}
                       className={`p-1.5 rounded-lg ${selected.is_starred ? 'text-yellow-500' : 'text-gray-400'} hover:bg-gray-100 dark:hover:bg-gray-700`}

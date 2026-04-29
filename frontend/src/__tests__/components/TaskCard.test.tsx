@@ -132,4 +132,22 @@ describe('TaskCard', () => {
     // 末尾 6 桁を大文字
     expect(screen.getByText('T7662A3')).toBeInTheDocument()
   })
+
+  it('CopyUrlButton が右上に出現し、クリックがカード onClick へバブルしない (URL S7)', async () => {
+    const onClick = vi.fn()
+    // 24 桁 hex でないと buildUrl が throw する。S7 配置先は実 ID を渡す
+    // 想定なので test fixture も実形式に揃える。
+    const task = createMockTask({
+      ...baseTask,
+      id: '69ee07400d5b906f437662a3',
+      project_id: '69bfffad73ed736a9d13fd0f',
+    })
+    render(<TaskCard task={task} onClick={onClick} />)
+    // axis 5 Reachable: aria-label で button が探せる
+    const copyBtn = screen.getByRole('button', { name: /Copy URL to task/ })
+    expect(copyBtn).toBeInTheDocument()
+    // axis 6 Operable: click は wrapper の stopPropagation でカードへ伝わらない
+    await userEvent.click(copyBtn)
+    expect(onClick).not.toHaveBeenCalled()
+  })
 })

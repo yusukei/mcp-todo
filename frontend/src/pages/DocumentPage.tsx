@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
 import { api } from '../api/client'
 import ProjectDocumentsTab from '../components/project/ProjectDocumentsTab'
+import CopyUrlButton from '../components/common/CopyUrlButton'
 
 export default function DocumentPage() {
   const { projectId, documentId } = useParams<{ projectId: string; documentId: string }>()
@@ -31,6 +32,18 @@ export default function DocumentPage() {
           </>
         )}
         <span className="text-gray-400 dark:text-gray-500">/ ドキュメント</span>
+        {projectId && documentId && (
+          <div className="ml-auto flex-shrink-0">
+            <CopyUrlButton
+              kind="document_full"
+              contextProjectId={projectId}
+              resourceId={documentId}
+              title={project?.name ?? 'document'}
+              variant="always-visible"
+              size="md"
+            />
+          </div>
+        )}
       </div>
       <div className="flex-1 overflow-y-auto">
         <ProjectDocumentsTab projectId={projectId!} initialDocumentId={documentId} />

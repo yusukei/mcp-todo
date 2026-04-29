@@ -6,6 +6,7 @@ import { api } from '../api/client'
 import { showConfirm } from '../components/common/ConfirmDialog'
 import { showErrorToast, showSuccessToast } from '../components/common/Toast'
 import MarkdownRenderer from '../components/common/MarkdownRenderer'
+import CopyUrlButton from '../components/common/CopyUrlButton'
 import type { Knowledge, KnowledgeCategory } from '../types'
 
 const CATEGORIES: { value: KnowledgeCategory; label: string; color: string }[] = [
@@ -347,7 +348,14 @@ export default function KnowledgePage() {
               <h1 className="text-lg font-serif font-medium text-gray-800 dark:text-gray-100 truncate">{selected.title}</h1>
             </div>
             {!editing && (
-              <div className="flex gap-2 flex-shrink-0">
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <CopyUrlButton
+                  kind="knowledge"
+                  resourceId={selected.id}
+                  title={selected.title}
+                  variant="always-visible"
+                  size="md"
+                />
                 <button
                   onClick={() => {
                     const text = `# ${selected.title}\n\n${selected.content}`

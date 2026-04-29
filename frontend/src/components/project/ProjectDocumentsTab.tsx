@@ -18,6 +18,7 @@ import { api } from '../../api/client'
 import { showErrorToast, showSuccessToast } from '../common/Toast'
 import { showConfirm } from '../common/ConfirmDialog'
 import MarkdownRenderer from '../common/MarkdownRenderer'
+import CopyUrlButton from '../common/CopyUrlButton'
 import type { ProjectDocument, DocumentCategory, DocumentVersionSummary } from '../../types'
 
 const CATEGORIES: { value: DocumentCategory; label: string; color: string }[] = [
@@ -407,6 +408,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
                   <SortableDocumentItem
                     key={d.id}
                     doc={d}
+                    projectId={projectId}
                     isSelected={d.id === selectedId}
                     isChecked={checkedIds.has(d.id)}
                     onToggleCheck={toggleCheck}
@@ -465,7 +467,15 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
               <h2 className="text-lg font-serif font-medium text-gray-800 dark:text-gray-100 truncate">{selected.title}</h2>
             </div>
             {!editing && (
-              <div className="flex gap-2 flex-shrink-0">
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <CopyUrlButton
+                  kind="document"
+                  contextProjectId={projectId}
+                  resourceId={selected.id}
+                  title={selected.title}
+                  variant="always-visible"
+                  size="md"
+                />
                 <button onClick={() => startEdit(selected)} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700">
                   <Pencil className="w-4 h-4" />
                 </button>
@@ -540,6 +550,7 @@ export default function ProjectDocumentsTab({ projectId, initialDocumentId, onSe
 
 function SortableDocumentItem({
   doc,
+  projectId,
   isSelected,
   isChecked,
   onToggleCheck,
@@ -548,6 +559,7 @@ function SortableDocumentItem({
   selectMode,
 }: {
   doc: ProjectDocument
+  projectId: string
   isSelected: boolean
   isChecked: boolean
   onToggleCheck: (id: string) => void
@@ -573,7 +585,7 @@ function SortableDocumentItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-2 px-3 py-2 mx-1 my-0.5 rounded-md cursor-pointer text-sm transition-colors ${
+      className={`group flex items-center gap-2 px-3 py-2 mx-1 my-0.5 rounded-md cursor-pointer text-sm transition-colors ${
         isDragging ? 'opacity-30' : ''
       } ${
         isSelected
@@ -625,6 +637,20 @@ function SortableDocumentItem({
           </span>
         </div>
       </button>
+      <div
+        className="flex-shrink-0"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
+        <CopyUrlButton
+          kind="document"
+          contextProjectId={projectId}
+          resourceId={doc.id}
+          title={doc.title}
+          variant="hover-reveal"
+          size="sm"
+        />
+      </div>
     </div>
   )
 }

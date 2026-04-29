@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { api } from '../../api/client'
 import MarkdownRenderer from '../../components/common/MarkdownRenderer'
+import CopyUrlButton from '../../components/common/CopyUrlButton'
 import type { PaneComponentProps } from '../paneRegistry'
 import { useWorkbenchEvent } from '../eventBus'
 
@@ -161,6 +162,14 @@ export default function DocPane({
           </span>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
+          <CopyUrlButton
+            kind="document"
+            contextProjectId={projectId}
+            resourceId={config.docId}
+            title={doc.data!.title}
+            variant="always-visible"
+            size="md"
+          />
           <button
             type="button"
             onClick={() => onConfigChange({ docId: undefined })}
