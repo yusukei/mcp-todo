@@ -108,13 +108,13 @@ services:
       # (ENABLE_INDEXERS=1) still writes to the correct path.
       # The sidecar also mounts these — only one writer at a
       # time is safe, which the ENABLE_INDEXERS flag enforces.
-      - search_index:/app/search_index
-      - docsite_assets:/app/docsite_assets
-      - docsite_index:/app/search_index_docsites
-      - bookmark_assets:/app/bookmark_assets
-      - bookmark_index:/app/search_index_bookmarks
-      - agent_releases:/app/agent_releases
-      - supervisor_releases:/app/supervisor_releases
+      - ${DOCKER_DATA_ROOT:-D:/docker-data/claude-todo}/search_index:/app/search_index
+      - ${DOCKER_DATA_ROOT:-D:/docker-data/claude-todo}/docsite_assets:/app/docsite_assets
+      - ${DOCKER_DATA_ROOT:-D:/docker-data/claude-todo}/docsite_index:/app/search_index_docsites
+      - ${DOCKER_DATA_ROOT:-D:/docker-data/claude-todo}/bookmark_assets:/app/bookmark_assets
+      - ${DOCKER_DATA_ROOT:-D:/docker-data/claude-todo}/bookmark_index:/app/search_index_bookmarks
+      - ${DOCKER_DATA_ROOT:-D:/docker-data/claude-todo}/agent_releases:/app/agent_releases
+      - ${DOCKER_DATA_ROOT:-D:/docker-data/claude-todo}/supervisor_releases:/app/supervisor_releases
     depends_on:
       mongo:
         condition: service_healthy
@@ -180,11 +180,11 @@ services:
       - ENABLE_ERROR_TRACKER_WORKER=1
       - WEB_CONCURRENCY=1
     volumes:
-      - search_index:/app/search_index
-      - docsite_assets:/app/docsite_assets
-      - docsite_index:/app/search_index_docsites
-      - bookmark_assets:/app/bookmark_assets
-      - bookmark_index:/app/search_index_bookmarks
+      - ${DOCKER_DATA_ROOT:-D:/docker-data/claude-todo}/search_index:/app/search_index
+      - ${DOCKER_DATA_ROOT:-D:/docker-data/claude-todo}/docsite_assets:/app/docsite_assets
+      - ${DOCKER_DATA_ROOT:-D:/docker-data/claude-todo}/docsite_index:/app/search_index_docsites
+      - ${DOCKER_DATA_ROOT:-D:/docker-data/claude-todo}/bookmark_assets:/app/bookmark_assets
+      - ${DOCKER_DATA_ROOT:-D:/docker-data/claude-todo}/bookmark_index:/app/search_index_bookmarks
     depends_on:
       mongo:
         condition: service_healthy
@@ -245,7 +245,7 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-todoadmin}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-changeme}
     volumes:
-      - mongo_data:/data/db
+      - ${DOCKER_DATA_ROOT:-D:/docker-data/claude-todo}/mongo_data:/data/db
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
@@ -265,7 +265,7 @@ services:
     container_name: todo-redis
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-changeme}
     volumes:
-      - redis_data:/data
+      - ${DOCKER_DATA_ROOT:-D:/docker-data/claude-todo}/redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
       interval: 10s
@@ -291,9 +291,9 @@ services:
       - BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-7}
       - BACKUP_CRON=${BACKUP_CRON:-0 3 * * *}
     volumes:
-      - docsite_assets:/data/docsite_assets:ro
-      - bookmark_assets:/data/bookmark_assets:ro
-      - backups:/backups
+      - ${DOCKER_DATA_ROOT:-D:/docker-data/claude-todo}/docsite_assets:/data/docsite_assets:ro
+      - ${DOCKER_DATA_ROOT:-D:/docker-data/claude-todo}/bookmark_assets:/data/bookmark_assets:ro
+      - ${DOCKER_DATA_ROOT:-D:/docker-data/claude-todo}/backups:/backups
     depends_on:
       mongo:
         condition: service_healthy
@@ -305,18 +305,6 @@ services:
     restart: unless-stopped
     networks:
       - todo-net
-
-volumes:
-  mongo_data:
-  redis_data:
-  search_index:
-  docsite_assets:
-  docsite_index:
-  bookmark_assets:
-  bookmark_index:
-  agent_releases:
-  supervisor_releases:
-  backups:
 
 networks:
   todo-net:
